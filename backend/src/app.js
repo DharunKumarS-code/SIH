@@ -36,6 +36,16 @@ export function createApp() {
   )
   app.use('/api', rateLimit({ windowMs: 60_000, max: 600, standardHeaders: true, legacyHeaders: false }))
 
+  app.get('/', (_req, res) =>
+    res.json({
+      ok: true,
+      service: 'LAND STACK API',
+      note: 'This is the API server. Open the app at the frontend URL.',
+      app: env.corsOrigin[0] || 'http://localhost:5173',
+      endpoints: { health: '/health', api: '/api', apiSpec: '/api (see docs/02-api-specification.md)' },
+    }),
+  )
+
   app.get('/health', (_req, res) =>
     res.json({ ok: true, service: 'landstack-backend', store: db.status.mode, time: new Date().toISOString() }),
   )
