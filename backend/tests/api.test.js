@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createApp } from '../src/app.js'
-import { connectStore } from '../src/store/index.js'
+import { connectStore, disconnectStore } from '../src/store/index.js'
 import { PARCEL_ULPIN, makeProtoPropertyId } from '../src/services/idService.js'
 
 let app
@@ -19,7 +19,10 @@ test.before(async () => {
   })
 })
 
-test.after(() => server?.close())
+test.after(async () => {
+  await new Promise((resolve) => (server ? server.close(resolve) : resolve()))
+  await disconnectStore() // release the Mongo socket so `node --test` can exit
+})
 
 const get = async (path, token) => {
   const res = await fetch(base + path, token ? { headers: { authorization: `Bearer ${token}` } } : undefined)
