@@ -1,27 +1,19 @@
 import { defineConfig, devices } from '@playwright/test'
 
-// Default: run against the Vite dev server. Set PW_TARGET=preview to run the
-// same suite against the production build (`npm run build` + `npm run preview`).
-const TARGET = process.env.PW_TARGET === 'preview' ? 'preview' : 'dev'
-const PORT = TARGET === 'preview' ? 4180 : 5180
-const BASE_URL = `http://localhost:${PORT}`
+const FRONTEND = 'http://localhost:5173'
 
 export default defineConfig({
-  testDir: './tests',
-  // Generous because CI / loaded dev machines render Cesium via software WebGL
-  // (SwiftShader), which is slow. These are not used to mask failures — the
-  // readiness conditions in tests/helpers.js still gate on real scene state.
-  timeout: 240_000,
-  expect: { timeout: 30_000 },
+  testDir: './tests/e2e',
+  timeout: 150_000,
+  expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: BASE_URL,
+    baseURL: FRONTEND,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'off',
     viewport: { width: 1440, height: 900 },
   },
   projects: [
@@ -35,17 +27,24 @@ export default defineConfig({
             '--use-angle=swiftshader',
             '--enable-unsafe-swiftshader',
             '--ignore-gpu-blocklist',
-            '--enable-webgl',
             '--disable-dev-shm-usage',
           ],
         },
       },
     },
   ],
-  webServer: {
-    command: TARGET === 'preview' ? 'npm run preview' : 'npm run dev',
-    url: BASE_URL,
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: 'npm --prefix backend start',
+      url: 'http://localhost:4000/health',
+      reuseExistingServer: true,
+      timeout: 60_000,
+    },
+    {
+      command: 'npm --prefix frontend run dev',
+      url: FRONTEND,
+      reuseExistingServer: true,
+      timeout: 60_000,
+    },
+  ],
 })

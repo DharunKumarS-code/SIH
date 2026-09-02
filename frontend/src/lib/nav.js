@@ -1,0 +1,40 @@
+import {
+  LayoutDashboard,
+  Map,
+  Search,
+  Building2,
+  Layers,
+  ScrollText,
+  FileSignature,
+  Stamp,
+  Receipt,
+  Gavel,
+  BarChart3,
+  Sparkles,
+  ClipboardList,
+  FileText,
+  Users,
+  Settings,
+} from 'lucide-react'
+
+// Main navigation (spec section 36). `perm` gates visibility against the
+// current user's permissions; items with no perm are always shown.
+export const NAV = [
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/parcels', label: 'Land Parcels', icon: Layers },
+  { to: '/ulpin-search', label: 'ULPIN Search', icon: Search },
+  { to: '/map', label: '3D Map', icon: Map },
+  { to: '/buildings', label: 'Buildings', icon: Building2 },
+  { to: '/explorer', label: 'Floor & Unit Explorer', icon: Layers },
+  { to: '/land-records', label: 'Land Records', icon: ScrollText, perm: 'ror:view' },
+  { to: '/registration', label: 'Registration', icon: FileSignature, perm: 'registration:view' },
+  { to: '/permissions', label: 'Building Permissions', icon: Stamp, perm: 'building-approval:view' },
+  { to: '/tax', label: 'Property Tax', icon: Receipt, perm: 'tax:view' },
+  { to: '/disputes', label: 'Disputes', icon: Gavel, perm: 'dispute:view' },
+  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { to: '/ai', label: 'AI Studio', icon: Sparkles, perm: 'ai:run' },
+  { to: '/services', label: 'Services', icon: ClipboardList },
+  { to: '/reports', label: 'Reports', icon: FileText, perm: 'report:view' },
+  { to: '/users', label: 'Users & Roles', icon: Users, role: 'Administrator' },
+  { to: '/settings', label: 'Settings', icon: Settings },
+]
