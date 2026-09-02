@@ -33,4 +33,12 @@ export default defineConfig({
   define: {
     CESIUM_BASE_URL: JSON.stringify('/cesium'),
   },
+  server: {
+    port: 5180,
+    strictPort: true,
+  },
+  preview: {
+    port: 4180,
+    strictPort: true,
+  },
 })
