@@ -37,7 +37,7 @@ export function PropertySidebar() {
 
   if (!isUnit) {
     return (
-      <aside className="pointer-events-auto absolute right-3 top-3 z-10 w-80 rounded-xl panel p-4" data-testid="property-sidebar">
+      <aside className="pointer-events-auto absolute right-3 top-3 z-30 w-80 rounded-xl panel p-4" data-testid="property-sidebar">
         <p className="section-title">Property / Unit Details</p>
         <p className="mt-2 text-sm text-slate-400">
           {selection.mode === 'building'
@@ -61,7 +61,7 @@ export function PropertySidebar() {
 
   return (
     <aside
-      className="pointer-events-auto absolute right-3 top-3 z-10 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
+      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
       data-testid="property-sidebar"
     >
       <header className="flex items-start justify-between gap-2 border-b border-white/10 p-3">

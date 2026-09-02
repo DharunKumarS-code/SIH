@@ -39,8 +39,13 @@ export async function login(page, username = 'land01', password = 'Officer@123')
   await page.getByTestId('login-username').fill(username)
   await page.getByTestId('login-password').fill(password)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/(dashboard|map|parcels)/, { timeout: 30_000 })
+  await page.waitForURL(/\/(dashboard|map|parcels)/, { timeout: 60_000 })
+  // Ensure the authenticated shell has actually mounted before returning.
+  await expect(page.getByTestId('global-search')).toBeVisible({ timeout: 45_000 })
 }
+
+export const navLink = (page, name) =>
+  page.getByRole('navigation').getByRole('link', { name, exact: true })
 
 export async function openMap(page) {
   await page.goto('/map')

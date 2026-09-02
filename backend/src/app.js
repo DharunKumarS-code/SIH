@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit'
 import { env } from './config/env.js'
 import { db } from './store/index.js'
 import apiRoutes from './routes/index.js'
+import { demoDocs } from './middleware/demoDocs.js'
 import { notFound, errorHandler } from './middleware/error.js'
 
 export function createApp() {
@@ -52,6 +53,7 @@ export function createApp() {
   )
 
   app.use('/api', apiRoutes)
+  app.get('/demo-docs/*', demoDocs)
 
   app.use(notFound)
   app.use(errorHandler)

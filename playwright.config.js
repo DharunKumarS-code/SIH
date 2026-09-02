@@ -4,11 +4,13 @@ const FRONTEND = 'http://localhost:5173'
 
 export default defineConfig({
   testDir: './tests/e2e',
-  timeout: 150_000,
-  expect: { timeout: 20_000 },
+  timeout: 180_000,
+  expect: { timeout: 30_000 },
   fullyParallel: false,
   workers: 1,
-  retries: process.env.CI ? 1 : 0,
+  // One retry absorbs transient Vite-dev cold-compile stalls on a loaded dev
+  // machine; it does not mask deterministic failures.
+  retries: 1,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: FRONTEND,

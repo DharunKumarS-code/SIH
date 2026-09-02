@@ -1,7 +1,23 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react'
 import { api, setAuthToken } from '../lib/api.js'
+import { permissionsFor } from '../lib/permissions.js'
 
 const AuthContext = createContext(null)
+
+function decodeJwt(token) {
+  try {
+    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    const json = decodeURIComponent(
+      atob(payload)
+        .split('')
+        .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .join(''),
+    )
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -10,30 +26,55 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let alive = true
-    const boot = async () => {
-      let token = null
-      try {
-        token = localStorage.getItem('landstack.token')
-      } catch {
-        /* ignore */
-      }
-      if (!token) {
-        setLoading(false)
-        return
-      }
-      try {
-        const { user: u, permissions: p } = await api.me()
-        if (alive) {
-          setUser(u)
-          setPermissions(p)
-        }
-      } catch {
-        setAuthToken(null)
-      } finally {
-        if (alive) setLoading(false)
+    let token = null
+    try {
+      token = localStorage.getItem('landstack.token')
+    } catch {
+      /* storage unavailable */
+    }
+    if (!token) {
+      setLoading(false)
+      return () => {
+        alive = false
       }
     }
-    boot()
+
+    // Optimistic session from the token payload so a reload renders the app
+    // immediately; the backend still enforces auth on every request.
+    const claims = decodeJwt(token)
+    if (claims && alive) {
+      setUser({ id: claims.sub, username: claims.username, name: claims.name, role: claims.role })
+      setPermissions(permissionsFor(claims.role))
+      setLoading(false)
+    }
+
+    // Refresh from the server (and retry through transient blips). A real 401
+    // is the only thing that ends the session.
+    ;(async () => {
+      for (let attempt = 0; attempt < 5 && alive; attempt += 1) {
+        try {
+          const { user: u, permissions: p } = await api.me()
+          if (alive) {
+            setUser(u)
+            setPermissions(p)
+          }
+          return
+        } catch (err) {
+          if (err.status === 401) {
+            if (alive) {
+              setAuthToken(null)
+              setUser(null)
+              setPermissions([])
+            }
+            return
+          }
+          await new Promise((r) => setTimeout(r, 500 * (attempt + 1)))
+        }
+      }
+    })().finally(() => {
+      if (alive && !claims) setLoading(false)
+    })
+
     return () => {
       alive = false
     }

@@ -42,8 +42,8 @@ export default function Map3D() {
       <PropertySidebar />
       <ExplorerDock />
 
-      {/* Camera + view-level controls (spec section 30) */}
-      <div className="pointer-events-auto absolute right-3 top-1/2 z-10 flex -translate-y-1/2 flex-col gap-1 rounded-xl panel p-1.5">
+      {/* Camera + view-level controls (spec section 30) — top-centre strip */}
+      <div className="pointer-events-auto absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-1 rounded-xl panel p-1.5">
         <CamButton onClick={() => m().zoomBy?.(-0.25)} title="Zoom in"><ZoomIn size={15} /></CamButton>
         <CamButton onClick={() => m().zoomBy?.(0.4)} title="Zoom out"><ZoomOut size={15} /></CamButton>
         <CamButton onClick={() => m().rotateBy?.(-20)} title="Rotate left"><RotateCcw size={15} /></CamButton>
@@ -51,12 +51,9 @@ export default function Map3D() {
         <CamButton onClick={() => m().tiltBy?.(8)} title="Tilt"><MoveVertical size={15} /></CamButton>
         <CamButton onClick={() => m().topView?.()} title="Top view"><ArrowUpToLine size={15} /></CamButton>
         <CamButton onClick={reset} title="Reset view"><Home size={15} /></CamButton>
-      </div>
-
-      {/* Focus selected property */}
-      <div className="pointer-events-auto absolute bottom-3 left-1/2 z-10 -translate-x-1/2">
+        <div className="mx-1 h-5 w-px bg-white/15" />
         <button
-          className="btn-primary shadow-panel"
+          className="btn-primary !py-1.5"
           data-testid="focus-selected"
           onClick={() => {
             if (selection.mode === 'unit') m().flyToUnit?.(selection.propertyId)
@@ -64,7 +61,7 @@ export default function Map3D() {
             else m().flyToParcel?.(selection.ulpin)
           }}
         >
-          Focus Selected Property
+          Focus Selected
         </button>
       </div>
     </div>

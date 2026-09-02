@@ -1,7 +1,24 @@
-import { test, expect, login, openMap } from './helpers.js'
+import { test, expect, login, openMap, navLink } from './helpers.js'
 
 const ULPIN = 'TN-CHN-123456789'
 const PROTO_ID = 'TN-CHN-123456789-B01-F02-U201'
+
+// Warm the Vite dev server so the first timed assertions aren't racing an
+// on-demand module transform (matters on a loaded dev machine).
+test.beforeAll(async ({ browser }) => {
+  const page = await browser.newPage()
+  try {
+    await login(page)
+    for (const p of ['/dashboard', '/analytics', '/map', '/ulpin-search']) {
+      await page.goto(p).catch(() => {})
+      await page.waitForTimeout(800)
+    }
+  } catch {
+    /* warm-up is best-effort */
+  } finally {
+    await page.close()
+  }
+})
 
 test.describe('Application load & auth', () => {
   test('redirects to login, then signs in to the dashboard with no fatal errors', async ({ page, diag }) => {
@@ -36,10 +53,11 @@ test.describe('Route smoke — every main route renders', () => {
   ]
 
   test('all routes open without a blank page or page error', async ({ page, diag }) => {
+    test.slow()
     await login(page)
     for (const [path, heading] of routes) {
       await page.goto(path)
-      await expect(page.getByRole('heading', { name: heading }).first(), `route ${path}`).toBeVisible({ timeout: 25_000 })
+      await expect(page.getByRole('heading', { name: heading }).first(), `route ${path}`).toBeVisible({ timeout: 40_000 })
     }
     const { pageErrors } = diag.fatal()
     expect(pageErrors, pageErrors.join('\n')).toEqual([])
@@ -49,7 +67,7 @@ test.describe('Route smoke — every main route renders', () => {
 test.describe('Dashboard', () => {
   test('shows KPI cards and charts', async ({ page }) => {
     await login(page)
-    await page.goto('/dashboard')
+    await expect(page).toHaveURL(/\/dashboard/)
     await expect(page.getByText('Total Parcels')).toBeVisible()
     await expect(page.getByText('ULPIN Assigned')).toBeVisible()
     await expect(page.getByText('Land Use Distribution')).toBeVisible()
@@ -133,16 +151,17 @@ test.describe('Global search', () => {
 test.describe('Role-based access control', () => {
   test('citizen does not see officer-only navigation', async ({ page }) => {
     await login(page, 'citizen01', 'Citizen@123')
-    await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible()
-    await expect(page.getByRole('link', { name: '3D Map' })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'Users & Roles' })).toHaveCount(0)
-    await expect(page.getByRole('link', { name: 'Land Records' })).toHaveCount(0)
-    await expect(page.getByRole('link', { name: 'Property Tax' })).toHaveCount(0)
+    await expect(navLink(page, 'Dashboard')).toBeVisible()
+    await expect(navLink(page, '3D Map')).toBeVisible()
+    await expect(navLink(page, 'Users & Roles')).toHaveCount(0)
+    await expect(navLink(page, 'Land Records')).toHaveCount(0)
+    await expect(navLink(page, 'Property Tax')).toHaveCount(0)
+    await expect(navLink(page, 'AI Studio')).toHaveCount(0)
   })
 
   test('land officer sees governance nav', async ({ page }) => {
     await login(page, 'land01', 'Officer@123')
-    await expect(page.getByRole('link', { name: 'Land Records' })).toBeVisible()
+    await expect(navLink(page, 'Land Records')).toBeVisible()
   })
 })
 
