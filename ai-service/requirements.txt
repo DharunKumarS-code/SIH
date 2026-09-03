@@ -1,3 +1,32 @@
+# LAND STACK — AI building-extraction service (Phase 3)
+# Only the dependencies actually needed for the inference + GIS path.
+
+# --- web ---
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 pydantic==2.10.4
+python-multipart==0.0.20
+
+# --- imagery + arrays ---
+numpy>=1.26,<3
+Pillow>=10.3,<12
+
+# --- segmentation (classical CV — the always-available default model) ---
+scikit-image>=0.22,<0.26
+
+# --- vector geometry: polygonisation, validity, repair, spatial ops ---
+shapely>=2.0,<3
+
+# --- georeferencing (GeoTIFF affine transform + CRS -> WGS84).
+#     Optional at runtime: if these fail to import the service still runs and
+#     treats every image as NON_GEOREFERENCED_AI_DEMO. ---
+rasterio>=1.3,<2
+pyproj>=3.6,<4
+
+# --- tests ---
+pytest>=8,<9
+
+# --- OPTIONAL upgrade path (NOT installed by default): a real U-Net.
+#     Enable with AI_MODEL=unet and provide weights. Documented in docs/15.
+#   torch>=2.2
+#   segmentation-models-pytorch>=0.3.4

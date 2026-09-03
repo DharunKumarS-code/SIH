@@ -2,33 +2,53 @@ import { z } from 'zod'
 import { db } from '../store/index.js'
 import { asyncHandler, ok, list, notFoundError, badRequest } from '../utils/http.js'
 import { recordAudit } from '../services/auditService.js'
+import { LOCALITIES, CHENNAI_CITY, localityPublic } from '../data/localities.js'
+import { resolveParcel, listLandSources, demoProvenance, subdivisionOf } from '../services/landData/index.js'
+import { assembleParcelVolumes, unitVolume } from '../services/geometry3d/index.js'
 
 /* ------------------------------------------------------------------ parcels */
 
 export const listParcels = asyncHandler(async (req, res) => {
-  const { landUse, status, q, limit } = req.query
+  const { landUse, status, q, limit, verificationStatus } = req.query
   const filter = {}
   if (landUse) filter.landUse = landUse
   if (status) filter.status = status
   if (q) filter.$or = [{ ulpin: { $regex: q } }, { parcelId: { $regex: q } }, { surveyNumber: { $regex: q } }]
-  const rows = await db.collection('parcels').find(filter, { sort: { parcelId: 1 }, limit: limit ? Number(limit) : undefined })
-  list(res, rows, { total: await db.collection('parcels').count(filter) })
+  const total = await db.collection('parcels').count(filter)
+  let rows = await db.collection('parcels').find(filter, { sort: { parcelId: 1 }, limit: limit ? Number(limit) : undefined })
+  rows = rows.map((p) => ({ ...p, subdivisionNumber: subdivisionOf(p), provenance: demoProvenance(p) }))
+  // Every seeded parcel is DEMO today; the filter is additive for a future mixed dataset.
+  if (verificationStatus) rows = rows.filter((p) => p.provenance.verificationStatus === verificationStatus)
+  list(res, rows, { total })
 })
 
 export const getParcel = asyncHandler(async (req, res) => {
   const { ulpin } = req.params
   const parcel = await db.collection('parcels').findOne({ ulpin })
   if (!parcel) throw notFoundError(`No parcel for ULPIN ${ulpin}`)
-  const [buildings, landUse, registration, encumbrance, tax, disputes] = await Promise.all([
+  // Keep this endpoint light. The full prototype-volume validation (which needs
+  // every floor + unit doc) lives on GET /api/parcels/:ulpin/volumes — here we
+  // only report cheap indexed counts so the hot path stays fast.
+  const [buildings, landUse, registration, encumbrance, tax, disputes, floorCount, unitCount, resolved] = await Promise.all([
     db.collection('buildings').find({ ulpin }, { sort: { buildingNumber: 1 } }),
     db.collection('landUse').findOne({ ulpin }),
     db.collection('registrations').findOne({ ulpin, scope: 'Parcel' }),
     db.collection('encumbrances').findOne({ ulpin, scope: 'Parcel' }),
     db.collection('propertyTax').findOne({ ulpin, scope: 'Parcel' }),
     db.collection('disputes').find({ ulpin }),
+    db.collection('floors').count({ ulpin }),
+    db.collection('propertyUnits').count({ ulpin }),
+    resolveParcel({ ulpin }),
   ])
   ok(res, {
-    parcel,
+    // `isOfficialUlpin` in the seed means "parcel-level id" (not a derived unit
+    // id) — NOT government-official. Normalise it so nothing downstream misreads
+    // a demo id as an official ULPIN; the real signal is `provenance`.
+    parcel: { ...parcel, isOfficialUlpin: false, subdivisionNumber: subdivisionOf(parcel) },
+    provenance: resolved.provenance,
+    providerChain: resolved.providerChain,
+    // Phase 2 — prototype 3D volume rollup (counts only; see /volumes for detail + validation).
+    volumes: { buildings: buildings.length, floors: floorCount, units: unitCount },
     landUse,
     registration,
     encumbrance,
@@ -42,6 +62,63 @@ export const getParcel = asyncHandler(async (req, res) => {
       totalFloors: b.totalFloors,
       unitCount: b.unitCount,
       constructionStatus: b.constructionStatus,
+    })),
+  })
+})
+
+// Phase 2 — every prototype 3D volume for a parcel + a validation rollup.
+// Sibling of GET /api/parcels/:ulpin/provenance.
+export const getParcelVolumes = asyncHandler(async (req, res) => {
+  const { ulpin } = req.params
+  const parcel = await db.collection('parcels').findOne({ ulpin })
+  if (!parcel) throw notFoundError(`No parcel for ULPIN ${ulpin}`)
+  const [buildings, floors, units, resolved] = await Promise.all([
+    db.collection('buildings').find({ ulpin }, { sort: { buildingNumber: 1 } }),
+    db.collection('floors').find({ ulpin }),
+    db.collection('propertyUnits').find({ ulpin }),
+    resolveParcel({ ulpin }),
+  ])
+  const source = resolved.provenance?.verificationStatus || 'DEMO'
+  let volumes = { buildings: [], floors: [], units: [] }
+  let validation = { status: 'VALID', counts: { valid: 0, warning: 0, error: 0 }, issues: [] }
+  try {
+    ;({ volumes, validation } = assembleParcelVolumes({ parcel, buildings, floors, units, source }))
+  } catch (err) {
+    // Malformed / missing demo geometry must never 500 this endpoint.
+    validation = {
+      status: 'ERROR',
+      counts: { valid: 0, warning: 0, error: 1 },
+      issues: [{ level: 'Parcel', id: ulpin, status: 'ERROR', rule: 'VOLUME_ASSEMBLY', message: `Could not assemble volumes: ${err.message}` }],
+    }
+  }
+  ok(res, { ulpin, provenance: resolved.provenance, volumes, validation })
+})
+
+export const getParcelProvenance = asyncHandler(async (req, res) => {
+  const { ulpin } = req.params
+  const resolved = await resolveParcel({ ulpin })
+  if (!resolved.record) {
+    // Still return the provider chain so callers see WHY (UNAVAILABLE vs not found).
+    const exists = await db.collection('parcels').findOne({ ulpin })
+    if (!exists) throw notFoundError(`No parcel for ULPIN ${ulpin}`)
+  }
+  ok(res, {
+    ulpin,
+    provenance: resolved.provenance,
+    providerChain: resolved.providerChain,
+  })
+})
+
+// The register of official ULPIN sources investigated in Phase 1 + the bottom
+// line for Chennai. Public — it is documentation, not data.
+export const getLandSources = asyncHandler(async (_req, res) => {
+  ok(res, {
+    ...listLandSources(),
+    localities: LOCALITIES.map((l) => ({
+      id: l.id,
+      name: l.name,
+      adminLevel: l.adminLevel || null,
+      recordType: l.recordType || null,
     })),
   })
 })
@@ -125,21 +202,46 @@ export const getUlpin = asyncHandler(async (req, res) => {
 const asFeature = (geometry, properties) => ({ type: 'Feature', geometry, properties })
 const asFC = (features) => ({ type: 'FeatureCollection', features })
 
-export const gisParcels = asyncHandler(async (_req, res) => {
-  const rows = await db.collection('parcels').find({})
-  ok(res, asFC(rows.map((p) => asFeature(p.geometry, {
-    ulpin: p.ulpin,
-    parcelId: p.parcelId,
-    landUse: p.landUse,
-    status: p.status,
-    areaSqft: p.areaSqft,
-    isDemo: p.isDemo,
-    layer: 'parcels',
-  }))))
+// ONE Chennai-wide environment: every locality is a cluster within the same
+// Cesium scene. `GET /api/gis/localities` drives the area selector + camera.
+export const listLocalities = asyncHandler(async (_req, res) => {
+  const localities = await Promise.all(
+    LOCALITIES.map(async (l) => ({
+      ...localityPublic(l),
+      counts: {
+        parcels: await db.collection('parcels').count({ locality: l.id }),
+        buildings: await db.collection('buildings').count({ locality: l.id }),
+        units: await db.collection('propertyUnits').count({ locality: l.id }),
+      },
+    })),
+  )
+  ok(res, { localities, city: CHENNAI_CITY })
 })
 
-export const gisBuildings = asyncHandler(async (_req, res) => {
-  const rows = await db.collection('buildings').find({})
+export const gisParcels = asyncHandler(async (req, res) => {
+  const filter = req.query.locality ? { locality: req.query.locality } : {}
+  const rows = await db.collection('parcels').find(filter)
+  ok(res, asFC(rows.map((p) => {
+    const prov = demoProvenance(p)
+    return asFeature(p.geometry, {
+      ulpin: p.ulpin,
+      parcelId: p.parcelId,
+      landUse: p.landUse,
+      status: p.status,
+      areaSqft: p.areaSqft,
+      locality: p.locality,
+      verificationStatus: prov.verificationStatus,
+      ulpinStatus: prov.ulpinStatus,
+      isOfficialUlpin: false,
+      isDemo: p.isDemo,
+      layer: 'parcels',
+    })
+  })))
+})
+
+export const gisBuildings = asyncHandler(async (req, res) => {
+  const filter = req.query.locality ? { locality: req.query.locality } : {}
+  const rows = await db.collection('buildings').find(filter)
   ok(res, asFC(rows.map((b) => asFeature(b.geometry, {
     buildingId: b.buildingId,
     name: b.name,
@@ -149,16 +251,18 @@ export const gisBuildings = asyncHandler(async (_req, res) => {
     totalFloors: b.totalFloors,
     unitCount: b.unitCount,
     constructionStatus: b.constructionStatus,
+    locality: b.locality,
     isDemo: b.isDemo,
     layer: 'buildings',
   }))))
 })
 
 export const gisUnits = asyncHandler(async (req, res) => {
-  const { buildingId, floorNumber, ulpin } = req.query
+  const { buildingId, floorNumber, ulpin, locality } = req.query
   const filter = {}
   if (buildingId) filter.buildingId = buildingId
   if (ulpin) filter.ulpin = ulpin
+  if (locality) filter.locality = locality
   if (floorNumber != null) filter.floorNumber = Number(floorNumber)
   const rows = await db.collection('propertyUnits').find(filter)
   ok(res, asFC(rows.map((u) => asFeature(u.geometry, {
@@ -176,13 +280,18 @@ export const gisUnits = asyncHandler(async (req, res) => {
     bedrooms: u.bedrooms,
     owner: u.owner?.name,
     idKind: u.idKind,
+    locality: u.locality,
+    // Phase 2 — prototype 3D volume bounds ride along so the viewer needs no 2nd call.
+    volume: unitVolume(u),
     isDemo: u.isDemo,
     layer: 'units',
   }))))
 })
 
 export const gisCommonAreas = asyncHandler(async (req, res) => {
-  const filter = req.query.buildingId ? { buildingId: req.query.buildingId } : {}
+  const filter = {}
+  if (req.query.buildingId) filter.buildingId = req.query.buildingId
+  if (req.query.locality) filter.locality = req.query.locality
   const rows = await db.collection('commonAreas').find(filter)
   ok(res, asFC(rows.map((c) => asFeature(c.geometry, {
     commonAreaId: c.commonAreaId,
@@ -192,6 +301,7 @@ export const gisCommonAreas = asyncHandler(async (req, res) => {
     baseHeight: c.baseHeight,
     topHeight: c.topHeight,
     ownership: c.ownership,
+    locality: c.locality,
     isDemo: c.isDemo,
     layer: 'common-areas',
   }))))
@@ -208,6 +318,7 @@ export const gisLayer = asyncHandler(async (req, res) => {
   }
   const col = map[req.params.layer]
   if (!col) throw notFoundError(`Unknown GIS layer "${req.params.layer}"`)
-  const rows = await db.collection(col).find({})
+  const filter = req.query.locality ? { locality: req.query.locality } : {}
+  const rows = await db.collection(col).find(filter)
   ok(res, asFC(rows.map((r) => asFeature(r.geometry, { ...r, geometry: undefined, layer: req.params.layer }))))
 })

@@ -9,6 +9,7 @@ import * as land from '../controllers/landController.js'
 import * as prop from '../controllers/propertyController.js'
 import * as gov from '../controllers/governanceController.js'
 import * as misc from '../controllers/miscController.js'
+import * as aiBld from '../controllers/aiBuildingController.js'
 
 const r = Router()
 const ulpinParam = { params: z.object({ ulpin: z.string().min(3) }) }
@@ -18,9 +19,14 @@ r.post('/auth/register', validate(auth.registerSchema), auth.register)
 r.post('/auth/login', validate(auth.loginSchema), auth.login)
 r.get('/auth/me', requireAuth, auth.me)
 
+/* ------------------------------------------------------- land data sources */
+r.get('/land-sources', land.getLandSources)
+
 /* ---------------------------------------------------------------- parcels */
 r.get('/parcels', optionalAuth, land.listParcels)
 r.get('/parcels/:ulpin', optionalAuth, validate(ulpinParam), land.getParcel)
+r.get('/parcels/:ulpin/provenance', optionalAuth, validate(ulpinParam), land.getParcelProvenance)
+r.get('/parcels/:ulpin/volumes', optionalAuth, validate(ulpinParam), land.getParcelVolumes)
 r.post('/parcels', requireAuth, requirePermission('parcel:search'), validate(land.createParcelSchema), land.createParcel)
 r.post('/parcels/:ulpin/verify', requireAuth, requirePermission('parcel:verify'), validate(ulpinParam), land.verifyParcel)
 
@@ -57,11 +63,13 @@ r.get('/interop/:ulpin', optionalAuth, gov.getUnifiedRecord)
 r.get('/interop/:ulpin/:department', optionalAuth, gov.getDepartmentView)
 
 /* -------------------------------------------------------------------- gis */
+r.get('/gis/localities', land.listLocalities)
 r.get('/gis/parcels', land.gisParcels)
 r.get('/gis/buildings', land.gisBuildings)
 r.get('/gis/units', land.gisUnits)
 r.get('/gis/common-areas', land.gisCommonAreas)
 r.get('/gis/layer/:layer', land.gisLayer)
+r.get('/gis/ai-buildings', optionalAuth, aiBld.gisAiBuildings) // Phase 3 — AI-derived buildings (AI_DEMO)
 
 /* -------------------------------------------------- dashboard / analytics */
 r.get('/dashboard/stats', optionalAuth, misc.getDashboard)
@@ -73,6 +81,16 @@ r.get('/disputes/:disputeId', optionalAuth, misc.getDispute)
 
 /* --------------------------------------------------------------------- ai */
 r.get('/ai/status', optionalAuth, misc.getAiStatus)
+
+/* Phase 3 — AI building-footprint extraction (additive; graceful if the Python
+   ai-service is unavailable). Registered before the /ai/:feature catch-all. */
+r.post('/ai/buildings/infer', requireAuth, requirePermission('ai:run'), aiBld.uploadImage, aiBld.inferAiBuildings)
+r.get('/ai/buildings', optionalAuth, aiBld.listAiBuildings)
+r.get('/ai/buildings/:id', optionalAuth, aiBld.getAiBuilding)
+r.patch('/ai/buildings/:id/review', requireAuth, requirePermission('change-detection:review'), aiBld.reviewAiBuilding)
+r.get('/ai/jobs', optionalAuth, aiBld.listAiJobs)
+r.get('/ai/jobs/:id', optionalAuth, aiBld.getAiJob)
+
 r.post('/ai/:feature', requireAuth, requirePermission('ai:run'), misc.runAi)
 
 /* --------------------------------------------------------- citizen services */

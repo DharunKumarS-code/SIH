@@ -2,8 +2,9 @@
 
 > **Prototype.** Land Records / Registration / Property Tax integrations are
 > **DEMO / MOCK**. All spatial and record data is **synthetic DEMO DATA** using
-> realistic Chennai (OMR / Sholinganallur) coordinates — it represents **no real
-> parcel, building, person, tax account, court case or government record**.
+> realistic Chennai coordinates (Sholinganallur / Adyar / Anna Nagar) — it
+> represents **no real parcel, building, person, tax account, court case or
+> government record**.
 > Apartment identifiers are **Prototype 3D Property Identifiers**, never official
 > ULPINs. No government system is scraped or bypassed; the app makes **no claim
 > of live government connectivity**.
@@ -97,7 +98,7 @@ cp backend/.env.example backend/.env
 | `JWT_SECRET` | backend | dev fallback | **set a long random value in production** |
 | `JWT_EXPIRES_IN` | backend | `8h` | token lifetime |
 | `AI_SERVICE_URL` | backend | `http://localhost:8000` | unreachable ⇒ local mock inference |
-| `SEED_ON_BOOT` | backend | `true` | mirror demo data into an empty Mongo |
+| `SEED_ON_BOOT` | backend | `true` | mirror demo data into an *empty* Mongo (never overwrites existing collections — run `npm --prefix backend run seed:fresh` after a seed-shape change) |
 | `VITE_CESIUM_ION_TOKEN` | frontend | *(in `.env`)* | **required** for terrain + imagery |
 | `VITE_API_BASE` | frontend build | `''` | set for non-proxied production deploys |
 
@@ -164,7 +165,8 @@ GET  /buildings/:id · GET /buildings/:id/floors · GET /floors/:floorId
 GET  /units · GET /units/:propertyId · POST /units/:propertyId/verify
 GET  /ror|registration|encumbrance|property-tax/:ulpin · GET /building-approval/:buildingId
 GET  /interop/:ulpin  (aggregate)  · GET /interop/:ulpin/:department
-GET  /gis/parcels|buildings|units|common-areas · GET /gis/layer/:layer
+GET  /gis/localities  (area registry + counts + city-overview camera)
+GET  /gis/parcels|buildings|units|common-areas|layer/:layer   (all accept ?locality=)
 GET  /dashboard/stats · GET /analytics · GET /search?q= · GET /system/status
 POST /ai/:feature · GET /ai/status
 GET/POST /services (citizen workflow) · GET /audit · GET /users
@@ -172,16 +174,42 @@ GET/POST /services (citizen workflow) · GET /audit · GET /users
 
 ## 11. 3D architecture
 
-- One `Cesium.Viewer`; OSM buildings are **not** used — buildings and units are
-  rendered from the API as extruded GeoJSON.
-- **Building shell** = one extruded footprint; hidden when you drill in.
-- **Every apartment unit is a separate Cesium entity** keyed by its Prototype
-  3D Property ID, with its own footprint cell and `baseHeight`/`topHeight`.
-- Units are **lazy-loaded per building** and cached; `scene.requestRenderMode`
-  keeps the scene idle between changes.
+- **One Chennai-wide `Cesium.Viewer` / one scene.** Sholinganallur, Adyar and
+  Anna Nagar are localities *inside* it — the area selector (map panel + TopBar)
+  flies the **same** camera between them, it never swaps maps or reloads the app.
+- **Progressive / demand-based loading.** City zoom shows only lightweight
+  locality boundaries; picking an area (or zooming in) demand-loads that
+  locality's parcels + building shells once; opening a building lazy-loads its
+  units. Detail for other localities is hidden until you go there. Camera-height
+  bands (`LOD` in `Cesium3DMap.jsx`) gate city → area → building/unit detail.
+- OSM buildings are **not** used — buildings and units are rendered from the API
+  as extruded GeoJSON. **Building shell** = one extruded footprint, hidden when
+  you drill in. **Every apartment unit is a separate Cesium entity** keyed by its
+  Prototype 3D Property ID, with its own footprint cell and
+  `baseHeight`/`topHeight`. `scene.requestRenderMode` keeps the scene idle
+  between changes.
 - Selection: click / explorer / search → highlight (gold), dim siblings, keep
-  context; **Isolate** hides everything else; **Reset** returns to overview.
+  context; **Isolate** hides everything else; **Reset** returns to the active
+  area's overview; **Chennai overview** pulls back to the whole city.
 - Restrained cinematic colour grading (`frontend/src/lib/cesiumGrading.js`).
+- **Prototype 3D volumes** — every floor and unit has a computed bounded volume
+  (`xmin..zmax`, deterministic `volumeId`) plus deterministic geometric
+  validation (`VALID / WARNING / ERROR`). Selecting a floor draws its translucent
+  volume slab; the unit sidebar shows the bounds, height, estimated volume and
+  geometry status. All volume geometry is synthetic **DEMO / PROTOTYPE** — never
+  an official ULPIN or cadastral record. See
+  [`docs/14-prototype-3d-volume-model.md`](docs/14-prototype-3d-volume-model.md).
+- **AI building extraction (Phase 3)** — a Python `ai-service` turns an uploaded
+  aerial/satellite/GeoTIFF into candidate building polygons (preprocess →
+  segmentation → mask → polygonise → GIS validation → parcel association). Results
+  appear as an optional, **default-OFF** "AI-Derived Buildings" layer in the same
+  Chennai-wide viewer, with an AI sidebar and an Accept/Reject/Needs-Correction
+  review workflow. Output is always `source: "AI_DEMO"` /
+  `ulpinStatus: "DEMO_NOT_OFFICIAL"` — a decision-support candidate, never
+  official cadastral / survey / ownership data — and it never overwrites the
+  demo buildings. If the AI service is down the endpoint returns
+  `INFERENCE_UNAVAILABLE` and the rest of the app is unaffected. See
+  [`docs/15-ai-building-extraction.md`](docs/15-ai-building-extraction.md).
 
 Detail: [`docs/05-3d-property-model.md`](docs/05-3d-property-model.md).
 
@@ -191,16 +219,32 @@ Collections: `users`, `parcels`, `ulpins`, `owners`, `buildings`, `floors`,
 `propertyUnits`, `commonAreas`, `registrations`, `encumbrances`,
 `buildingApprovals`, `propertyTax`, `landUse`, `masterPlans`, `utilities`,
 `environment`, `boundaries`, `roads`, `disputes`, `documents`,
-`serviceRequests`, `notifications`, `auditLogs`.
-Canonical shapes: [`docs/03-data-schema.md`](docs/03-data-schema.md) and
+`serviceRequests`, `notifications`, `auditLogs`, and (Phase 3, additive)
+`aiBuildings` · `aiJobs` — AI-extracted candidate buildings + inference jobs,
+kept entirely separate from the demo `buildings`.
+Canonical shapes: [`docs/03-data-schema.md`](docs/03-data-schema.md),
+[`docs/15-ai-building-extraction.md`](docs/15-ai-building-extraction.md) and
 `backend/src/data/seed.js`.
+
+### Land-data provenance (real ULPIN vs demo)
+
+Every parcel carries an explicit **OFFICIAL / DEMO / UNVERIFIED / UNAVAILABLE**
+label. A provider chain (`backend/src/services/landData/`) tries a
+`GovernmentDataProvider` (real, authoritative — plugged in via `GOV_LAND_API_URL`)
+before a `DemoDataProvider` (synthetic). Phase 1's investigation found **no
+publicly/legally accessible official ULPIN parcel source for Chennai** (all require
+Aadhaar OTP / CAPTCHA / registered login), so **every parcel today is DEMO** and is
+labelled as such in the parcel sidebar, global search, and Settings → *Land Data
+Sources & Provenance*. Full write-up:
+[`docs/13-official-ulpin-data-investigation.md`](docs/13-official-ulpin-data-investigation.md).
 
 ## 13. Testing
 
 ```bash
-npm run test:backend      # Node test runner + fetch — API / auth / RBAC / hierarchy / interop / GIS
-npm run test:e2e          # Playwright — full demo scenario, routes, RBAC, responsive, honesty
-npm test                  # both
+npm run test:backend      # Node test runner + fetch — API / auth / RBAC / hierarchy / interop / GIS / AI
+npm run test:ai           # pytest — AI pipeline: preprocessing / segmentation / polygonise / validate / georef
+npm run test:e2e          # Playwright — full demo scenario, routes, RBAC, responsive, honesty, AI extraction
+npm test                  # all three
 ```
 
 The e2e suite starts the backend and frontend automatically (Playwright

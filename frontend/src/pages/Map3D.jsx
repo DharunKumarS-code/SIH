@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { Cesium3DMap } from '../components/map/Cesium3DMap.jsx'
 import { LayerManager } from '../components/layout/LayerManager.jsx'
+import { AreaSelector } from '../components/layout/AreaSelector.jsx'
 import { PropertySidebar } from '../components/layout/PropertySidebar.jsx'
 import { ExplorerDock } from '../components/layout/ExplorerDock.jsx'
 import { useSelection } from '../context/SelectionContext.jsx'
@@ -19,15 +20,17 @@ function CamButton({ onClick, title, children }) {
 }
 
 export default function Map3D() {
-  const { mapApi, selection, reset, selectParcel, selectBuilding, selectUnit } = useSelection()
+  const { mapApi, selection, reset, selectParcel, selectBuilding, selectUnit, selectArea } = useSelection()
   const [params] = useSearchParams()
 
-  // Deep-link support: /map?unit=... | ?building=... | ?ulpin=...
+  // Deep-link support: /map?area=... | ?unit=... | ?building=... | ?ulpin=...
   useEffect(() => {
+    const areaId = params.get('area')
     const unit = params.get('unit')
     const building = params.get('building')
     const ulpin = params.get('ulpin')
-    if (unit) selectUnit({ propertyId: unit, ulpin: PARCEL_ULPIN })
+    if (areaId) selectArea(areaId)
+    if (unit) selectUnit({ propertyId: unit, ulpin: ulpin || PARCEL_ULPIN })
     else if (building) selectBuilding(building, ulpin || PARCEL_ULPIN)
     else if (ulpin) selectParcel(ulpin)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -39,6 +42,7 @@ export default function Map3D() {
     <div className="relative h-full w-full overflow-hidden">
       <Cesium3DMap />
       <LayerManager />
+      <AreaSelector />
       <PropertySidebar />
       <ExplorerDock />
 

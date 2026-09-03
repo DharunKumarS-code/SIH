@@ -70,6 +70,12 @@ class MemoryCollection {
     return 1
   }
 
+  async deleteMany(filter = {}) {
+    const before = this.docs.length
+    this.docs = this.docs.filter((d) => !matches(d, filter))
+    return before - this.docs.length
+  }
+
   async distinct(field, filter = {}) {
     const set = new Set()
     for (const d of this.docs) if (matches(d, filter)) set.add(d[field])

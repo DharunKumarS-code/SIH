@@ -13,10 +13,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import FastAPI
+from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.buildings import pipeline_stages, run as run_building_extraction, settings as building_settings
 from app.pipelines.registry import FEATURES, run_feature
 
 app = FastAPI(title="LAND STACK AI Service", version="1.0.0")
@@ -71,6 +72,49 @@ def infer(feature: str, req: InferRequest) -> dict:
             "servedBy": "ai-service (FastAPI)",
             "disclaimer": DISCLAIMER,
             "generatedAt": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    return result
+
+
+# --------------------------------------------------------------------------
+# Phase 3 — real building-footprint extraction from an uploaded image.
+# Output is MODEL OUTPUT / AI_DEMO, never official cadastral / ULPIN data.
+# --------------------------------------------------------------------------
+@app.get("/buildings/config")
+def buildings_config() -> dict:
+    s = building_settings
+    return {
+        "model": s.model,
+        "pipeline": pipeline_stages,
+        "thresholds": {
+            "buildingConfidenceThreshold": s.building_confidence_threshold,
+            "confHigh": s.conf_high,
+            "confMed": s.conf_med,
+            "minBuildingAreaPx": s.min_building_area_px,
+            "minBuildingAreaM2": s.min_building_area_m2,
+            "duplicateIoU": s.duplicate_iou,
+            "overlapIoUFlag": s.overlap_iou_flag,
+        },
+        "maxImagePx": s.max_image_px,
+        "supportedInput": ["png", "jpg", "jpeg", "tif", "tiff"],
+        "disclaimer": s.disclaimer,
+    }
+
+
+@app.post("/buildings/infer")
+async def buildings_infer(
+    image: UploadFile = File(...),
+    locality: str | None = Form(default=None),
+    job_id: str | None = Form(default=None),
+) -> dict:
+    data = await image.read()
+    result = run_building_extraction(data, image.filename or "upload.png", {"locality": locality})
+    result.update(
+        {
+            "servedBy": "ai-service (FastAPI)",
+            "jobId": job_id,
+            "locality": locality,
         }
     )
     return result

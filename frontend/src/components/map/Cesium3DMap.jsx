@@ -4,7 +4,7 @@ import 'cesium/Build/Cesium/Widgets/widgets.css'
 import { useSelection } from '../../context/SelectionContext.jsx'
 import { applyGrading } from '../../lib/cesiumGrading.js'
 import { api } from '../../lib/api.js'
-import { CHENNAI_BASE, PARCEL_ULPIN } from '../../lib/constants.js'
+import { PARCEL_ULPIN, DEFAULT_AREA_ID, CHENNAI_CITY_VIEW } from '../../lib/constants.js'
 import { LAND_USE_COLORS } from '../../lib/format.js'
 
 const CESIUM_TOKEN = import.meta.env.VITE_CESIUM_ION_TOKEN
@@ -17,6 +17,10 @@ const ring = (geometry) => {
 }
 const finite = (n) => typeof n === 'number' && Number.isFinite(n)
 
+// Camera-height bands that gate progressive detail. ONE scene, ONE camera —
+// selecting an area only moves the camera and flips visibility.
+const LOD = { CITY: 5200, AREA: 750 } // > CITY: city  | CITY..AREA: area  | < AREA: building/unit
+
 const COL = {
   buildingShell: Cesium.Color.fromCssColorString('#8b97ad').withAlpha(0.28),
   buildingShellSel: Cesium.Color.fromCssColorString('#4784f5').withAlpha(0.12),
@@ -26,18 +30,40 @@ const COL = {
   unitDim: Cesium.Color.fromCssColorString('#9aa7bd').withAlpha(0.08),
   common: Cesium.Color.fromCssColorString('#38c9d6').withAlpha(0.5),
   outline: Cesium.Color.fromCssColorString('#0b1220').withAlpha(0.6),
+  floorVolume: Cesium.Color.fromCssColorString('#4784f5').withAlpha(0.14), // prototype floor volume slab
+  floorVolumeLine: Cesium.Color.fromCssColorString('#4784f5').withAlpha(0.8),
+  areaFill: Cesium.Color.fromCssColorString('#4784f5').withAlpha(0.05),
+  areaFillActive: Cesium.Color.fromCssColorString('#f2b807').withAlpha(0.08),
+  areaLine: Cesium.Color.fromCssColorString('#4784f5').withAlpha(0.7),
+  areaLineActive: Cesium.Color.fromCssColorString('#f2b807').withAlpha(0.9),
+  aiBuilding: Cesium.Color.fromCssColorString('#f2822f').withAlpha(0.30),   // AI_DEMO candidate building
+  aiBuildingLine: Cesium.Color.fromCssColorString('#f2822f').withAlpha(0.9),
+  aiReview: Cesium.Color.fromCssColorString('#e4566e').withAlpha(0.30),     // needs review
 }
+
+// AI buildings have no surveyed height — extrude with a clearly-flagged
+// ESTIMATED / DEMO value only (heightStatus stays UNAVAILABLE in the record).
+const ESTIMATED_AI_HEIGHT_M = 24
 
 export function Cesium3DMap() {
   const hostRef = useRef(null)
   const viewerRef = useRef(null)
   const gradingCleanupRef = useRef(null)
   const handlerRef = useRef(null)
-  const groupsRef = useRef({}) // layerKey -> Entity[]
+  const lodCleanupRef = useRef(null)
+  const groupsRef = useRef({}) // layerKey -> Entity[]  (each entity tagged __area)
   const unitEntitiesRef = useRef(new Map()) // propertyId -> Entity
+  const floorVolumeRef = useRef(new Map()) // `${buildingId}|${floorNumber}` -> Entity (prototype floor volume)
+  const floorRangesRef = useRef(new Map()) // buildingId -> [{ floorNumber, baseHeight, topHeight, floorId }]
   const loadedBuildingsRef = useRef(new Set())
+  const loadedAreasRef = useRef(new Set()) // areaId that has parcels+shells loaded
   const buildingShellRef = useRef(new Map()) // buildingId -> Entity
   const parcelEntityRef = useRef(new Map()) // ulpin -> Entity
+  const aiBuildingsRef = useRef(new Map()) // aiBuildingId -> Entity (Phase 3, AI_DEMO)
+  const cityAreaRef = useRef(new Map()) // areaId -> { fill, line }
+  const activeAreaRef = useRef(DEFAULT_AREA_ID)
+  const lodRef = useRef('area')
+  const cityViewRef = useRef(false) // true while the camera is parked at the Chennai overview
 
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
@@ -45,6 +71,15 @@ export function Cesium3DMap() {
   const sel = useSelection()
   const selRef = useRef(sel)
   selRef.current = sel
+
+  // The viewer if it is still alive, else null. Cesium can be destroyed while an
+  // async pipeline step (fetch / flyTo) is mid-await — e.g. the user navigates
+  // away from /map — so async code must re-check this after every await before
+  // touching `viewer.scene` / `viewer.entities`.
+  function liveViewer() {
+    const v = viewerRef.current
+    return v && !v.isDestroyed() ? v : null
+  }
 
   /* ---------------------------------------------------------------- setup */
   useEffect(() => {
@@ -102,11 +137,17 @@ export function Cesium3DMap() {
 
       registerMapApi(viewer)
       installPicker(viewer)
+      installLod(viewer)
 
-      await loadBaseLayers(viewer)
+      // ONE Chennai-wide scene: a cheap city-overview layer that is always
+      // resident, then demand-load the starting locality's detail.
+      buildCityOverview(viewer)
+      const startArea = selRef.current.area?.id || DEFAULT_AREA_ID
+      activeAreaRef.current = startArea
+      await ensureAreaLayers(startArea)
       if (cancelled) return
 
-      flyToOverview(viewer, 0)
+      flyToArea(startArea, 0)
       setReady(true)
       window.__map = { ready: true }
       applySelection() // reflect any preset selection
@@ -120,6 +161,7 @@ export function Cesium3DMap() {
     return () => {
       cancelled = true
       handlerRef.current?.destroy?.()
+      lodCleanupRef.current?.()
       gradingCleanupRef.current?.()
       if (viewer && !viewer.isDestroyed()) viewer.destroy()
       viewerRef.current = null
@@ -128,9 +170,71 @@ export function Cesium3DMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /* ------------------------------------------------------------ base data */
-  async function loadBaseLayers(viewer) {
+  /* ---------------------------------------------------------- locality list */
+  const localityOf = (id) =>
+    (selRef.current.localities || []).find((l) => l.id === id) || selRef.current.area
+
+  /* ------------------------------------------------- city-overview context */
+  function buildCityOverview(viewer) {
+    for (const loc of selRef.current.localities || []) {
+      const half = (loc.extentM || 1500) / 2
+      const dLat = half / 111320
+      const dLon = half / (111320 * Math.cos((loc.base.lat * Math.PI) / 180))
+      const positions = Cesium.Cartesian3.fromDegreesArray([
+        loc.base.lon - dLon, loc.base.lat - dLat,
+        loc.base.lon + dLon, loc.base.lat - dLat,
+        loc.base.lon + dLon, loc.base.lat + dLat,
+        loc.base.lon - dLon, loc.base.lat + dLat,
+      ])
+      const fill = viewer.entities.add({
+        polygon: {
+          hierarchy: positions,
+          material: COL.areaFill,
+          classificationType: Cesium.ClassificationType.TERRAIN,
+        },
+        properties: { kind: 'area', areaId: loc.id },
+      })
+      const line = viewer.entities.add({
+        polyline: {
+          positions: [...positions, positions[0]],
+          material: COL.areaLine,
+          width: 2,
+          clampToGround: true,
+        },
+        label: {
+          text: loc.name,
+          font: '600 15px "Inter", system-ui, sans-serif',
+          fillColor: Cesium.Color.WHITE,
+          outlineColor: Cesium.Color.fromCssColorString('#0b1220'),
+          outlineWidth: 3,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+          pixelOffset: new Cesium.Cartesian2(0, -6),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          scaleByDistance: new Cesium.NearFarScalar(2.0e3, 1.15, 6.0e4, 0.55),
+        },
+        position: Cesium.Cartesian3.fromDegrees(loc.base.lon, loc.base.lat, 40),
+        properties: { kind: 'area', areaId: loc.id },
+      })
+      fill.__area = '__city'
+      line.__area = '__city'
+      cityAreaRef.current.set(loc.id, { fill, line })
+    }
+    viewer.scene.requestRender()
+  }
+
+  /* ------------------------------------------------------------ area data */
+  async function ensureAreaLayers(areaId) {
+    const viewer = viewerRef.current
+    if (!viewer || viewer.isDestroyed()) return
+    if (loadedAreasRef.current.has(areaId)) return
+    loadedAreasRef.current.add(areaId)
+
     const groups = groupsRef.current
+    const tag = (ent) => {
+      if (ent) ent.__area = areaId
+      return ent
+    }
     const addPolygon = (layerKey, geometry, opts) => {
       const positions = ring(geometry)
       if (positions.length < 6) return null
@@ -146,6 +250,7 @@ export function Cesium3DMap() {
         },
         properties: opts.properties,
       })
+      tag(ent)
       ;(groups[layerKey] ||= []).push(ent)
       return ent
     }
@@ -161,12 +266,16 @@ export function Cesium3DMap() {
           width,
           clampToGround: true,
         },
+        properties: { kind: 'overlay', areaId },
       })
+      tag(ent)
       ;(groups[layerKey] ||= []).push(ent)
     }
 
+    const P = { locality: areaId }
+
     try {
-      const parcels = await api.gisParcels()
+      const parcels = await api.gisParcels(P)
       for (const f of parcels.features || []) {
         const c = LAND_USE_COLORS[f.properties.landUse] || '#3f7fd6'
         const ent = addPolygon('parcels', f.geometry, {
@@ -181,7 +290,7 @@ export function Cesium3DMap() {
     }
 
     try {
-      const buildings = await api.gisBuildings()
+      const buildings = await api.gisBuildings(P)
       for (const f of buildings.features || []) {
         const base = finite(f.properties.baseElevationM) ? f.properties.baseElevationM : 0
         const top = finite(f.properties.heightM) ? base + f.properties.heightM : base + 30
@@ -198,13 +307,13 @@ export function Cesium3DMap() {
       console.warn('buildings load failed', e)
     }
 
-    // overlays
+    // overlays (per-area)
     try {
-      const roads = await api.gisLayer('roads')
+      const roads = await api.gisLayer('roads', P)
       for (const f of roads.features || []) addLine('roads', f.geometry, Cesium.Color.fromCssColorString('#c9d2e3').withAlpha(0.75), 3)
     } catch { /* ignore */ }
     try {
-      const utils = await api.gisLayer('utilities')
+      const utils = await api.gisLayer('utilities', P)
       const uColor = { 'Water Supply': '#4fa9ff', 'Sewer Line': '#9b7b4f', Electricity: '#f2b807', Drainage: '#4fbf9f', 'Gas Pipeline': '#e4566e', 'Fiber Network': '#a86fd1' }
       for (const f of utils.features || []) {
         const key = { 'Water Supply': 'waterSupply', 'Sewer Line': 'sewerLines', Electricity: 'electricity', Drainage: 'drainage', 'Gas Pipeline': 'gasPipeline', 'Fiber Network': 'fiberNetwork' }[f.properties.type]
@@ -212,7 +321,7 @@ export function Cesium3DMap() {
       }
     } catch { /* ignore */ }
     try {
-      const env = await api.gisLayer('environment')
+      const env = await api.gisLayer('environment', P)
       const map = { 'Water Body': 'waterBodies', 'Eco Sensitive Zone': 'ecoZones', 'Heritage Zone': 'heritageZones', 'Coastal Regulation Zone': 'coastalZone' }
       for (const f of env.features || []) {
         const key = map[f.properties.kind] || 'waterBodies'
@@ -224,7 +333,7 @@ export function Cesium3DMap() {
       }
     } catch { /* ignore */ }
     try {
-      const bounds = await api.gisLayer('boundaries')
+      const bounds = await api.gisLayer('boundaries', P)
       const map = { 'Corporation Boundary': 'corporationBoundary', 'Zone Boundary': 'zoneBoundary', 'Ward Boundary': 'wardBoundary' }
       for (const f of bounds.features || []) {
         const key = map[f.properties.level] || 'zoneBoundary'
@@ -233,11 +342,11 @@ export function Cesium3DMap() {
       }
     } catch { /* ignore */ }
     try {
-      const mp = await api.gisLayer('master-plan')
+      const mp = await api.gisLayer('master-plan', P)
       for (const f of mp.features || []) addPolygon('masterPlan', f.geometry, { material: Cesium.Color.fromCssColorString('#a86fd1').withAlpha(0.08), clamp: true, properties: { kind: 'masterplan', ...f.properties } })
     } catch { /* ignore */ }
     try {
-      const dsp = await api.gisLayer('disputes')
+      const dsp = await api.gisLayer('disputes', P)
       for (const f of dsp.features || []) {
         if (f.geometry?.type !== 'Point') continue
         const [lon, lat] = f.geometry.coordinates
@@ -246,24 +355,69 @@ export function Cesium3DMap() {
           point: { pixelSize: 12, color: Cesium.Color.fromCssColorString('#e4566e'), outlineColor: Cesium.Color.WHITE, outlineWidth: 2 },
           properties: { kind: 'dispute', ...f.properties },
         })
-        ;(groups.disputes ||= []).push(ent)
+        ent.__area = areaId
+        ;(groupsRef.current.disputes ||= []).push(ent)
       }
     } catch { /* ignore */ }
 
+    await ensureAiBuildings(areaId)
+    if (!liveViewer()) return
     applyLayerVisibility()
-    viewer.scene.requestRender()
+    liveViewer().scene.requestRender()
+  }
+
+  // Phase 3 — AI-derived candidate buildings (AI_DEMO). Their own layer,
+  // separate from the demo `buildings`. Idempotent (guarded per aiBuildingId),
+  // so it can be re-run after a new extraction without duplicating entities.
+  async function ensureAiBuildings(areaId) {
+    if (!liveViewer()) return
+    let added = 0
+    try {
+      const ai = await api.gisAiBuildings({ locality: areaId })
+      const viewer = liveViewer()
+      if (!viewer) return 0
+      for (const f of ai.features || []) {
+        if (aiBuildingsRef.current.has(f.properties.aiBuildingId)) continue
+        const positions = ring(f.geometry)
+        if (positions.length < 6) continue
+        const review = f.properties.reviewRequired || f.properties.reviewStatus === 'REVIEW_REQUIRED'
+        const ent = viewer.entities.add({
+          show: false,
+          polygon: {
+            hierarchy: Cesium.Cartesian3.fromDegreesArray(positions),
+            material: review ? COL.aiReview : COL.aiBuilding,
+            outline: true,
+            outlineColor: COL.aiBuildingLine,
+            height: 0,
+            extrudedHeight: ESTIMATED_AI_HEIGHT_M, // ESTIMATED / DEMO — not survey-derived
+          },
+          properties: { kind: 'ai-building', estimated: true, ...f.properties },
+        })
+        ent.__area = areaId
+        aiBuildingsRef.current.set(f.properties.aiBuildingId, ent)
+        ;(groupsRef.current.aiBuildings ||= []).push(ent)
+        added += 1
+      }
+    } catch { /* AI layer is optional — never block the map */ }
+    if (added && liveViewer()) {
+      applyLayerVisibility()
+      liveViewer().scene.requestRender()
+    }
+    return added
   }
 
   async function ensureUnits(buildingId) {
     if (!buildingId || loadedBuildingsRef.current.has(buildingId)) return
     loadedBuildingsRef.current.add(buildingId)
-    const viewer = viewerRef.current
-    if (!viewer || viewer.isDestroyed()) return
+    if (!liveViewer()) return
+    const areaId = activeAreaRef.current
     try {
       const [units, commons] = await Promise.all([
         api.gisUnits({ buildingId }),
         api.gisCommonAreas({ buildingId }),
       ])
+      const viewer = liveViewer()
+      if (!viewer) return
       for (const f of units.features || []) {
         const p = f.properties
         const positions = ring(f.geometry)
@@ -280,6 +434,7 @@ export function Cesium3DMap() {
           },
           properties: { kind: 'unit', ...p },
         })
+        ent.__area = areaId
         unitEntitiesRef.current.set(p.propertyId, ent)
         ;(groupsRef.current.units3d ||= []).push(ent)
       }
@@ -299,6 +454,7 @@ export function Cesium3DMap() {
           },
           properties: { kind: 'common-area', ...p },
         })
+        ent.__area = areaId
         ;(groupsRef.current.commonAreas ||= []).push(ent)
       }
     } catch (e) {
@@ -306,40 +462,170 @@ export function Cesium3DMap() {
     }
   }
 
+  // Prototype 3D floor volume: the building footprint extruded between the
+  // floor's zmin/zmax. Built once per (building, floor) and cached; hidden by
+  // default and shown by refreshDetailVisibility() when the floor is selected.
+  // The z-range is taken from the units already loaded for that floor (no extra
+  // fetch — ensureUnits() has run first), falling back to the floors API.
+  async function ensureFloorVolume(buildingId, floorNumber) {
+    if (buildingId == null || floorNumber == null) return
+    const key = `${buildingId}|${floorNumber}`
+    if (floorVolumeRef.current.has(key)) return
+    const viewer = viewerRef.current
+    if (!viewer || viewer.isDestroyed()) return
+    const shell = buildingShellRef.current.get(buildingId)
+    if (!shell) return
+
+    let baseHeight
+    let topHeight
+    let floorId
+
+    // 1) derive from already-loaded unit entities on this floor
+    for (const ent of unitEntitiesRef.current.values()) {
+      const p = ent.properties
+      if (valueOf(p.buildingId) !== buildingId || valueOf(p.floorNumber) !== floorNumber) continue
+      const v = valueOf(p.volume)
+      const bh = v?.zmin ?? valueOf(p.baseHeight)
+      const th = v?.zmax ?? valueOf(p.topHeight)
+      if (finite(bh) && finite(th)) {
+        baseHeight = baseHeight == null ? bh : Math.min(baseHeight, bh)
+        topHeight = topHeight == null ? th : Math.max(topHeight, th)
+      }
+    }
+
+    // 2) fallback: floors API (cached per building)
+    if (!finite(baseHeight) || !finite(topHeight)) {
+      if (!floorRangesRef.current.has(buildingId)) {
+        try {
+          const floors = await api.buildingFloors(buildingId)
+          floorRangesRef.current.set(buildingId, (floors || []).map((f) => ({
+            floorNumber: f.floorNumber,
+            floorId: f.floorId,
+            baseHeight: f.volume?.zmin ?? f.baseHeight,
+            topHeight: f.volume?.zmax ?? f.topHeight,
+          })))
+        } catch {
+          floorRangesRef.current.set(buildingId, [])
+        }
+      }
+      const r = (floorRangesRef.current.get(buildingId) || []).find((f) => f.floorNumber === floorNumber)
+      if (r && finite(r.baseHeight) && finite(r.topHeight)) {
+        baseHeight = r.baseHeight
+        topHeight = r.topHeight
+        floorId = r.floorId
+      }
+    }
+    if (!finite(baseHeight) || !finite(topHeight) || topHeight <= baseHeight) return
+    // units are inset ~0.3 m below the true floor top — restore it for the slab
+    topHeight += 0.3
+
+    const hv = shell.polygon?.hierarchy?.getValue?.(Cesium.JulianDate.now())
+    const positions = hv?.positions || hv // Cesium may or may not wrap the ring in a PolygonHierarchy
+    if (!Array.isArray(positions) || positions.length < 3) return
+
+    const ent = viewer.entities.add({
+      show: false,
+      polygon: {
+        hierarchy: [...positions],
+        material: COL.floorVolume,
+        outline: true,
+        outlineColor: COL.floorVolumeLine,
+        height: baseHeight,
+        extrudedHeight: topHeight,
+      },
+      properties: {
+        kind: 'floor-volume',
+        buildingId,
+        floorNumber,
+        floorId: floorId || `${buildingId}-F${String(floorNumber).padStart(2, '0')}`,
+      },
+    })
+    ent.__area = activeAreaRef.current
+    floorVolumeRef.current.set(key, ent)
+    ;(groupsRef.current.floorVolumes ||= []).push(ent)
+    viewer.scene.requestRender()
+  }
+
   /* --------------------------------------------------------------- picking */
   function installPicker(viewer) {
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
     handlerRef.current = handler
     handler.setInputAction((click) => {
-      const picked = viewer.scene.pick(click.position)
-      const props = picked?.id?.properties
+      let props = viewer.scene.pick(click.position)?.id?.properties
+      let kind = props?.kind?.getValue?.() ?? props?.kind
+      // The translucent floor-volume slab is context only — see through it to the
+      // unit underneath so every apartment stays individually selectable.
+      if (kind === 'floor-volume') {
+        const drilled = viewer.scene.drillPick(click.position, 6)
+        const hit = drilled.find((d) => {
+          const k = d?.id?.properties?.kind?.getValue?.() ?? d?.id?.properties?.kind
+          return k && k !== 'floor-volume'
+        })
+        if (hit) {
+          props = hit.id.properties
+          kind = props.kind?.getValue?.() ?? props.kind
+        }
+      }
       if (!props) return
-      const kind = props.kind?.getValue?.() ?? props.kind
       const s = selRef.current
-      if (kind === 'unit') {
+      if (kind === 'floor-volume') {
+        s.selectFloor(valueOf(props.buildingId), valueOf(props.floorNumber), s.area?.ulpin)
+      } else if (kind === 'area') {
+        s.selectArea(valueOf(props.areaId))
+      } else if (kind === 'unit') {
         s.selectUnit({
           propertyId: valueOf(props.propertyId),
           buildingId: valueOf(props.buildingId),
           floorNumber: valueOf(props.floorNumber),
-          ulpin: valueOf(props.ulpin) || PARCEL_ULPIN,
+          ulpin: valueOf(props.ulpin) || s.area?.ulpin || PARCEL_ULPIN,
         })
       } else if (kind === 'building') {
         s.selectBuilding(valueOf(props.buildingId), valueOf(props.ulpin))
       } else if (kind === 'parcel') {
         s.selectParcel(valueOf(props.ulpin))
+      } else if (kind === 'ai-building') {
+        s.selectAiBuilding(valueOf(props.aiBuildingId))
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
   }
   const valueOf = (p) => (p?.getValue ? p.getValue(Cesium.JulianDate.now()) : p)
 
+  /* -------------------------------------------------------- LOD by camera */
+  function installLod(viewer) {
+    viewer.camera.percentageChanged = 0.2
+    let raf = 0
+    const onChange = () => {
+      if (raf) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        const h = viewer.camera.positionCartographic?.height ?? 99999
+        const next = h > LOD.CITY ? 'city' : h > LOD.AREA ? 'area' : 'building'
+        if (next !== lodRef.current) {
+          lodRef.current = next
+          applyLayerVisibility()
+          viewer.scene.requestRender()
+        }
+      })
+    }
+    viewer.camera.changed.addEventListener(onChange)
+    lodCleanupRef.current = () => {
+      if (raf) cancelAnimationFrame(raf)
+      viewer.camera.changed.removeEventListener(onChange)
+    }
+  }
+
   /* ------------------------------------------------------------- camera api */
   function registerMapApi(viewer) {
     const api2 = selRef.current.mapApi
     api2.current = {
-      resetView: () => flyToOverview(viewer, 1.4),
+      ...api2.current,
+      resetView: () => flyToArea(activeAreaRef.current, 1.4),
+      flyToArea: (areaId, duration) => flyToArea(areaId, duration),
+      flyToCity: () => flyToCity(1.6),
       topView: () => {
+        const b = localityOf(activeAreaRef.current).base
         viewer.camera.flyTo({
-          destination: Cesium.Cartesian3.fromDegrees(CHENNAI_BASE.lon, CHENNAI_BASE.lat, 1400),
+          destination: Cesium.Cartesian3.fromDegrees(b.lon, b.lat, 1400),
           orientation: { heading: 0, pitch: Cesium.Math.toRadians(-89), roll: 0 },
           duration: 1,
         })
@@ -359,13 +645,65 @@ export function Cesium3DMap() {
         const ent = unitEntitiesRef.current.get(propertyId)
         if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(40), Cesium.Math.toRadians(-22), 90) }).catch(() => {})
       },
+      flyToAiBuilding: (aiBuildingId) => {
+        const ent = aiBuildingsRef.current.get(aiBuildingId)
+        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(35), Cesium.Math.toRadians(-28), 220) }).catch(() => {})
+      },
+      // Pull freshly-extracted AI buildings into the running viewer (called by
+      // the AI Building Extraction page after an inference completes).
+      refreshAiBuildings: (areaId) => ensureAiBuildings(areaId || activeAreaRef.current),
     }
   }
 
-  function flyToOverview(viewer, duration = 1.4) {
+  // Same viewer, same scene — just move the camera to a locality and load it.
+  async function flyToArea(areaId, duration = 1.6) {
+    if (!liveViewer()) return
+    const loc = localityOf(areaId)
+    if (!loc) return
+    activeAreaRef.current = areaId
+    cityViewRef.current = false
+    await ensureAreaLayers(areaId)
+    await ensureAiBuildings(areaId) // idempotent — picks up any newly-extracted AI buildings
+    const viewer = liveViewer()
+    if (!viewer) return
+    const h = loc.cameraHeightM || 1500
     viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(CHENNAI_BASE.lon, CHENNAI_BASE.lat - 0.006, 620),
-      orientation: { heading: Cesium.Math.toRadians(15), pitch: Cesium.Math.toRadians(-32), roll: 0 },
+      destination: Cesium.Cartesian3.fromDegrees(loc.base.lon, loc.base.lat - h * 6e-6, h),
+      orientation: { heading: Cesium.Math.toRadians(15), pitch: Cesium.Math.toRadians(-34), roll: 0 },
+      duration,
+    })
+    lodRef.current = 'area'
+    applyLayerVisibility()
+    viewer.scene.requestRender()
+  }
+
+  function flyToCity(duration = 1.6) {
+    const viewer = viewerRef.current
+    if (!viewer || viewer.isDestroyed()) return
+    const c = selRef.current.mapApi.current?.__cityView || CHENNAI_CITY_VIEW
+    cityViewRef.current = true
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(c.lon, c.lat, c.cameraHeightM || 26000),
+      orientation: { heading: 0, pitch: Cesium.Math.toRadians(-55), roll: 0 },
+      duration,
+    })
+    lodRef.current = 'city'
+    applyLayerVisibility()
+    viewer.scene.requestRender()
+  }
+
+  // Lightweight camera-only move to the active locality's overview — no data
+  // load, no visibility churn (used when the selection collapses to overview).
+  function flyToOverview(duration = 1.4) {
+    const viewer = viewerRef.current
+    if (!viewer || viewer.isDestroyed()) return
+    if (cityViewRef.current) return // parked at Chennai overview — don't yank down to an area
+    const loc = localityOf(selRef.current.area?.id || activeAreaRef.current)
+    if (!loc) return
+    const h = loc.cameraHeightM || 1500
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(loc.base.lon, loc.base.lat - h * 6e-6, h),
+      orientation: { heading: Cesium.Math.toRadians(15), pitch: Cesium.Math.toRadians(-34), roll: 0 },
       duration,
     })
   }
@@ -376,26 +714,100 @@ export function Cesium3DMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel.selection, sel.isolated])
 
+  // Area changes coming from the TopBar / AreaSelector drive the same camera.
+  useEffect(() => {
+    if (!ready) return
+    if (sel.area?.id && sel.area.id !== activeAreaRef.current) {
+      flyToArea(sel.area.id, 1.8)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel.area?.id, ready])
+
   async function applySelection() {
-    const viewer = viewerRef.current
-    if (!viewer || viewer.isDestroyed()) return
-    const { selection, isolated } = selRef.current
-    const { mode, buildingId, floorNumber, propertyId } = selection
+    if (!liveViewer()) return
+    const { selection } = selRef.current
+    const { mode, buildingId, propertyId } = selection
 
     if ((mode === 'building' || mode === 'floor' || mode === 'unit') && buildingId) {
       await ensureUnits(buildingId)
+    }
+    if (mode === 'floor' && buildingId && selection.floorNumber != null) {
+      await ensureFloorVolume(buildingId, selection.floorNumber)
+    }
+    if (mode === 'ai-building' && selection.aiBuildingId) {
+      await ensureAiBuildings(activeAreaRef.current)
+    }
+    const viewer = liveViewer()
+    if (!viewer) return
+
+    refreshDetailVisibility()
+
+    // fly camera
+    const mapApi = selRef.current.mapApi.current
+    if (mode === 'unit' && propertyId) mapApi.flyToUnit?.(propertyId)
+    else if ((mode === 'building' || mode === 'floor') && buildingId) mapApi.flyToBuilding?.(buildingId)
+    else if (mode === 'parcel') mapApi.flyToParcel?.(selection.ulpin)
+    else if (mode === 'ai-building' && selection.aiBuildingId) mapApi.flyToAiBuilding?.(selection.aiBuildingId)
+    else if (mode === 'overview') flyToOverview(1.4)
+
+    viewer.scene.requestRender()
+  }
+
+  // Pure visibility pass — no camera moves, no data loads. Safe to call from
+  // layer toggles, LOD changes and area switches without recursion.
+  function refreshDetailVisibility() {
+    const viewer = viewerRef.current
+    if (!viewer || viewer.isDestroyed()) return
+    const { selection, isolated, layers: L } = selRef.current
+    const { mode, buildingId, floorNumber, propertyId } = selection
+    const lod = lodRef.current
+    const activeArea = activeAreaRef.current
+    const areaOk = (ent) => !ent.__area || ent.__area === '__city' || ent.__area === activeArea
+
+    // City-overview boundaries: always present; active one emphasised.
+    for (const [id, pair] of cityAreaRef.current) {
+      const on = id === activeArea
+      pair.fill.polygon.material = on ? COL.areaFillActive : COL.areaFill
+      pair.line.polyline.material = on ? COL.areaLineActive : COL.areaLine
+      pair.fill.show = true
+      pair.line.show = true
+    }
+
+    // Generic overlay/base groups: gated by layer switch + active area + LOD.
+    for (const [key, ents] of Object.entries(groupsRef.current)) {
+      if (key === 'units3d' || key === 'commonAreas' || key === 'buildings' || key === 'floorVolumes') continue
+      const layerOn = L[key] ?? true
+      for (const ent of ents || []) {
+        ent.show = layerOn && areaOk(ent) && lod !== 'city'
+      }
+    }
+
+    const detailOk = lod !== 'city'
+
+    // Prototype floor volume: visible only for the actively-selected floor.
+    for (const [k, ent] of floorVolumeRef.current) {
+      const [bId, fNum] = k.split('|')
+      ent.show =
+        detailOk &&
+        areaOk(ent) &&
+        (L.floors3d ?? true) &&
+        mode === 'floor' &&
+        bId === buildingId &&
+        Number(fNum) === floorNumber
     }
 
     // building shells: hide the active building's shell so its units are visible
     for (const [id, ent] of buildingShellRef.current) {
       const active = id === buildingId && mode !== 'overview' && mode !== 'parcel'
-      ent.show = selRef.current.layers.buildings && !(isolated && id !== buildingId)
+      ent.show =
+        L.buildings && detailOk && areaOk(ent) && !(isolated && id !== buildingId)
       ent.polygon.material = active ? COL.buildingShellSel : COL.buildingShell
     }
 
     // parcels highlight
     for (const [ulpin, ent] of parcelEntityRef.current) {
       const isSel = mode === 'parcel' && ulpin === selection.ulpin
+      ent.show = (L.parcels ?? true) && detailOk && areaOk(ent)
       ent.polygon.outline = false
       ent.polygon.material = isSel
         ? Cesium.Color.fromCssColorString('#f2b807').withAlpha(0.22)
@@ -425,7 +837,7 @@ export function Cesium3DMap() {
         }
       }
       if (isolated && pid !== propertyId) show = false
-      ent.show = show && selRef.current.layers.units3d
+      ent.show = show && detailOk && areaOk(ent) && L.units3d
       ent.polygon.material = material
       ent.polygon.outlineColor = pid === propertyId ? Cesium.Color.fromCssColorString('#f2b807') : COL.outline
     }
@@ -434,20 +846,13 @@ export function Cesium3DMap() {
     for (const ent of groupsRef.current.commonAreas || []) {
       const bId = valueOf(ent.properties.buildingId)
       ent.show =
-        selRef.current.layers.commonAreas &&
+        L.commonAreas &&
+        detailOk &&
+        areaOk(ent) &&
         bId === buildingId &&
         (mode === 'building' || mode === 'floor') &&
         !isolated
     }
-
-    // fly camera
-    const mapApi = selRef.current.mapApi.current
-    if (mode === 'unit' && propertyId) mapApi.flyToUnit?.(propertyId)
-    else if ((mode === 'building' || mode === 'floor') && buildingId) mapApi.flyToBuilding?.(buildingId)
-    else if (mode === 'parcel') mapApi.flyToParcel?.(selection.ulpin)
-    else if (mode === 'overview') flyToOverview(viewer, 1.4)
-
-    viewer.scene.requestRender()
   }
 
   /* ----------------------------------------------------- layer visibility */
@@ -463,16 +868,8 @@ export function Cesium3DMap() {
     const L = selRef.current.layers
     viewer.scene.globe.show = L.terrain
     if (viewer.imageryLayers.get(0)) viewer.imageryLayers.get(0).show = L.imagery
-    for (const [key, ents] of Object.entries(groupsRef.current)) {
-      const visible = L[key] ?? true
-      for (const ent of ents || []) {
-        // units3d / buildings / commonAreas visibility is also governed by applySelection;
-        // here we only force-hide when the layer is switched off.
-        if (!visible) ent.show = false
-        else if (key !== 'units3d' && key !== 'commonAreas' && key !== 'buildings') ent.show = true
-      }
-    }
-    applySelection()
+    refreshDetailVisibility()
+    viewer.scene.requestRender()
   }
 
   /* --------------------------------------------------------------- render */

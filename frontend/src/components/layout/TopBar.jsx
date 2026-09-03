@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
+import clsx from 'clsx'
 import { useNavigate } from 'react-router-dom'
-import { Menu, Search, MapPin, LogOut, Building, Home, User2, Layers } from 'lucide-react'
+import { Menu, Search, MapPin, LogOut, Building, Home, User2, Layers, Layers3 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useSelection } from '../../context/SelectionContext.jsx'
 import { api } from '../../lib/api.js'
 import { NotificationBell } from './NotificationBell.jsx'
 
-const KIND_ICON = { unit: Home, building: Building, parcel: Layers, owner: User2 }
+const KIND_ICON = { unit: Home, building: Building, floor: Layers3, parcel: Layers, owner: User2 }
 
 export function TopBar({ onToggleNav }) {
   const { user, logout } = useAuth()
-  const { selectParcel, selectBuilding, selectUnit } = useSelection()
+  const { selectParcel, selectBuilding, selectFloor, selectUnit, localities, area, selectArea } = useSelection()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
   const [results, setResults] = useState([])
@@ -48,6 +49,7 @@ export function TopBar({ onToggleNav }) {
     navigate('/map')
     if (r.kind === 'unit') selectUnit(r.ref)
     else if (r.kind === 'building') selectBuilding(r.ref.buildingId, r.ref.ulpin)
+    else if (r.kind === 'floor') selectFloor(r.ref.buildingId, r.ref.floorNumber, r.ref.ulpin)
     else if (r.kind === 'owner') selectUnit(r.ref)
     else selectParcel(r.ref.ulpin)
   }
@@ -72,7 +74,7 @@ export function TopBar({ onToggleNav }) {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onFocus={() => results.length && setOpen(true)}
-          placeholder="Search ULPIN · 3D Property ID · Building · Unit · Owner · Survey No."
+          placeholder="Search ULPIN · Survey No. · Subdivision · Locality · Building · Floor · Unit · Owner"
           className="input pl-9"
           aria-label="Global search"
           data-testid="global-search"
@@ -99,6 +101,18 @@ export function TopBar({ onToggleNav }) {
                         <span className="block truncate text-sm font-semibold text-white">{r.title}</span>
                         <span className="block truncate text-xs text-slate-400">{r.subtitle}</span>
                       </span>
+                      {r.kind === 'parcel' && r.verification && (
+                        <span
+                          className={clsx(
+                            'rounded px-1.5 py-0.5 text-[10px] font-bold uppercase',
+                            r.verification === 'OFFICIAL'
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : 'bg-gold/20 text-gold',
+                          )}
+                        >
+                          {r.verification}
+                        </span>
+                      )}
                       <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] uppercase text-slate-400">{r.kind}</span>
                     </button>
                   </li>
@@ -109,9 +123,25 @@ export function TopBar({ onToggleNav }) {
         )}
       </div>
 
-      <div className="hidden items-center gap-1 rounded-md bg-white/5 px-2 py-1 text-xs text-slate-300 md:flex">
+      <div className="hidden items-center gap-1 rounded-md bg-white/5 pl-2 pr-1 py-1 text-xs text-slate-300 md:flex">
         <MapPin size={13} className="text-cyan" />
-        Chennai · OMR / Sholinganallur
+        <span className="text-slate-400">Chennai ·</span>
+        <select
+          value={area?.id || ''}
+          onChange={(e) => {
+            navigate('/map')
+            selectArea(e.target.value)
+          }}
+          className="bg-transparent pr-1 font-semibold text-white outline-none [&>option]:bg-navy-900"
+          aria-label="Chennai area"
+          data-testid="area-select"
+        >
+          {(localities || []).map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <NotificationBell />

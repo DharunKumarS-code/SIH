@@ -5,6 +5,8 @@ import { dashboardStats, analyticsStats } from '../services/statsService.js'
 import { runInference, aiStatus, AI_FEATURES } from '../services/aiService.js'
 import { recordAudit } from '../services/auditService.js'
 import { parseProtoPropertyId } from '../services/idService.js'
+import { demoProvenance } from '../services/landData/index.js'
+import { parseVolumeId, deriveVolumeId } from '../services/geometry3d/index.js'
 
 /* --------------------------------------------------------------- dashboard */
 export const getDashboard = asyncHandler(async (_req, res) => ok(res, await dashboardStats()))
@@ -235,15 +237,55 @@ export const search = asyncHandler(async (req, res) => {
     }
   }
 
-  const [parcels, buildings, units, owners] = await Promise.all([
-    db.collection('parcels').find({ $or: [{ ulpin: rx }, { parcelId: rx }, { surveyNumber: rx }] }, { limit: 6 }),
+  // Phase 2 — prototype Volume ID search (V<ff><nn> unit, VF<ff> floor). Resolves
+  // to the existing unit/floor navigation; not an official identifier.
+  const volParsed = parseVolumeId(q)
+  if (volParsed?.kind === 'unit') {
+    const cand = await db.collection('propertyUnits').find({ floorNumber: volParsed.floorNumber }, { limit: 40 })
+    for (const u of cand) {
+      if (deriveVolumeId('unit', u) !== q.toUpperCase()) continue
+      results.push({
+        kind: 'unit',
+        title: u.propertyId,
+        subtitle: `Volume ${q.toUpperCase()} · ${u.buildingName} · ${u.floorLabel}`,
+        volumeId: q.toUpperCase(),
+        ref: { propertyId: u.propertyId, buildingId: u.buildingId, floorNumber: u.floorNumber, ulpin: u.ulpin },
+        centroid: u.centroid,
+      })
+    }
+  } else if (volParsed?.kind === 'floor') {
+    const cand = await db.collection('floors').find({ floorNumber: volParsed.floorNumber }, { limit: 8 })
+    for (const f of cand) {
+      results.push({
+        kind: 'floor',
+        title: f.floorId,
+        subtitle: `Volume ${q.toUpperCase()} · ${f.label}`,
+        volumeId: q.toUpperCase(),
+        ref: { buildingId: f.buildingId, floorNumber: f.floorNumber, ulpin: f.ulpin },
+        centroid: f.centroid,
+      })
+    }
+  }
+
+  const [parcels, buildings, floors, units, owners] = await Promise.all([
+    db.collection('parcels').find({
+      $or: [
+        { ulpin: rx }, { parcelId: rx }, { surveyNumber: rx }, { subDivision: rx }, { subdivisionNumber: rx },
+        { village: rx }, { ward: rx }, { district: rx }, { taluk: rx }, { locality: rx },
+      ],
+    }, { limit: 6 }),
     db.collection('buildings').find({ $or: [{ buildingId: rx }, { name: rx }, { shortName: rx }] }, { limit: 6 }),
+    db.collection('floors').find({ $or: [{ floorId: rx }] }, { limit: 6 }),
     db.collection('propertyUnits').find({ $or: [{ propertyId: rx }, { apartmentNumber: rx }, { unitId: rx }] }, { limit: 8 }),
     db.collection('propertyUnits').find({ 'owner.name': rx }, { limit: 8 }),
   ])
 
-  for (const p of parcels) results.push({ kind: 'parcel', title: p.ulpin, subtitle: `${p.parcelId} · ${p.landUse}`, ref: { ulpin: p.ulpin }, centroid: p.centroid })
+  for (const p of parcels) {
+    const v = demoProvenance(p).verificationStatus
+    results.push({ kind: 'parcel', title: p.ulpin, subtitle: `${p.parcelId} · ${p.landUse}`, verification: v, ref: { ulpin: p.ulpin }, centroid: p.centroid })
+  }
   for (const b of buildings) results.push({ kind: 'building', title: b.name, subtitle: `${b.buildingId} · ${b.unitCount} units`, ref: { buildingId: b.buildingId, ulpin: b.ulpin }, centroid: b.centroid })
+  for (const f of floors) results.push({ kind: 'floor', title: f.floorId, subtitle: `${f.label} · ${f.unitCount ?? '—'} units`, ref: { buildingId: f.buildingId, floorNumber: f.floorNumber, ulpin: f.ulpin }, centroid: f.centroid })
   for (const u of units) if (!results.some((r) => r.ref?.propertyId === u.propertyId)) results.push({ kind: 'unit', title: u.propertyId, subtitle: `${u.buildingName} · ${u.name}`, ref: { propertyId: u.propertyId, buildingId: u.buildingId, floorNumber: u.floorNumber, ulpin: u.ulpin }, centroid: u.centroid })
   for (const u of owners) results.push({ kind: 'owner', title: u.owner.name, subtitle: `Owner · ${u.propertyId}`, ref: { propertyId: u.propertyId, buildingId: u.buildingId, floorNumber: u.floorNumber, ulpin: u.ulpin }, centroid: u.centroid })
 

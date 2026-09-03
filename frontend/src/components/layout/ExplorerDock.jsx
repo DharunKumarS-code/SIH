@@ -5,19 +5,21 @@ import { useSelection } from '../../context/SelectionContext.jsx'
 import { api } from '../../lib/api.js'
 import { FloorPlan } from '../map/FloorPlan.jsx'
 import { Badge } from '../ui/primitives.jsx'
-import { PARCEL_ULPIN } from '../../lib/constants.js'
 
 // Bottom dock: Building Blocks (section 10) + Floors (section 11) + Floor Plan (section 12)
 export function ExplorerDock() {
-  const { selection, selectBuilding, selectFloor, selectUnit } = useSelection()
+  const { selection, area, selectBuilding, selectFloor, selectUnit } = useSelection()
+  const areaUlpin = area?.ulpin
   const [buildings, setBuildings] = useState([])
   const [floors, setFloors] = useState([])
   const [floorUnits, setFloorUnits] = useState([])
   const [collapsed, setCollapsed] = useState(false)
 
   useEffect(() => {
-    api.parcel(PARCEL_ULPIN).then((d) => setBuildings(d.buildings || [])).catch(() => {})
-  }, [])
+    if (!areaUlpin) return
+    setBuildings([])
+    api.parcel(areaUlpin).then((d) => setBuildings(d.buildings || [])).catch(() => {})
+  }, [areaUlpin])
 
   useEffect(() => {
     if (!selection.buildingId) {
@@ -40,14 +42,14 @@ export function ExplorerDock() {
     <div
       className={clsx(
         'pointer-events-auto absolute bottom-3 left-3 z-10 rounded-xl panel p-3 transition-all',
-        selection.mode === 'unit' ? 'right-3 xl:right-[21.5rem]' : 'right-3',
+        ['unit', 'parcel', 'ai-building'].includes(selection.mode) ? 'right-3 xl:right-[21.5rem]' : 'right-3',
         collapsed ? 'max-h-12 overflow-hidden' : 'max-h-[46vh]',
       )}
       data-testid="explorer-dock"
     >
       <div className="mb-2 flex items-center justify-between">
         <span className="section-title flex items-center gap-2">
-          <Layers3 size={13} /> Floor &amp; Unit Explorer — {PARCEL_ULPIN}
+          <Layers3 size={13} /> Floor &amp; Unit Explorer — {areaUlpin}
         </span>
         <button className="btn-ghost !px-1.5 !py-1" onClick={() => setCollapsed((c) => !c)} aria-label="Toggle explorer">
           {collapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -63,7 +65,7 @@ export function ExplorerDock() {
               {buildings.map((b) => (
                 <button
                   key={b.buildingId}
-                  onClick={() => selectBuilding(b.buildingId, PARCEL_ULPIN)}
+                  onClick={() => selectBuilding(b.buildingId, areaUlpin)}
                   className={clsx(
                     'rounded-md border px-2.5 py-1.5 text-left text-[11px] transition-colors',
                     selection.buildingId === b.buildingId
@@ -92,7 +94,7 @@ export function ExplorerDock() {
               {[...floors].reverse().map((f) => (
                 <button
                   key={f.floorId}
-                  onClick={() => selectFloor(selection.buildingId, f.floorNumber, PARCEL_ULPIN)}
+                  onClick={() => selectFloor(selection.buildingId, f.floorNumber, areaUlpin)}
                   className={clsx(
                     'rounded px-2 py-1 text-left text-[11px]',
                     selection.floorNumber === f.floorNumber
@@ -121,7 +123,7 @@ export function ExplorerDock() {
                   propertyId: u.propertyId,
                   buildingId: selection.buildingId,
                   floorNumber: selection.floorNumber,
-                  ulpin: PARCEL_ULPIN,
+                  ulpin: areaUlpin,
                 })
               }
             />

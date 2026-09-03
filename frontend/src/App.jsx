@@ -14,6 +14,7 @@ import GovernanceTable from './pages/GovernanceTable.jsx'
 import Disputes from './pages/Disputes.jsx'
 import Analytics from './pages/Analytics.jsx'
 import AiStudio from './pages/AiStudio.jsx'
+import AiBuildingExtraction from './pages/AiBuildingExtraction.jsx'
 import Services from './pages/Services.jsx'
 import Reports from './pages/Reports.jsx'
 import UsersRoles from './pages/UsersRoles.jsx'
@@ -59,6 +60,7 @@ export default function App() {
                 <Route path="disputes" element={<Disputes />} />
                 <Route path="analytics" element={<Analytics />} />
                 <Route path="ai" element={<AiStudio />} />
+                <Route path="ai-buildings" element={<AiBuildingExtraction />} />
                 <Route path="services" element={<Services />} />
                 <Route path="reports" element={<Reports />} />
                 <Route path="users" element={<UsersRoles />} />

@@ -5,10 +5,13 @@ import {
   PageHeader, PageScroll, Card, KeyValue, Badge, Spinner, ErrorNote, DemoTag,
 } from '../components/ui/primitives.jsx'
 import { APP_DISCLAIMER } from '../lib/constants.js'
+import { LAND_SOURCES_FALLBACK } from '../lib/provenance.js'
 
 export default function Settings() {
   const { user } = useAuth()
   const { data, error, loading, reload } = useApi(() => api.systemStatus(), [])
+  const sources = useApi(() => api.landSources(), [])
+  const land = sources.data || LAND_SOURCES_FALLBACK
 
   return (
     <PageScroll>
@@ -51,6 +54,66 @@ export default function Settings() {
         <Card title="Prototype disclaimer" right={<DemoTag />}>
           <p className="text-xs leading-relaxed text-slate-400">{APP_DISCLAIMER}</p>
           {data && <p className="mt-2 text-[11px] text-gold">{data.disclaimer}</p>}
+        </Card>
+
+        <Card
+          title="Land Data Sources & Provenance"
+          right={<Badge status="Under Review">Chennai ULPIN: {land.chennai?.status || 'UNAVAILABLE'}</Badge>}
+          className="lg:col-span-2"
+        >
+          <p className="text-xs leading-relaxed text-gold" data-testid="ulpin-availability">
+            Official Chennai ULPIN parcel data is <strong>UNAVAILABLE</strong> via public channels — every
+            authoritative Government of India / Tamil Nadu source requires an Aadhaar OTP, a CAPTCHA, or a
+            registered login, none of which this prototype bypasses. <strong>All parcels shown in the app are
+            DEMO data</strong>, clearly labelled as such.
+          </p>
+          <p className="mt-2 text-[11px] text-slate-400">
+            ULPIN is a {land.ulpinSpec?.length || 14}-digit identifier for a <strong>land parcel only</strong> —
+            never a building, floor or apartment ({land.ulpinSpec?.authority}).
+          </p>
+
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-left text-[11px]">
+              <thead className="text-slate-500">
+                <tr className="border-b border-white/10">
+                  <th className="py-1 pr-3 font-semibold">Source</th>
+                  <th className="py-1 pr-3 font-semibold">Dataset</th>
+                  <th className="py-1 pr-3 font-semibold">Access barrier</th>
+                  <th className="py-1 font-semibold">Chennai</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(land.sources || []).map((s) => (
+                  <tr key={s.id} className="border-b border-white/5 align-top last:border-0">
+                    <td className="py-1.5 pr-3">
+                      <a href={s.url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                        {s.organization}
+                      </a>
+                    </td>
+                    <td className="py-1.5 pr-3 text-slate-300">{s.dataset}</td>
+                    <td className="py-1.5 pr-3 text-slate-400">{s.accessBarrier}</td>
+                    <td className="py-1.5">
+                      <span className="rounded bg-gold/20 px-1.5 py-0.5 font-bold uppercase text-gold">
+                        {s.chennaiAvailability}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {land.localities?.length > 0 && (
+            <p className="mt-2 text-[10px] text-slate-500">
+              Admin hierarchy:{' '}
+              {land.localities.map((l) => `${l.name} (${l.adminLevel || '—'}, ${l.recordType || '—'})`).join(' · ')}.
+              Chennai urban parcels are recorded in the Town Survey Land Register (TSLR), keyed by
+              District → Taluk → Village/Town-Survey block → Survey No → Sub-Division.
+            </p>
+          )}
+          <p className="mt-2 text-[10px] text-slate-600">
+            See <code>docs/13-official-ulpin-data-investigation.md</code> for the full investigation.
+          </p>
         </Card>
       </div>
     </PageScroll>

@@ -2,6 +2,7 @@ import { db } from '../store/index.js'
 import { asyncHandler, ok, list, notFoundError } from '../utils/http.js'
 import { parseProtoPropertyId, PROTOTYPE_ID_LABEL } from '../services/idService.js'
 import { recordAudit } from '../services/auditService.js'
+import { unitVolume, floorVolume, buildingVolume, validateUnitVolume } from '../services/geometry3d/index.js'
 
 /* ---------------------------------------------------------------- buildings */
 
@@ -20,25 +21,37 @@ export const getBuilding = asyncHandler(async (req, res) => {
     db.collection('commonAreas').find({ buildingId }),
     db.collection('propertyUnits').count({ buildingId }),
   ])
-  ok(res, { building, approval, commonAreas, floors, unitCount })
+  ok(res, {
+    building: { ...building, volume: buildingVolume(building) },
+    approval,
+    commonAreas,
+    floors: floors.map((f) => ({ ...f, volume: floorVolume(f, building) })),
+    unitCount,
+  })
 })
 
 /* ------------------------------------------------------------------- floors */
 
 export const listFloors = asyncHandler(async (req, res) => {
   const { buildingId } = req.params
-  const floors = await db.collection('floors').find({ buildingId }, { sort: { floorNumber: 1 } })
+  const [floors, building] = await Promise.all([
+    db.collection('floors').find({ buildingId }, { sort: { floorNumber: 1 } }),
+    db.collection('buildings').findOne({ buildingId }),
+  ])
   if (!floors.length) throw notFoundError(`No floors for building ${buildingId}`)
-  list(res, floors)
+  list(res, floors.map((f) => ({ ...f, volume: floorVolume(f, building) })))
 })
 
 export const getFloor = asyncHandler(async (req, res) => {
   const { floorId } = req.params
   const floor = await db.collection('floors').findOne({ floorId })
   if (!floor) throw notFoundError(`No floor ${floorId}`)
-  const units = await db.collection('propertyUnits').find({ floorId }, { sort: { apartmentNumber: 1 } })
+  const [units, building] = await Promise.all([
+    db.collection('propertyUnits').find({ floorId }, { sort: { apartmentNumber: 1 } }),
+    db.collection('buildings').findOne({ buildingId: floor.buildingId }),
+  ])
   ok(res, {
-    floor,
+    floor: { ...floor, volume: floorVolume(floor, building) },
     units: units.map((u) => ({
       propertyId: u.propertyId,
       unitId: u.unitId,
@@ -50,6 +63,7 @@ export const getFloor = asyncHandler(async (req, res) => {
       gridCol: u.gridCol ?? null,
       gridRow: u.gridRow ?? null,
       carpetAreaSqft: u.carpetAreaSqft,
+      volume: unitVolume(u),
       owner: u.owner?.name,
     })),
   })
@@ -83,18 +97,25 @@ async function assembleUnit(unit) {
     db.collection('documents').find({ propertyId: unit.propertyId }),
     db.collection('disputes').find({ propertyId: unit.propertyId }),
   ])
+  const volume = unitVolume(unit)
+  const validation = validateUnitVolume(unit, building)
+  if (volume) volume.status = validation.status
   return {
-    unit,
+    unit: { ...unit, volume },
+    volume,
+    validation,
     idKind: PROTOTYPE_ID_LABEL,
     hierarchy: {
       ulpin: unit.ulpin,
       ulpinKind: 'Official parcel ULPIN (prototype)',
       building: building ? { id: building.buildingId, name: building.name, segment: building.buildingSegment } : null,
-      floor: floor ? { id: floor.floorId, number: floor.floorNumber, label: floor.label, segment: floor.floorSegment } : null,
-      unit: { id: unit.unitId, apartmentNumber: unit.apartmentNumber, propertyId: unit.propertyId },
+      floor: floor
+        ? { id: floor.floorId, number: floor.floorNumber, label: floor.label, segment: floor.floorSegment, volume: floorVolume(floor, building) }
+        : null,
+      unit: { id: unit.unitId, apartmentNumber: unit.apartmentNumber, propertyId: unit.propertyId, volumeId: volume?.volumeId || null },
     },
-    building,
-    floor,
+    building: building ? { ...building, volume: buildingVolume(building) } : null,
+    floor: floor ? { ...floor, volume: floorVolume(floor, building) } : null,
     governance: {
       registration: registration || null,
       encumbrance: encumbrance || null,

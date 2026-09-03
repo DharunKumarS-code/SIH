@@ -39,10 +39,11 @@ key (`backend/src/store/mongo.js`). All spatial layers carry `isDemo: true`.
 ```json
 {
   "ulpin": "TN-CHN-123456789",
-  "isOfficialUlpin": true,
+  "isOfficialUlpin": false,
   "parcelId": "PCL-CHN-SHLN-0001",
-  "surveyNumber": "231/5",
+  "surveyNumber": "231/5", "subdivisionNumber": "231/5A", "recordType": "TSLR",
   "village": "Sholinganallur", "taluk": "Sholinganallur", "district": "Chengalpattu",
+  "locality": "sholinganallur",
   "geometry": { "type": "Polygon", "coordinates": [[[80.226, 12.899], ...]] },
   "areaSqft": 645833,
   "landUse": "Primary Residential",
@@ -51,6 +52,15 @@ key (`backend/src/store/mongo.js`). All spatial layers carry `isDemo: true`.
   "status": "Verified", "isDemo": true
 }
 ```
+
+`GET /api/parcels/:ulpin` augments this with a computed **`provenance`** block —
+`{ ulpinStatus, verificationStatus, sourceOrganization, sourceDataset, sourceUrl,
+retrievedAt, disclaimer, recordType, adminLevel }` — and a `providerChain`. Today
+every parcel resolves as `verificationStatus: "DEMO"` /
+`ulpinStatus: "DEMO_NOT_OFFICIAL"`. `isOfficialUlpin` is normalised to `false` in
+the API response (in the seed it historically meant "parcel-level id", not
+"government-official"). See
+[`13-official-ulpin-data-investigation.md`](13-official-ulpin-data-investigation.md).
 
 ### Building
 
@@ -80,6 +90,14 @@ key (`backend/src/store/mongo.js`). All spatial layers carry `isDemo: true`.
 }
 ```
 
+`GET /api/floors/:id`, `/api/units/:id`, `/api/buildings/:id` and
+`/api/gis/units` augment floor / unit / building records with a computed
+**`volume`** block `{ volumeId, xmin..zmax, geometryVersion, source, prototype,
+status }` (Phase 2). `GET /api/parcels/:ulpin` adds a `volumes` count + a
+`validation` rollup; `GET /api/parcels/:ulpin/volumes` returns every volume + the
+full validation. All prototype / DEMO geometry — see
+[`14-prototype-3d-volume-model.md`](14-prototype-3d-volume-model.md).
+
 ### Property unit (apartment)
 
 ```json
@@ -102,8 +120,39 @@ key (`backend/src/store/mongo.js`). All spatial layers carry `isDemo: true`.
 }
 ```
 
+### AI building + job (Phase 3 — `aiBuildings`, `aiJobs`; additive, separate from `buildings`)
+
+```json
+{
+  "aiBuildingId": "AI-CHN-000123", "jobId": "AIJOB-...", "locality": "sholinganallur",
+  "geometry": { "type": "Polygon", "coordinates": [[[80.2270, 12.9005], ...]] },
+  "georeferenced": true, "geoStatus": "GEOREFERENCED", "pixelPolygon": [[x, y], ...],
+  "source": "AI_DEMO", "model": "classical-cv", "modelVersion": "1.0", "timestamp": "...",
+  "confidence": 0.86, "confidenceLevel": "HIGH",
+  "geometryStatus": "VALID", "geometryIssues": [], "areaM2": 820.1, "areaPx": 3280,
+  "parcelStatus": "MATCHED", "parentParcelId": "PCL-CHN-SHLN-0001",
+  "parentULPIN": "TN-CHN-123456789", "ulpinStatus": "DEMO_NOT_OFFICIAL",
+  "parcelCandidates": [{ "parcelId": "...", "ulpin": "...", "overlapRatio": 0.82 }],
+  "height": null, "heightStatus": "UNAVAILABLE",
+  "reviewRequired": false, "reviewStatus": "REVIEW_REQUIRED", "isDemo": true
+}
+```
+```json
+{ "jobId": "AIJOB-...", "status": "COMPLETED", "imageName": "tile.tif",
+  "locality": "sholinganallur", "requestedBy": "survey01",
+  "createdAt": "...", "completedAt": "...", "model": "classical-cv",
+  "summary": { "total": 4, "high": 4, "matched": 4, "multiParcel": 0, "reviewRequired": 0 } }
+```
+
+`parcelStatus ∈ {MATCHED, MULTI_PARCEL, OUTSIDE_PARCEL, REVIEW_REQUIRED}`.
+`reviewStatus ∈ {REVIEW_REQUIRED, ACCEPTED, REJECTED, NEEDS_CORRECTION}`. AI
+records **never** carry an official ULPIN or verified flag — see
+[`15-ai-building-extraction.md`](15-ai-building-extraction.md).
+
 ## Relationships
 
 `parcels.ulpin` 1—N `buildings.ulpin` 1—N `floors.buildingId` 1—N
 `propertyUnits.floorId`. Governance rows reference `ulpin` (parcel scope) and/or
 `propertyId` (unit scope) and/or `buildingId`. `disputes` may reference any level.
+`aiBuildings.parentParcelId` optionally references `parcels.parcelId` (spatial
+association only).

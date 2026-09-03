@@ -131,5 +131,15 @@ export async function aiStatus() {
     url: env.aiServiceUrl || null,
     features: AI_FEATURES,
     disclaimer: DISCLAIMER,
+    // Phase 3 — real image→polygon building extraction. Optional/additive: if the
+    // Python ai-service is unreachable the endpoint returns INFERENCE_UNAVAILABLE
+    // and the rest of the app is unaffected.
+    buildingExtraction: {
+      endpoint: '/api/ai/buildings/infer',
+      aiServiceConfigured: Boolean(env.aiServiceUrl),
+      supportedInput: ['png', 'jpg', 'jpeg', 'tif', 'tiff'],
+      source: 'AI_DEMO',
+      note: 'Model output — candidate building geometry only. Not official cadastral / ULPIN / survey data.',
+    },
   }
 }

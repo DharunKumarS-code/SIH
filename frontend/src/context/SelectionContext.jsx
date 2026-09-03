@@ -1,5 +1,6 @@
-import { createContext, useContext, useMemo, useRef, useState, useCallback } from 'react'
-import { PARCEL_ULPIN } from '../lib/constants.js'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { PARCEL_ULPIN, DEFAULT_AREA_ID, LOCALITIES_FALLBACK, CHENNAI_CITY_VIEW } from '../lib/constants.js'
+import { api } from '../lib/api.js'
 
 const SelectionContext = createContext(null)
 
@@ -44,12 +45,36 @@ export const DEFAULT_LAYERS = {
   units3d: true,
   commonAreas: true,
   parking: true,
+  // AI extraction (Phase 3) — additive, OFF by default so it never affects the
+  // existing map / LOD until a user explicitly turns it on.
+  aiBuildings: false,
 }
 
+const areaFromLocality = (loc) => ({
+  id: loc.id,
+  name: loc.name,
+  label: loc.label,
+  ulpin: loc.ulpinPrimary,
+  base: loc.base,
+  zone: loc.zone,
+  cameraHeightM: loc.cameraHeightM,
+})
+
+const DEFAULT_LOCALITY =
+  LOCALITIES_FALLBACK.find((l) => l.id === DEFAULT_AREA_ID) || LOCALITIES_FALLBACK[0]
+
 export function SelectionProvider({ children }) {
+  // ONE Chennai-wide environment. `area` says which locality the camera is over;
+  // `selection` is the parcel -> building -> floor -> unit drill-down within it.
+  const [localities, setLocalities] = useState(LOCALITIES_FALLBACK)
+  const localitiesRef = useRef(LOCALITIES_FALLBACK)
+  useEffect(() => {
+    localitiesRef.current = localities
+  }, [localities])
+  const [area, setArea] = useState(areaFromLocality(DEFAULT_LOCALITY))
   const [selection, setSelection] = useState({
     mode: 'overview', // overview | parcel | building | floor | unit
-    ulpin: PARCEL_ULPIN,
+    ulpin: DEFAULT_LOCALITY.ulpinPrimary,
     buildingId: null,
     floorNumber: null,
     propertyId: null,
@@ -60,6 +85,47 @@ export function SelectionProvider({ children }) {
 
   // The Cesium map registers imperative helpers here (flyTo*, resetView, ...).
   const mapApi = useRef({})
+
+  // Pull the real registry (counts + city view) once; fall back silently.
+  useEffect(() => {
+    let live = true
+    api
+      .gisLocalities()
+      .then((d) => {
+        if (!live || !Array.isArray(d?.localities) || !d.localities.length) return
+        setLocalities(d.localities)
+        if (d.city) mapApi.current.__cityView = d.city
+        setArea((a) => {
+          const match = d.localities.find((l) => l.id === a.id)
+          return match ? areaFromLocality(match) : a
+        })
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [])
+
+  const selectArea = useCallback((id) => {
+    const loc = localitiesRef.current.find((l) => l.id === id)
+    if (!loc) return
+    setArea(areaFromLocality(loc))
+    setIsolated(false)
+    setSelection({
+      mode: 'overview',
+      ulpin: loc.ulpinPrimary,
+      buildingId: null,
+      floorNumber: null,
+      propertyId: null,
+    })
+    mapApi.current.flyToArea?.(id)
+  }, [])
+
+  const cityView = useCallback(() => {
+    setIsolated(false)
+    setSelection((s) => ({ ...s, mode: 'overview', buildingId: null, floorNumber: null, propertyId: null }))
+    mapApi.current.flyToCity?.()
+  }, [])
 
   const selectParcel = useCallback((ulpin) => {
     setIsolated(false)
@@ -89,18 +155,26 @@ export function SelectionProvider({ children }) {
   }, [])
 
   const selectUnit = useCallback((ref) => {
-    setSelection({
+    setSelection((s) => ({
       mode: 'unit',
-      ulpin: ref.ulpin || PARCEL_ULPIN,
+      ulpin: ref.ulpin || s.ulpin || PARCEL_ULPIN,
       buildingId: ref.buildingId,
       floorNumber: ref.floorNumber ?? null,
       propertyId: ref.propertyId,
-    })
+    }))
+  }, [])
+
+  // Phase 3 — an AI-extracted (candidate) building. Additive selection mode;
+  // reuses the same viewer, camera and sidebar.
+  const selectAiBuilding = useCallback((aiBuildingId) => {
+    setIsolated(false)
+    setSelection({ mode: 'ai-building', aiBuildingId, ulpin: null, buildingId: null, floorNumber: null, propertyId: null })
+    mapApi.current.flyToAiBuilding?.(aiBuildingId)
   }, [])
 
   const reset = useCallback(() => {
     setIsolated(false)
-    setSelection({ mode: 'overview', ulpin: PARCEL_ULPIN, buildingId: null, floorNumber: null, propertyId: null })
+    setSelection((s) => ({ mode: 'overview', ulpin: s.ulpin, buildingId: null, floorNumber: null, propertyId: null, aiBuildingId: null }))
     mapApi.current.resetView?.()
   }, [])
 
@@ -120,6 +194,11 @@ export function SelectionProvider({ children }) {
 
   const value = useMemo(
     () => ({
+      localities,
+      area,
+      selectArea,
+      cityView,
+      cityViewTarget: CHENNAI_CITY_VIEW,
       selection,
       isolated,
       setIsolated,
@@ -133,9 +212,27 @@ export function SelectionProvider({ children }) {
       selectBuilding,
       selectFloor,
       selectUnit,
+      selectAiBuilding,
       reset,
     }),
-    [selection, isolated, layers, transparency, toggleLayer, setLayerGroup, selectParcel, selectBuilding, selectFloor, selectUnit, reset],
+    [
+      localities,
+      area,
+      selectArea,
+      cityView,
+      selection,
+      isolated,
+      layers,
+      transparency,
+      toggleLayer,
+      setLayerGroup,
+      selectParcel,
+      selectBuilding,
+      selectFloor,
+      selectUnit,
+      selectAiBuilding,
+      reset,
+    ],
   )
 
   return <SelectionContext.Provider value={value}>{children}</SelectionContext.Provider>

@@ -32,6 +32,9 @@ const KEYS = {
   serviceRequests: ['requestId', 'raisedBy'],
   notifications: ['notificationId', 'forRole'],
   auditLogs: ['logId', 'entityId'],
+  // Phase 3 — AI building-footprint extraction (additive; separate from `buildings`).
+  aiBuildings: ['aiBuildingId', 'jobId', 'parentParcelId', 'locality'],
+  aiJobs: ['jobId'],
 }
 
 function modelFor(name) {
@@ -83,6 +86,11 @@ class MongoCollection {
 
   async deleteOne(filter) {
     const res = await this.model.deleteOne(filter).exec()
+    return res.deletedCount || 0
+  }
+
+  async deleteMany(filter = {}) {
+    const res = await this.model.deleteMany(filter).exec()
     return res.deletedCount || 0
   }
 

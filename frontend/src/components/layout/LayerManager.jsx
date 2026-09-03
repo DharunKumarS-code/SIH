@@ -69,6 +69,13 @@ const GROUPS = [
       ['parking', 'Parking'],
     ],
   },
+  {
+    title: 'AI Extraction',
+    demo: true,
+    rows: [
+      ['aiBuildings', 'AI-Derived Buildings'],
+    ],
+  },
 ]
 
 export function LayerManager() {

@@ -1,0 +1,41 @@
+# Reproducible training config for the OPTIONAL U-Net building segmenter.
+# This is documentation + a starting point — the application does NOT run
+# training. The always-available default is the classical CV segmenter.
+#
+# Enable the trained model at inference time with:
+#   AI_MODEL=unet
+#   AI_UNET_WEIGHTS=/path/to/unet_resnet34_spacenet.pt
+
+model:
+  arch: Unet
+  encoder: resnet34
+  encoder_weights: imagenet   # pretrained encoder; decoder trained from scratch
+  in_channels: 1              # grayscale (matches the inference preprocessing)
+  classes: 1
+  activation: sigmoid
+
+dataset:
+  name: SpaceNet Building Footprint (SpaceNet-2)
+  root: ./data/spacenet2                     # user-provided; not bundled
+  aois: [AOI_2_Vegas, AOI_3_Paris, AOI_4_Shanghai, AOI_5_Khartoum]
+  image: RGB PanSharpen tiles, 650x650, ~0.3 m GSD (downsampled/tiled to 512)
+  label: per-tile building polygons (GeoJSON) -> rasterised binary mask
+  split: {train: 0.8, val: 0.1, test: 0.1}
+
+train:
+  tile: 512
+  batch_size: 8
+  epochs: 40
+  optimizer: {name: AdamW, lr: 3.0e-4, weight_decay: 1.0e-4}
+  scheduler: {name: CosineAnnealingLR}
+  loss: {name: DiceBCE, dice_weight: 0.5, bce_weight: 0.5}
+  augment: [hflip, vflip, rot90, brightness_contrast]
+  amp: true
+  early_stop: {monitor: val_iou, patience: 8, mode: max}
+
+eval:
+  metrics: [iou, precision, recall, f1, dice]
+  threshold: 0.5
+
+output:
+  weights: ./weights/unet_resnet34_spacenet.pt

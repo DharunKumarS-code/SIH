@@ -46,7 +46,9 @@ export const api = {
   // land
   parcels: (params) => get('/parcels', params),
   parcel: (ulpin) => get(`/parcels/${encodeURIComponent(ulpin)}`),
+  parcelProvenance: (ulpin) => get(`/parcels/${encodeURIComponent(ulpin)}/provenance`),
   verifyParcel: (ulpin) => post(`/parcels/${encodeURIComponent(ulpin)}/verify`),
+  landSources: () => get('/land-sources'),
   ulpins: () => get('/ulpins'),
 
   // property hierarchy
@@ -70,11 +72,13 @@ export const api = {
   interop: (ulpin, propertyId) => get(`/interop/${encodeURIComponent(ulpin)}`, { propertyId }),
 
   // gis
-  gisParcels: () => get('/gis/parcels'),
-  gisBuildings: () => get('/gis/buildings'),
+  gisLocalities: () => get('/gis/localities'),
+  gisParcels: (params) => get('/gis/parcels', params),
+  gisBuildings: (params) => get('/gis/buildings', params),
   gisUnits: (params) => get('/gis/units', params),
   gisCommonAreas: (params) => get('/gis/common-areas', params),
-  gisLayer: (layer) => get(`/gis/layer/${layer}`),
+  gisLayer: (layer, params) => get(`/gis/layer/${layer}`, params),
+  gisAiBuildings: (params) => get('/gis/ai-buildings', params),
 
   // dashboards
   dashboard: () => get('/dashboard/stats'),
@@ -87,6 +91,15 @@ export const api = {
   // ai
   aiStatus: () => get('/ai/status'),
   aiRun: (feature, payload) => post(`/ai/${feature}`, payload),
+
+  // ai — building-footprint extraction (Phase 3)
+  aiInferBuildings: (formData) =>
+    unwrap(http.post('/ai/buildings/infer', formData, { timeout: 60000 })),
+  aiBuildingsList: (params) => get('/ai/buildings', params),
+  aiBuilding: (id) => get(`/ai/buildings/${encodeURIComponent(id)}`),
+  aiBuildingReview: (id, reviewStatus) =>
+    unwrap(http.patch(`/ai/buildings/${encodeURIComponent(id)}/review`, { reviewStatus })),
+  aiJob: (id) => get(`/ai/jobs/${encodeURIComponent(id)}`),
 
   // services / workflow
   services: (params) => get('/services', params),

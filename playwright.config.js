@@ -37,6 +37,15 @@ export default defineConfig({
   ],
   webServer: [
     {
+      // Phase 3 AI service (Python/FastAPI). Optional at runtime, but the AI E2E
+      // spec needs it. If Python deps are missing only that one spec is affected.
+      command: 'python -m uvicorn app.main:app --port 8000 --log-level warning',
+      cwd: 'ai-service',
+      url: 'http://localhost:8000/health',
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+    {
       command: 'npm --prefix backend start',
       url: 'http://localhost:4000/health',
       reuseExistingServer: true,

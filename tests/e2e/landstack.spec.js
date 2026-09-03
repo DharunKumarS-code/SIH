@@ -148,6 +148,146 @@ test.describe('Global search', () => {
   })
 })
 
+test.describe('Phase 1 — official vs demo ULPIN provenance', () => {
+  test('parcel sidebar labels the id DEMO and search flies in the same viewer', async ({ page, diag }) => {
+    await login(page)
+    await openMap(page)
+
+    const viewerBefore = await page.evaluate(() => {
+      window.__vref = window.viewer
+      return Boolean(window.viewer && !window.viewer.isDestroyed())
+    })
+    expect(viewerBefore).toBe(true)
+
+    // Search the parcel ULPIN and pick the parcel result.
+    await page.getByTestId('global-search').fill(ULPIN)
+    await expect(page.getByTestId('search-results')).toBeVisible()
+    await page.getByTestId('search-results').getByText(ULPIN, { exact: true }).first().click()
+
+    // Parcel sidebar shows the explicit "not an official ULPIN" distinction.
+    const sidebar = page.getByTestId('property-sidebar')
+    await expect(sidebar).toBeVisible()
+    await expect(page.getByTestId('parcel-verification')).toContainText(/Not Official ULPIN/i)
+    await expect(page.getByTestId('parcel-ulpin')).toContainText(ULPIN)
+    await expect(sidebar).toContainText('Survey Number')
+    await expect(sidebar).toContainText('Subdivision')
+    await expect(sidebar).toContainText('Coordinates')
+
+    // Same Cesium viewer — no second instance was created.
+    expect(await page.evaluate(() => window.viewer === window.__vref && !window.viewer.isDestroyed())).toBe(true)
+
+    const { pageErrors } = diag.fatal()
+    expect(pageErrors, pageErrors.join('\n')).toEqual([])
+  })
+
+  test('settings documents Chennai ULPIN as UNAVAILABLE via public channels', async ({ page }) => {
+    await login(page)
+    await page.goto('/settings')
+    await expect(page.getByText('Land Data Sources & Provenance')).toBeVisible()
+    const avail = page.getByTestId('ulpin-availability')
+    await expect(avail).toContainText('UNAVAILABLE')
+    await expect(avail).toContainText(/DEMO/i)
+    await expect(page.getByRole('link', { name: /Department of Land Resources/i })).toBeVisible()
+    await expect(page.getByRole('link', { name: /TNGIS|Tamil Nadu/i }).first()).toBeVisible()
+  })
+})
+
+test.describe('Regression — Buildings page loads (no 502)', () => {
+  test('Buildings page fetches GET /api/buildings with 200 and renders rows', async ({ page }) => {
+    const bad = []
+    page.on('response', (r) => {
+      if (r.url().includes('/api/buildings') && r.status() >= 500) bad.push(`${r.status()} ${r.url()}`)
+    })
+
+    await login(page)
+    const resp = await page.waitForResponse(
+      (r) => r.url().includes('/api/buildings') && r.request().method() === 'GET',
+      { timeout: 30_000 },
+    ).catch(() => null)
+
+    // navigate explicitly in case the login landed elsewhere
+    if (!page.url().includes('/buildings')) await page.goto('/buildings')
+
+    await expect(page.getByRole('heading', { name: /Buildings/i }).first()).toBeVisible()
+    await expect(page.getByText(/Couldn.t load data/i)).toHaveCount(0)
+    const rows = page.locator('table tbody tr')
+    await expect(rows.first()).toBeVisible({ timeout: 30_000 })
+    expect(await rows.count()).toBeGreaterThanOrEqual(12)
+    // a known building id from the demo parcel is present
+    await expect(page.getByText('TN-CHN-123456789-B01')).toBeVisible()
+
+    if (resp) expect(resp.status(), 'GET /api/buildings status').toBe(200)
+    expect(bad, bad.join('\n')).toEqual([])
+  })
+})
+
+test.describe('Phase 2 — prototype 3D volumes', () => {
+  // Drill Building → Floor → Unit inside the CURRENT area and assert the volume UI.
+  async function drillToUnitVolume(page, { building = 'B01', floor = 'F02', unit = 'U201' } = {}) {
+    await page.getByTestId(`building-block-${building}`).click()
+    await page.getByTestId(`floor-row-${floor}`).click()
+    // the prototype floor-volume slab is created in the ONE viewer for this floor
+    await page.waitForFunction(() => {
+      const v = window.viewer
+      return v && !v.isDestroyed()
+        && v.entities.values.some((e) => (e.properties?.kind?.getValue?.() ?? e.properties?.kind) === 'floor-volume')
+    }, null, { timeout: 20_000 })
+    await page.getByTestId(`floorplan-unit-${unit}`).click()
+    const sidebar = page.getByTestId('property-sidebar')
+    await expect(sidebar).toBeVisible()
+    await expect(sidebar).toContainText('3D Geometry (Prototype)')
+    await expect(sidebar).toContainText('Prototype 3D Geometry')
+    await expect(sidebar).toContainText('Z min')
+    await expect(sidebar).toContainText('Z max')
+    await expect(sidebar).toContainText(/Volume ID/)
+    await expect(page.getByTestId('geometry-status')).toBeVisible()
+  }
+
+  test('Sholinganallur: unit volume, isolation, and return to Chennai — one viewer throughout', async ({ page, diag }) => {
+    await login(page)
+    await openMap(page)
+    const vref = await page.evaluate(() => { window.__vref = window.viewer; return !!window.viewer })
+    expect(vref).toBe(true)
+
+    await drillToUnitVolume(page)
+
+    // isolation still works and is reversible
+    const isolate = page.getByTestId('isolate-toggle')
+    await isolate.click()
+    await expect(isolate).toContainText('Exit Isolation')
+    await isolate.click()
+    await expect(isolate).toContainText('Isolate Unit')
+
+    // return to Chennai overview via the existing control
+    await page.getByTestId('area-city-overview').click()
+    await page.waitForTimeout(1500)
+
+    expect(await page.evaluate(() => window.viewer === window.__vref && !window.viewer.isDestroyed())).toBe(true)
+    const { pageErrors } = diag.fatal()
+    expect(pageErrors, pageErrors.join('\n')).toEqual([])
+  })
+
+  for (const area of ['adyar', 'annanagar']) {
+    test(`${area}: same viewer, area selector, unit prototype volume renders`, async ({ page, diag }) => {
+      await login(page)
+      await openMap(page)
+      const before = await page.evaluate(() => { window.__vref = window.viewer; return !!window.viewer })
+      expect(before).toBe(true)
+
+      await page.getByTestId(`area-option-${area}`).click()
+      await page.waitForTimeout(3500)
+      // same viewer after the area fly
+      expect(await page.evaluate(() => window.viewer === window.__vref && !window.viewer.isDestroyed())).toBe(true)
+
+      await drillToUnitVolume(page)
+
+      expect(await page.evaluate(() => window.viewer === window.__vref)).toBe(true)
+      const { pageErrors } = diag.fatal()
+      expect(pageErrors, pageErrors.join('\n')).toEqual([])
+    })
+  }
+})
+
 test.describe('Role-based access control', () => {
   test('citizen does not see officer-only navigation', async ({ page }) => {
     await login(page, 'citizen01', 'Citizen@123')
@@ -184,5 +324,80 @@ test.describe('System honesty', () => {
     await page.goto('/settings')
     await expect(page.getByText(/Demo Connected|Demo dataset|DEMO/i).first()).toBeVisible()
     await expect(page.getByText(/represents no real parcel/i)).toBeVisible()
+  })
+})
+
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const TIF_FIXTURE = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../ai-service/tests/fixtures/sholinganallur_demo.tif',
+)
+
+test.describe('Phase 3 — AI building extraction (additive, AI_DEMO)', () => {
+  test('upload → infer → results → view in the ONE Cesium viewer → AI sidebar', async ({ page, diag }) => {
+    test.slow()
+    await login(page, 'survey01', 'Officer@123')
+    await page.goto('/ai-buildings')
+    await expect(page.getByRole('heading', { name: /AI Building Extraction/i })).toBeVisible()
+    await expect(page.getByText(/MODEL OUTPUT/i).first()).toBeVisible()
+
+    await page.getByTestId('ai-image-input').setInputFiles(TIF_FIXTURE)
+    await page.getByTestId('ai-run').click()
+
+    // results render (ai-service is up via the playwright webServer)
+    await expect(page.getByTestId('ai-results')).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText('COMPLETED')).toBeVisible()
+    await expect(page.getByText('Total buildings')).toBeVisible()
+    const rows = page.locator('[data-testid="ai-results"] table tbody tr')
+    await expect(rows.first()).toBeVisible()
+    await expect(rows.first()).toContainText(/AI-CHN-/)
+
+    // open the first AI building on the SAME Cesium viewer
+    await rows.first().click()
+    await expect(page).toHaveURL(/\/map/)
+    await page.waitForFunction(() => window.__map && window.__map.ready === true, null, { timeout: 90_000 })
+    const oneViewer = await page.evaluate(() => {
+      window.__vref = window.viewer
+      return Boolean(window.viewer && !window.viewer.isDestroyed())
+    })
+    expect(oneViewer).toBe(true)
+
+    // an ai-building entity exists in that single viewer
+    await page.waitForFunction(() => {
+      const v = window.viewer
+      return v && v.entities.values.some((e) => (e.properties?.kind?.getValue?.() ?? e.properties?.kind) === 'ai-building')
+    }, null, { timeout: 30_000 })
+
+    // AI sidebar shows the non-official provenance
+    const sidebar = page.getByTestId('property-sidebar')
+    await expect(sidebar).toBeVisible()
+    await expect(page.getByTestId('ai-building-source')).toContainText(/AI_DEMO|MODEL OUTPUT/i)
+    await expect(sidebar).toContainText('DEMO_NOT_OFFICIAL')
+    await expect(sidebar).toContainText(/Confidence Level/i)
+    await expect(sidebar).toContainText(/Model/i)
+    await expect(page.getByTestId('ai-review-status')).toBeVisible()
+
+    // same viewer, and returning to the Chennai overview still works
+    expect(await page.evaluate(() => window.viewer === window.__vref && !window.viewer.isDestroyed())).toBe(true)
+    await page.getByTestId('area-city-overview').click()
+    await page.waitForTimeout(1200)
+    expect(await page.evaluate(() => window.viewer === window.__vref)).toBe(true)
+
+    const { pageErrors } = diag.fatal()
+    expect(pageErrors, pageErrors.join('\n')).toEqual([])
+  })
+
+  test('AI layer is OFF by default and does not disturb the existing map', async ({ page }) => {
+    await login(page)
+    await openMap(page)
+    // default DEFAULT_LAYERS.aiBuildings === false -> checkbox unchecked
+    await expect(page.getByTestId('layer-aiBuildings')).not.toBeChecked()
+    // existing flow still fine, one viewer
+    expect(await page.evaluate(() => Boolean(window.viewer && !window.viewer.isDestroyed()))).toBe(true)
+    await page.getByTestId('layer-aiBuildings').check()
+    await expect(page.getByTestId('layer-aiBuildings')).toBeChecked()
+    expect(await page.evaluate(() => Boolean(window.viewer && !window.viewer.isDestroyed()))).toBe(true)
   })
 })
