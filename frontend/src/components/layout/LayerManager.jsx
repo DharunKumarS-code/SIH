@@ -74,6 +74,21 @@ const GROUPS = [
     demo: true,
     rows: [
       ['aiBuildings', 'AI-Derived Buildings'],
+      ['aiFloorUnits', 'AI Floor Plans / Property Units'],
+    ],
+  },
+  {
+    title: 'Elevation / LiDAR',
+    demo: true,
+    rows: [
+      ['elevationHeightQuality', 'Height Quality (accepted buildings)'],
+    ],
+  },
+  {
+    title: 'GNSS / CORS Control',
+    demo: true,
+    rows: [
+      ['gnssControlPoints', 'GNSS/CORS Control Points'],
     ],
   },
 ]

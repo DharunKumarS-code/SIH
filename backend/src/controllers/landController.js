@@ -253,6 +253,14 @@ export const gisBuildings = asyncHandler(async (req, res) => {
     constructionStatus: b.constructionStatus,
     locality: b.locality,
     isDemo: b.isDemo,
+    // Phase 5 — present only once a reviewer has explicitly ACCEPTed an
+    // elevation-derived height (see PATCH /elevation/buildings/:id/review).
+    // heightM/baseElevationM above already reflect it when active — these
+    // are metadata for display/coloring, not a second source of truth.
+    elevationOverrideActive: b.elevationOverrideActive || false,
+    elevationSource: b.elevationSource || null,
+    elevationConfidenceLevel: b.elevationConfidenceLevel || null,
+    elevationQualityStatus: b.elevationQualityStatus || null,
     layer: 'buildings',
   }))))
 })

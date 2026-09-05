@@ -1,0 +1,63 @@
+# Reproducible config for the OPTIONAL semantic floor-plan segmenter (Phase 4).
+#
+# This is DOCUMENTATION + a starting point — the application does NOT run
+# training and does NOT require weights to start. The always-available default
+# is the deterministic classical-CV segmenter (app/floorplans/segmentation.py).
+#
+# Enable a trained model at inference time with:
+#   FLOORPLAN_MODEL=semseg
+#   FLOORPLAN_SEMSEG_WEIGHTS=/path/to/floorplan_semseg.pt
+#   FLOORPLAN_SEMSEG_ARCH=Unet          # or UnetPlusPlus / DeepLabV3Plus / ...
+#   FLOORPLAN_SEMSEG_ENCODER=resnet34
+
+model:
+  # Primary architecture choice: DeepLabV3+ (ResNet-34) — see docs/16 §3 for the
+  # accuracy / speed / memory / maintainability trade-off vs U-Net / U-Net++ /
+  # SegFormer. U-Net stays supported as the lighter fallback arch.
+  arch: DeepLabV3Plus
+  fallback_arch: Unet
+  encoder: resnet34
+  encoder_weights: imagenet     # pretrained encoder; decoder trained from scratch
+  in_channels: 1                # grayscale — matches the inference preprocessing
+  classes: 12                   # 11 CubiCasa room classes + background (see classmap.py)
+  activation: softmax2d
+
+dataset:
+  name: CubiCasa5K
+  source: https://github.com/CubiCasa/CubiCasa5k  (Zenodo DOI 10.5281/zenodo.2613548)
+  license: Creative Commons Attribution-NonCommercial 4.0 (CC BY-NC 4.0) — research/demo only
+  root: ./data/cubicasa5k                         # user-provided; NOT bundled
+  layout: |
+    cubicasa5k/
+      colorful/  high_quality/  high_quality_architectural/
+        <id>/  F1_original.png  F1_scaled.png  model.svg   (rooms + icons as SVG polygons)
+      train.txt  val.txt  test.txt
+  image: rasterised floor-plan PNG, variable size (tiled to 512 for training)
+  label: model.svg polygons -> rasterised per-class mask via the room + icon vocab
+  split: {train: 4200, val: 400, test: 400}   # the dataset's own train/val/test lists
+
+train:
+  tile: 512
+  batch_size: 8
+  epochs: 60
+  optimizer: {name: AdamW, lr: 3.0e-4, weight_decay: 1.0e-4}
+  scheduler: {name: CosineAnnealingLR}
+  loss: {name: DiceCE, dice_weight: 0.5, ce_weight: 0.5}
+  augment: [hflip, vflip, rot90, brightness_contrast, gaussian_noise]
+  amp: true
+  early_stop: {monitor: val_mean_iou, patience: 10, mode: max}
+
+eval:
+  metrics: [iou, precision, recall, f1, dice]      # per-class + macro
+  room_metrics: [polygon_iou, boundary_f1]          # geometry-level, for rooms/units
+  threshold: argmax
+
+output:
+  weights: ./weights/floorplan_semseg.pt
+
+# DOMAIN SHIFT — READ docs/16 §16.
+# CubiCasa5K is Finnish residential floor plans. Good CubiCasa5K metrics do NOT
+# imply Chennai accuracy: notation, symbols, language, room mixes, scanning
+# quality and apartment typologies differ. Any Chennai deployment must be
+# validated separately against Chennai-labelled plans. All dataset-derived
+# output is DEMO / RESEARCH DATA and never official cadastral / ULPIN data.

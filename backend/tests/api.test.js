@@ -1,8 +1,20 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync, existsSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createApp } from '../src/app.js'
 import { connectStore, disconnectStore, db } from '../src/store/index.js'
 import { PARCEL_ULPIN, makeProtoPropertyId } from '../src/services/idService.js'
+
+const FLOORPLAN_FIXTURE = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../ai-service/tests/fixtures/floorplan_demo.png',
+)
+const ELEV_FIXTURES = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../ai-service/tests/fixtures/elevation',
+)
 
 let app
 let server
@@ -47,6 +59,19 @@ const patch = async (path, data, token) => {
 const postForm = async (path, { field = 'image', filename, bytes, contentType, extra = {} }, token) => {
   const fd = new FormData()
   fd.append(field, new Blob([bytes], { type: contentType }), filename)
+  for (const [k, v] of Object.entries(extra)) fd.append(k, v)
+  const res = await fetch(base + path, {
+    method: 'POST',
+    headers: token ? { authorization: `Bearer ${token}` } : undefined,
+    body: fd,
+  })
+  return { status: res.status, body: await res.json() }
+}
+const postFormMulti = async (path, { files, extra = {} }, token) => {
+  const fd = new FormData()
+  for (const [field, { filename, bytes, contentType }] of Object.entries(files)) {
+    fd.append(field, new Blob([bytes], { type: contentType }), filename)
+  }
   for (const [k, v] of Object.entries(extra)) fd.append(k, v)
   const res = await fetch(base + path, {
     method: 'POST',
@@ -419,6 +444,162 @@ test('phase3: existing demo buildings are untouched by AI (separate collection)'
   assert.equal(st.body.data.buildingExtraction.source, 'AI_DEMO')
 })
 
+/* -------------------------------------------------------------------------- */
+/* Phase 4 — AI floor-plan & apartment/unit segmentation (additive, AI_DEMO)   */
+/* -------------------------------------------------------------------------- */
+const floorPlanPng = existsSync(FLOORPLAN_FIXTURE) ? readFileSync(FLOORPLAN_FIXTURE) : tinyPng
+
+test('phase4: floor-plan inference never 500s; degrades gracefully; leaves existing APIs intact', async () => {
+  // Contract holds whether or not the Python ai-service is running:
+  //   HTTP 200, a jobId, status in {COMPLETED, INFERENCE_UNAVAILABLE}
+  //   INFERENCE_UNAVAILABLE -> job FAILED, zero aiFloorUnits written
+  const tok = await officerToken()
+  const beforeUnits = await db.collection('aiFloorUnits').count({})
+  const res = await postForm('/api/ai/floorplans/infer',
+    { filename: 'floorplan_demo.png', bytes: floorPlanPng, contentType: 'image/png',
+      extra: { buildingId: `${PARCEL_ULPIN}-B01`, floorId: `${PARCEL_ULPIN}-B01-F02`, scaleMPerPx: '0.02' } }, tok)
+  assert.equal(res.status, 200) // never a 500
+  assert.ok(res.body.data.jobId)
+  assert.ok(['COMPLETED', 'INFERENCE_UNAVAILABLE'].includes(res.body.data.status), res.body.data.status)
+
+  if (res.body.data.status === 'INFERENCE_UNAVAILABLE') {
+    const job = await get(`/api/ai/jobs/${res.body.data.jobId}`)
+    assert.equal(job.body.data.status, 'FAILED')
+    assert.equal((await db.collection('aiFloorUnits').count({})) - beforeUnits, 0)
+  } else {
+    assert.ok(res.body.data.floorPlanId)
+    assert.ok(Array.isArray(res.body.data.units))
+    assert.ok((res.body.data.rooms || []).every((r) => r.source === 'AI_DEMO'))
+    assert.ok((res.body.data.units || []).every((u) => u.source === 'AI_DEMO'))
+    assert.equal(res.body.data.dataClassification, 'DEMO_RESEARCH_DATA')
+    // GET sub-resources resolve
+    const rooms = await get(`/api/ai/floorplans/${res.body.data.floorPlanId}/rooms`)
+    assert.equal(rooms.status, 200)
+    const units = await get(`/api/ai/floorplans/${res.body.data.floorPlanId}/units`)
+    assert.equal(units.status, 200)
+    const val = await get(`/api/ai/floorplans/${res.body.data.floorPlanId}/validation`)
+    assert.equal(val.status, 200)
+    assert.ok(['VALID', 'WARNING', 'ERROR'].includes(val.body.data.validation.status))
+  }
+
+  // existing APIs completely unaffected
+  assert.equal((await get('/api/buildings')).status, 200)
+  const gb = await get('/api/gis/buildings?locality=sholinganallur')
+  assert.equal(gb.body.data.features.length, 5) // unchanged demo buildings
+  assert.ok(gb.body.data.features.every((f) => !('aiFloorUnitId' in f.properties)))
+})
+
+test('phase4: upload validation rejects non-images and empty uploads (400, not 500)', async () => {
+  const tok = await officerToken()
+  const txt = await postForm('/api/ai/floorplans/infer',
+    { filename: 'notes.txt', bytes: Buffer.from('hello'), contentType: 'text/plain' }, tok)
+  assert.equal(txt.status, 400)
+
+  const noFile = await fetch(base + '/api/ai/floorplans/infer', {
+    method: 'POST', headers: { authorization: `Bearer ${tok}` }, body: new FormData(),
+  })
+  assert.equal(noFile.status, 400)
+})
+
+test('phase4: infer requires ai:run; review requires change-detection:review', async () => {
+  const citizen = (await post('/api/auth/login', { username: 'citizen01', password: 'Citizen@123' })).body.data.token
+  const denied = await postForm('/api/ai/floorplans/infer',
+    { filename: 'fp.png', bytes: floorPlanPng, contentType: 'image/png' }, citizen)
+  assert.equal(denied.status, 403)
+
+  const rv = await patch('/api/ai/floorplans/AIFP-CHN-DOESNOTEXIST/review', { reviewStatus: 'ACCEPTED' }, citizen)
+  assert.equal(rv.status, 403)
+})
+
+test('phase4: NO-FABRICATION — AI floor units are AI_DEMO / DEMO_NOT_OFFICIAL, never official, never a real ULPIN', async () => {
+  // seed one AI floor-plan + unit directly (as the pipeline would) and assert the contract
+  const fixturePlan = {
+    floorPlanId: 'AIFP-CHN-TEST01', jobId: 'FPJOB-TEST', source: 'AI_DEMO',
+    dataClassification: 'DEMO_RESEARCH_DATA', dataset: 'CubiCasa5K',
+    model: 'classical-cv', modelVersion: '1.0', timestamp: new Date().toISOString(),
+    buildingId: `${PARCEL_ULPIN}-B01`, floorId: `${PARCEL_ULPIN}-B01-F02`,
+    parentParcelId: 'PCL-CHN-SHLN-0001', parentULPIN: PARCEL_ULPIN, ulpinStatus: 'DEMO_NOT_OFFICIAL',
+    georeferenced: true, geoStatus: 'GEOREFERENCED_VIA_BUILDING',
+    validation: { status: 'VALID', counts: { valid: 1, warning: 0, error: 0 }, issues: [] },
+    summary: { units: 1, rooms: 3 }, locality: 'sholinganallur',
+    reviewStatus: 'REVIEW_REQUIRED', reviewRequired: true, isDemo: true,
+  }
+  const fixtureUnit = {
+    aiFloorUnitId: 'AIFP-CHN-TEST01-AI-UNIT-001', localUnitId: 'AI-UNIT-001',
+    floorPlanId: 'AIFP-CHN-TEST01', jobId: 'FPJOB-TEST',
+    buildingId: `${PARCEL_ULPIN}-B01`, floorId: `${PARCEL_ULPIN}-B01-F02`,
+    parentParcelId: 'PCL-CHN-SHLN-0001', parentULPIN: PARCEL_ULPIN, ulpinStatus: 'DEMO_NOT_OFFICIAL',
+    rooms: ['AIFP-CHN-TEST01-FP-RM-000001'], roomTypes: ['BEDROOM'],
+    geometry: { type: 'Polygon', coordinates: [[[80.2269, 12.9003], [80.2272, 12.9003], [80.2272, 12.9006], [80.2269, 12.9006], [80.2269, 12.9003]]] },
+    volume: { volumeId: 'FPV-001', xmin: 80.2269, xmax: 80.2272, ymin: 12.9003, ymax: 12.9006, zmin: 6, zmax: 9 },
+    confidence: 0.62, confidenceLevel: 'MEDIUM', geometryStatus: 'VALID',
+    source: 'AI_DEMO', dataClassification: 'DEMO_RESEARCH_DATA', dataset: 'CubiCasa5K',
+    model: 'classical-cv', modelVersion: '1.0', timestamp: new Date().toISOString(),
+    georeferenced: true, geoStatus: 'GEOREFERENCED_VIA_BUILDING', heightStatus: 'ESTIMATED',
+    reviewRequired: true, reviewStatus: 'REVIEW_REQUIRED', locality: 'sholinganallur', isDemo: true,
+  }
+  await db.collection('aiFloorPlans').create(fixturePlan)
+  await db.collection('aiRooms').create({
+    roomId: 'AIFP-CHN-TEST01-FP-RM-000001', localRoomId: 'FP-RM-000001', floorPlanId: 'AIFP-CHN-TEST01',
+    class: 'BEDROOM', roomType: 'BEDROOM', confidence: 0.5, confidenceLevel: 'LOW', geometryStatus: 'VALID',
+    source: 'AI_DEMO', reviewRequired: true, reviewStatus: 'REVIEW_REQUIRED', isDemo: true,
+  })
+  await db.collection('aiFloorUnits').create(fixtureUnit)
+
+  const plan = await get('/api/ai/floorplans/AIFP-CHN-TEST01')
+  assert.equal(plan.status, 200)
+  assert.equal(plan.body.data.source, 'AI_DEMO')
+  assert.equal(plan.body.data.ulpinStatus, 'DEMO_NOT_OFFICIAL')
+  assert.notEqual(plan.body.data.isOfficialUlpin, true)
+
+  const unit = await get('/api/ai/floor-units/AIFP-CHN-TEST01-AI-UNIT-001')
+  assert.equal(unit.status, 200)
+  const u = unit.body.data
+  assert.equal(u.source, 'AI_DEMO')
+  assert.equal(u.dataClassification, 'DEMO_RESEARCH_DATA')
+  assert.equal(u.ulpinStatus, 'DEMO_NOT_OFFICIAL')
+  assert.equal(u.parentULPIN, PARCEL_ULPIN) // an EXISTING parcel ULPIN is attached, not a new one
+  assert.ok(!u.localUnitId.startsWith('TN-')) // never formatted as an official ULPIN
+  assert.notEqual(u.isOfficialUlpin, true)
+  assert.notEqual(u.verificationStatus, 'OFFICIAL')
+
+  // GIS layer exposes only georeferenced units, all AI_DEMO
+  const gis = await get('/api/gis/ai-floor-units?locality=sholinganallur')
+  assert.equal(gis.body.data.type, 'FeatureCollection')
+  const feat = gis.body.data.features.find((f) => f.properties.aiFloorUnitId === 'AIFP-CHN-TEST01-AI-UNIT-001')
+  assert.ok(feat)
+  assert.equal(feat.properties.source, 'AI_DEMO')
+  assert.equal(feat.properties.kind, 'ai-floor-unit')
+  assert.equal(feat.properties.ulpinStatus, 'DEMO_NOT_OFFICIAL')
+
+  // review updates the flag + writes an audit row, confers NO official status
+  const officer = await officerToken()
+  const rv = await patch('/api/ai/floor-units/AIFP-CHN-TEST01-AI-UNIT-001/review', { reviewStatus: 'ACCEPTED' }, officer)
+  assert.equal(rv.status, 200)
+  assert.equal(rv.body.data.reviewStatus, 'ACCEPTED')
+  assert.match(rv.body.data.note, /no official/i)
+  const admin = (await post('/api/auth/login', { username: 'admin01', password: 'Admin@123' })).body.data.token
+  const audit = await get('/api/audit?entityId=AIFP-CHN-TEST01-AI-UNIT-001', admin)
+  assert.ok(audit.body.data.some((a) => a.action === 'AI_FLOOR_UNIT_REVIEWED'))
+})
+
+test('phase4: existing floors / units / 3D volumes are untouched by the AI floor-plan module', async () => {
+  // Phase 2 unit volume still resolves exactly as before
+  const pid = makeProtoPropertyId(PARCEL_ULPIN, 1, 2, '201')
+  const unit = await get(`/api/units/${pid}`)
+  assert.equal(unit.status, 200)
+  assert.ok(unit.body.data.volume)
+  assert.ok(!('aiFloorUnitId' in unit.body.data))
+  // gis units carry no AI floor-plan fields
+  const gu = await get('/api/gis/units?buildingId=' + encodeURIComponent(`${PARCEL_ULPIN}-B01`))
+  assert.ok(gu.body.data.features.every((f) => !('aiFloorUnitId' in f.properties)))
+  // ai/status advertises the Phase 4 capability, clearly labelled
+  const st = await get('/api/ai/status')
+  assert.ok(st.body.data.floorPlanSegmentation)
+  assert.equal(st.body.data.floorPlanSegmentation.source, 'AI_DEMO')
+  assert.equal(st.body.data.floorPlanSegmentation.dataset, 'CubiCasa5K')
+})
+
 test('dashboard + analytics stats', async () => {
   const d = await get('/api/dashboard/stats')
   assert.equal(d.status, 200)
@@ -489,4 +670,210 @@ test('system status never claims live government connectivity', async () => {
   assert.equal(res.status, 200)
   assert.match(JSON.stringify(res.body.data.services), /Demo|demo/)
   assert.match(res.body.data.disclaimer, /No live government connectivity/)
+})
+
+/* ------------------------------------------------------------- Phase 5 — elevation */
+
+test('phase5: elevation config exposes the pipeline + disclaimer', async () => {
+  const res = await get('/api/elevation/config')
+  assert.equal(res.status, 200)
+  assert.match(res.body.data.disclaimer || '', /ELEVATION_DEMO/)
+})
+
+test('phase5: uploading a DEM validates it and records TEST_FIXTURE provenance', async () => {
+  const login = await post('/api/auth/login', { username: 'survey01', password: 'Officer@123' })
+  const res = await postForm(
+    '/api/elevation/upload',
+    {
+      field: 'file',
+      filename: 'dem_flat.tif',
+      bytes: readFileSync(path.join(ELEV_FIXTURES, 'dem_flat.tif')),
+      contentType: 'image/tiff',
+      extra: { datasetType: 'DEM', locality: 'sholinganallur', sourceLabel: 'TEST_FIXTURE' },
+    },
+    login.body.data.token,
+  )
+  assert.equal(res.status, 200)
+  assert.equal(res.body.data.status, 'VALIDATED')
+  assert.equal(res.body.data.datasetType, 'DEM')
+  assert.equal(res.body.data.provenance.source, 'TEST_FIXTURE')
+  assert.equal(res.body.data.provenance.isOfficial, false)
+  assert.ok(!('fileBuffer' in res.body.data)) // raw bytes never stored
+})
+
+test('phase5: elevation upload rejects a non-GeoTIFF file as bad input', async () => {
+  const login = await post('/api/auth/login', { username: 'survey01', password: 'Officer@123' })
+  const res = await postForm(
+    '/api/elevation/upload',
+    { field: 'file', filename: 'dem.tif', bytes: tinyPng, contentType: 'image/tiff', extra: { datasetType: 'DEM' } },
+    login.body.data.token,
+  )
+  assert.equal(res.status, 400)
+})
+
+test('phase5: elevation upload/process require ai:run permission', async () => {
+  const citizen = await post('/api/auth/login', { username: 'citizen01', password: 'Citizen@123' })
+  const res = await postForm(
+    '/api/elevation/upload',
+    { field: 'file', filename: 'dem_flat.tif', bytes: readFileSync(path.join(ELEV_FIXTURES, 'dem_flat.tif')), contentType: 'image/tiff', extra: { datasetType: 'DEM' } },
+    citizen.body.data.token,
+  )
+  assert.equal(res.status, 403)
+})
+
+test('phase5: processing a DEM+DSM pair against real buildings runs the full pipeline gracefully', async () => {
+  const login = await post('/api/auth/login', { username: 'survey01', password: 'Officer@123' })
+  const res = await postFormMulti(
+    '/api/elevation/process',
+    {
+      files: {
+        dem: { filename: 'dem_flat.tif', bytes: readFileSync(path.join(ELEV_FIXTURES, 'dem_flat.tif')), contentType: 'image/tiff' },
+        dsm: { filename: 'dsm_building.tif', bytes: readFileSync(path.join(ELEV_FIXTURES, 'dsm_building.tif')), contentType: 'image/tiff' },
+      },
+      extra: { locality: 'sholinganallur', sourceLabel: 'TEST_FIXTURE' },
+    },
+    login.body.data.token,
+  )
+  assert.equal(res.status, 200)
+  assert.equal(res.body.data.status, 'COMPLETED')
+  assert.ok(res.body.data.buildings.length > 0)
+  const b = res.body.data.buildings[0]
+  assert.ok(['VALID', 'WARNING', 'ERROR'].includes(b.qualityStatus))
+  assert.ok(['HIGH', 'MEDIUM', 'LOW'].includes(b.confidenceLevel))
+  assert.equal(b.source, 'TEST_FIXTURE')
+  // the fixture raster does not cover every Sholinganallur building footprint —
+  // this must degrade gracefully (NoData / UNAVAILABLE), never fabricate a value
+  for (const row of res.body.data.buildings) {
+    if (row.qualityStatus === 'ERROR') assert.equal(row.buildingHeightM, null)
+  }
+})
+
+test('phase5: building height endpoint reports UNAVAILABLE, never fabricated, before any dataset is processed', async () => {
+  const res = await get('/api/elevation/buildings/TN-CHN-223456789-B01/height')
+  assert.equal(res.status, 200)
+  assert.equal(res.body.data.dataAvailability, 'UNAVAILABLE')
+  assert.equal(res.body.data.existingHeightSource, 'DEMO_ESTIMATED')
+})
+
+test('phase5: accepting an elevation height reversibly rescales building + floors + units, revert restores exactly', async () => {
+  const buildingId = 'TN-CHN-123456789-B01'
+  const before = await db.collection('buildings').findOne({ buildingId })
+  assert.ok(before, 'seeded building must exist')
+  const floorsBefore = await db.collection('floors').find({ buildingId })
+
+  // seed a VALID buildingHeights result directly (bypasses raster/footprint
+  // alignment — this test is about the accept/revert mechanics, which are
+  // already exercised end-to-end at the ai-service level).
+  const newGround = before.baseElevationM + 2
+  const newHeight = before.heightM + 10
+  await db.collection('buildingHeights').create({
+    buildingHeightId: `${buildingId}-TESTJOB`,
+    buildingId,
+    jobId: 'TESTJOB',
+    groundElevationM: newGround,
+    roofElevationM: newGround + newHeight,
+    buildingHeightM: newHeight,
+    heightMethod: 'DSM_MINUS_DEM',
+    qualityStatus: 'VALID',
+    qualityIssues: [],
+    confidenceLevel: 'HIGH',
+    confidenceScore: 0.9,
+    dataSource: 'LIDAR_DERIVED',
+    source: 'TEST_FIXTURE',
+    reviewStatus: 'REVIEW_REQUIRED',
+    appliedToBuilding: false,
+    timestamp: new Date().toISOString(),
+    isDemo: true,
+  })
+
+  const login = await post('/api/auth/login', { username: 'survey01', password: 'Officer@123' })
+  const accept = await patch(`/api/elevation/buildings/${buildingId}/review`, { action: 'ACCEPT' }, login.body.data.token)
+  assert.equal(accept.status, 200)
+
+  const afterBuilding = await db.collection('buildings').findOne({ buildingId })
+  assert.equal(afterBuilding.baseElevationM, newGround)
+  assert.equal(afterBuilding.heightM, newHeight)
+  assert.equal(afterBuilding.elevationOverrideActive, true)
+  assert.equal(afterBuilding.elevationOriginal.heightM, before.heightM)
+
+  // API surface reflects it (existing endpoint — regression + integration in one)
+  const bRes = await get(`/api/buildings/${buildingId}`)
+  assert.equal(bRes.body.data.building.heightM, newHeight)
+  assert.equal(bRes.body.data.building.volume.zmax - bRes.body.data.building.volume.zmin, newHeight)
+
+  // floors rescaled proportionally, ordering preserved
+  const floorsAfter = await db.collection('floors').find({ buildingId })
+  assert.equal(floorsAfter.length, floorsBefore.length)
+  const scale = newHeight / before.heightM
+  for (let i = 0; i < floorsBefore.length; i += 1) {
+    const expectedBase = newGround + (floorsBefore[i].baseHeight - before.baseElevationM) * scale
+    assert.ok(Math.abs(floorsAfter[i].baseHeight - expectedBase) < 0.01)
+  }
+
+  const hRes = await get(`/api/elevation/buildings/${buildingId}/height`)
+  assert.equal(hRes.body.data.dataAvailability, 'AVAILABLE')
+  assert.equal(hRes.body.data.buildingHeightM, newHeight)
+
+  // revert restores the exact original geometry
+  const revert = await post(`/api/elevation/buildings/${buildingId}/revert`, {}, login.body.data.token)
+  assert.equal(revert.status, 200)
+  const restored = await db.collection('buildings').findOne({ buildingId })
+  assert.equal(restored.baseElevationM, before.baseElevationM)
+  assert.equal(restored.heightM, before.heightM)
+  assert.equal(restored.elevationOverrideActive, false)
+  const floorsRestored = await db.collection('floors').find({ buildingId })
+  for (let i = 0; i < floorsBefore.length; i += 1) {
+    assert.equal(floorsRestored[i].baseHeight, floorsBefore[i].baseHeight)
+    assert.equal(floorsRestored[i].topHeight, floorsBefore[i].topHeight)
+  }
+})
+
+test('phase5: review requires change-detection:review permission, not just ai:run', async () => {
+  const buildingId = 'TN-CHN-323456789-B01'
+  await db.collection('buildingHeights').create({
+    buildingHeightId: `${buildingId}-TESTJOB2`,
+    buildingId,
+    jobId: 'TESTJOB2',
+    groundElevationM: 8,
+    roofElevationM: 40,
+    buildingHeightM: 32,
+    qualityStatus: 'VALID',
+    confidenceLevel: 'MEDIUM',
+    confidenceScore: 0.6,
+    dataSource: 'LIDAR_DERIVED',
+    source: 'TEST_FIXTURE',
+    reviewStatus: 'REVIEW_REQUIRED',
+    appliedToBuilding: false,
+    timestamp: new Date().toISOString(),
+    isDemo: true,
+  })
+  const revenue = await post('/api/auth/login', { username: 'revenue01', password: 'Officer@123' })
+  const res = await patch(`/api/elevation/buildings/${buildingId}/review`, { action: 'ACCEPT' }, revenue.body.data.token)
+  assert.equal(res.status, 403)
+})
+
+test('phase5: NO-FABRICATION — elevation output never carries source OFFICIAL', async () => {
+  const login = await post('/api/auth/login', { username: 'survey01', password: 'Officer@123' })
+  const res = await postFormMulti(
+    '/api/elevation/process',
+    {
+      files: {
+        dem: { filename: 'dem_flat.tif', bytes: readFileSync(path.join(ELEV_FIXTURES, 'dem_flat.tif')), contentType: 'image/tiff' },
+        dsm: { filename: 'dsm_building.tif', bytes: readFileSync(path.join(ELEV_FIXTURES, 'dsm_building.tif')), contentType: 'image/tiff' },
+      },
+      extra: { locality: 'sholinganallur' },
+    },
+    login.body.data.token,
+  )
+  assert.equal(res.status, 200)
+  assert.notEqual(res.body.data.provenance?.source, 'OFFICIAL')
+  assert.equal(res.body.data.provenance?.isOfficial, false)
+})
+
+test('phase5: existing building/floor/unit APIs remain compatible after elevation module loads', async () => {
+  const res = await get('/api/buildings/TN-CHN-223456789-DOES-NOT-EXIST')
+  assert.equal(res.status, 404) // route must still 404, not 500
+  const ok1 = await get('/api/buildings/TN-CHN-223456789-B01')
+  assert.equal(ok1.status, 200)
+  assert.ok(ok1.body.data.building.volume)
 })

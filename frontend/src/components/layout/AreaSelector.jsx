@@ -16,7 +16,7 @@ export function AreaSelector() {
     <div
       className={clsx(
         'pointer-events-auto absolute top-3 z-10 rounded-xl panel transition-all',
-        ['unit', 'parcel', 'ai-building'].includes(selection.mode) ? 'right-3 xl:right-[21.5rem]' : 'right-3',
+        ['unit', 'parcel', 'ai-building', 'ai-floor-unit'].includes(selection.mode) ? 'right-3 xl:right-[21.5rem]' : 'right-3',
         open ? 'w-64' : 'w-11',
       )}
       data-testid="area-selector"

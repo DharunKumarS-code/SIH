@@ -149,10 +149,200 @@ full validation. All prototype / DEMO geometry — see
 records **never** carry an official ULPIN or verified flag — see
 [`15-ai-building-extraction.md`](15-ai-building-extraction.md).
 
+### AI floor plan / room / unit (Phase 4 — `aiFloorPlans`, `aiRooms`,
+`aiFloorUnits`; additive, separate from `floors`/`propertyUnits`)
+
+```json
+{
+  "floorPlanId": "AIFP-CHN-000123", "jobId": "FPJOB-...",
+  "source": "AI_DEMO", "dataClassification": "DEMO_RESEARCH_DATA", "dataset": "CubiCasa5K",
+  "model": "classical-cv", "modelVersion": "1.0",
+  "crs": "GEOREFERENCED_VIA_BUILDING", "scaleMPerPx": 0.02,
+  "buildingId": "TN-CHN-123456789-B01", "floorId": "TN-CHN-123456789-B01-F02",
+  "parentParcelId": "PCL-CHN-SHLN-0001", "parentULPIN": "TN-CHN-123456789",
+  "ulpinStatus": "DEMO_NOT_OFFICIAL", "georeferenced": true,
+  "validation": { "status": "VALID", "counts": { "valid": 0, "warning": 0, "error": 0 }, "issues": [] },
+  "summary": { "walls": 1, "rooms": 7, "units": 2, "reviewRequired": 9 },
+  "reviewStatus": "REVIEW_REQUIRED", "isDemo": true
+}
+```
+```json
+{ "roomId": "AIFP-CHN-000123-FP-RM-000001", "floorPlanId": "AIFP-CHN-000123",
+  "class": "BEDROOM", "roomType": "BEDROOM", "area": 9.2, "areaUnit": "M2",
+  "confidence": 0.71, "confidenceLevel": "MEDIUM", "geometryStatus": "VALID",
+  "source": "AI_DEMO", "reviewRequired": true, "isDemo": true }
+```
+```json
+{
+  "aiFloorUnitId": "AIFP-CHN-000123-AI-UNIT-001", "localUnitId": "AI-UNIT-001",
+  "floorPlanId": "AIFP-CHN-000123", "buildingId": "TN-CHN-123456789-B01",
+  "floorId": "TN-CHN-123456789-B01-F02", "parentParcelId": "PCL-CHN-SHLN-0001",
+  "parentULPIN": "TN-CHN-123456789", "ulpinStatus": "DEMO_NOT_OFFICIAL",
+  "rooms": ["AIFP-CHN-000123-FP-RM-000001", "..."], "roomTypes": ["BEDROOM", "KITCHEN", "LIVING_ROOM"],
+  "geometry": { "type": "Polygon", "coordinates": [[[80.2266, 12.8906], ...]] },
+  "volume": { "volumeId": "FPV-001", "xmin": 80.2266, "xmax": 80.2267, "ymin": 12.8906, "ymax": 12.8993, "zmin": 6, "zmax": 9 },
+  "area": 60.6, "areaUnit": "M2", "confidence": 0.71, "confidenceLevel": "HIGH",
+  "geometryStatus": "VALID", "source": "AI_DEMO", "dataClassification": "DEMO_RESEARCH_DATA",
+  "dataset": "CubiCasa5K", "heightStatus": "ESTIMATED",
+  "reviewRequired": true, "reviewStatus": "REVIEW_REQUIRED", "isDemo": true
+}
+```
+
+Unit/room identifiers (`AI-UNIT-nnn`, `FP-RM-nnnnnn`) are prototype application
+IDs — **never** official ULPINs. `geometry`/`volume` are populated only when a
+real `buildingId` (and, for `zmin`/`zmax`, `floorId`) was supplied; otherwise
+they stay `null` and the plan/unit carries `localBoundary`/`localVolume`
+instead. See [`16-ai-floor-plan-segmentation.md`](16-ai-floor-plan-segmentation.md).
+
+### Elevation dataset + building height (Phase 5 — `elevationDatasets`,
+`buildingHeights`; additive, separate from `buildings`; raw LAS/LAZ/GeoTIFF
+bytes are never stored, only derived metadata + results)
+
+```json
+{
+  "datasetId": "ELEV-CHN-000045", "datasetType": "DEM", "fileName": "dem_flat.tif",
+  "status": "VALIDATED", "validationStatus": "VALID",
+  "metadata": { "crs": "EPSG:32644", "resolutionM": [1.0, 1.0], "minElevationM": 6.1, "maxElevationM": 9.4 },
+  "provenance": { "source": "ELEVATION_DEMO", "dataClassification": "DEMO_RESEARCH_DATA", "isOfficial": false },
+  "locality": "sholinganallur", "isDemo": true
+}
+```
+```json
+{
+  "buildingHeightId": "TN-CHN-123456789-B01-ELEVJOB-XYZ", "buildingId": "TN-CHN-123456789-B01",
+  "jobId": "ELEVJOB-XYZ", "groundElevationM": 8.0, "roofElevationM": 28.0, "buildingHeightM": 20.0,
+  "heightMethod": "DSM_MINUS_DEM", "heightStatistic": "ground=median, roof=median, outlier-clipped [2-98] pct",
+  "qualityStatus": "VALID", "qualityIssues": [], "confidenceLevel": "HIGH", "confidenceScore": 0.91,
+  "dataSource": "DEM_DSM_DERIVED", "groundClassificationMethod": null,
+  "existingHeightM": 40.6, "existingHeightSource": "DEMO_ESTIMATED",
+  "appliedToBuilding": false, "reviewStatus": "REVIEW_REQUIRED",
+  "source": "ELEVATION_DEMO", "isDemo": true
+}
+```
+
+`qualityStatus`/`confidenceLevel` are deterministic rule-based / weighted-score
+outputs, not AI. When a reviewer `ACCEPT`s a result
+(`PATCH /api/elevation/buildings/:id/review`), the *existing* `buildings` doc
+gains `baseElevationM`/`heightM` updated in place plus additive
+`elevationOverrideActive`/`elevationSource`/`elevationConfidenceLevel`/
+`elevationOriginal` fields (the pre-override backup) — and every one of that
+building's `floors`/`propertyUnits` gets the same treatment on
+`baseHeight`/`topHeight`. `POST /api/elevation/buildings/:id/revert` restores
+`elevationOriginal` exactly. See
+[`17-lidar-dem-dsm-elevation.md`](17-lidar-dem-dsm-elevation.md).
+
+### GNSS/CORS control point + boundary verification + geometry proposal
+(Phase 6 — `gnssControlPoints`, `boundaryVerification`,
+`geometryReviewProposals`; additive, never overwrites `parcels.geometry`
+except via an explicit accepted proposal)
+
+```json
+{
+  "controlPointId": "GNSS-CHN-000042", "latitude": 12.90045, "longitude": 80.22705,
+  "resolvedLatitude": 12.90045, "resolvedLongitude": 80.22705, "height": 8.0,
+  "accuracy": 0.02, "accuracyStatus": "REPORTED", "accuracyUnit": "m",
+  "coordinateReferenceSystem": "EPSG:4326", "crsStatus": "MATCHED",
+  "timestamp": "2024-01-15T10:00:00Z", "source": "CORS_SURVEY", "isSurveyGradeSource": true,
+  "surveyMethod": "RTK", "verificationStatus": "UNVERIFIED",
+  "validationStatus": "VALID", "validationIssues": [],
+  "parcelStatus": "MATCHED", "parentParcelId": "PCL-CHN-SHLN-0001", "parentULPIN": "TN-CHN-123456789",
+  "associationConfidence": 1, "nearestBoundaryM": 6.0,
+  "jobId": "GNSSJOB-...", "locality": "sholinganallur",
+  "isOfficial": false, "isDemo": true, "disclaimer": "GNSS/CORS DEMO / MODEL OUTPUT. ..."
+}
+```
+```json
+{
+  "boundaryVerificationId": "GNSSBV-...", "parcelId": "PCL-CHN-SHLN-0001", "ulpin": "TN-CHN-123456789",
+  "tolerance": 1.0, "verificationStatus": "WITHIN_TOLERANCE",
+  "deviations": { "count": 4, "meanM": 0.42, "medianM": 0.4, "maxM": 0.9, "rmseM": 0.51 },
+  "points": [{ "controlPointId": "GNSS-CHN-000042", "distanceM": 0.42, "verificationStatus": "WITHIN_TOLERANCE" }],
+  "note": "OBSERVED DEVIATION from the existing parcel boundary — not an official cadastral correction.",
+  "isDemo": true
+}
+```
+```json
+{
+  "proposalId": "GNSSPROP-000012", "parcelId": "PCL-CHN-SHLN-0001", "ulpin": "TN-CHN-123456789",
+  "originalGeometry": { "type": "Polygon", "coordinates": [ /* existing parcel ring */ ] },
+  "proposedGeometry": { "type": "Polygon", "coordinates": [ /* proposed ring */ ] },
+  "controlPoints": ["GNSS-CHN-000042"], "deviations": { "maxM": 1.4 },
+  "reason": "Corner markers consistently 1.4 m outside the recorded boundary.",
+  "reviewStatus": "PENDING_REVIEW", "reviewer": null, "reviewedAt": null,
+  "isDemo": true
+}
+```
+
+Optional GNSS survey metadata (`horizontalAccuracy`, `verticalAccuracy`,
+`horizontalDatum`, `verticalDatum`, `epoch`, `antennaHeight`,
+`observationDuration`, `fixStatus`, `satelliteCount`, `pdop`,
+`correctionSource`, `referenceStation`, `operator`, `surveySessionId`,
+`provenanceNote`) is stored only when the uploaded dataset supplied it —
+never defaulted or inferred. `accuracy` is the value as supplied by the
+source (`reportedAccuracy`); a boundary-verification `distanceM`/DEM-DSM
+`elevationResidualM` is a *computed residual* against a configured
+*validation tolerance* — the three are never conflated (see
+[`18-gnss-cors-spatial-control.md`](18-gnss-cors-spatial-control.md)).
+`geometryReviewProposals.reviewStatus` (`PENDING_REVIEW` → `ACCEPTED` |
+`REJECTED`) only ever writes the *existing* `parcels.geometry` document on an
+authorized `ACCEPT` — see that same doc, section 11.
+
+### Topology validation run (Phase 7 — `topologyValidationResults`;
+additive, never touches `parcels`/`buildings`/`floors`/`propertyUnits`)
+
+```json
+{
+  "validationRunId": "TRUN-...", "scopeType": "area", "scopeId": "sholinganallur",
+  "localities": ["sholinganallur"],
+  "findings": [{
+    "validationId": "TFIND-...", "ruleId": "BUILDING_CROSSES_PARCEL_BOUNDARY", "aliases": [],
+    "status": "WARNING", "severity": "MEDIUM",
+    "entityType": "BUILDING", "entityId": "TN-CHN-123456789-B05",
+    "parentEntityId": "TN-CHN-123456789", "relatedEntityId": "PCL-CHN-SHLN-0001",
+    "message": "Building B05 extends 3.00 m beyond parcel PCL-CHN-SHLN-0001's boundary (tolerance 0.5 m).",
+    "focusRef": { "kind": "building", "buildingId": "TN-CHN-123456789-B05", "ulpin": "TN-CHN-123456789" },
+    "relatedFocusRef": { "kind": "parcel", "ulpin": "TN-CHN-123456789" },
+    "suggestedFix": "Review the building footprint against the parcel boundary; a small setback violation may need a boundary-review proposal (Phase 6).",
+    "computedValue": 3, "tolerance": 0.5, "provenance": "Completed", "locality": "sholinganallur",
+    "createdAt": "..."
+  }],
+  "summary": {
+    "total": 774, "valid": 773, "warning": 1, "error": 0, "reviewRequired": 0,
+    "overallStatus": "WARNING", "overallSeverity": "MEDIUM",
+    "byEntity": { "PARCEL": { "total": 12, "valid": 12, "warning": 0, "error": 0, "reviewRequired": 0 } },
+    "byRule": { "BUILDING_CROSSES_PARCEL_BOUNDARY": { "ruleId": "BUILDING_CROSSES_PARCEL_BOUNDARY", "total": 1, "warning": 1, "error": 0, "reviewRequired": 0 } }
+  },
+  "mlDecision": "Phase 7 uses deterministic topology validation rules. ...",
+  "requestedBy": "survey01", "isDemo": true
+}
+```
+
+Every finding's `computedValue`/`tolerance`/`reportedAccuracy`-equivalent
+fields are kept as distinct concepts (never conflated) — see
+[`19-intelligent-topology-validation.md`](19-intelligent-topology-validation.md)
+section 10. `PATCH /api/topology/results/:id/findings/:validationId/review`
+only ever adds `reviewAction`/`reviewedBy`/`reviewedAt` to one finding
+within its own run document — it never touches `parcels`/`buildings`/
+`floors`/`propertyUnits` geometry.
+
 ## Relationships
 
 `parcels.ulpin` 1—N `buildings.ulpin` 1—N `floors.buildingId` 1—N
 `propertyUnits.floorId`. Governance rows reference `ulpin` (parcel scope) and/or
 `propertyId` (unit scope) and/or `buildingId`. `disputes` may reference any level.
 `aiBuildings.parentParcelId` optionally references `parcels.parcelId` (spatial
-association only).
+association only). `aiFloorPlans.buildingId`/`floorId` and
+`aiFloorUnits.buildingId`/`floorId` optionally reference `buildings.buildingId`
+/ `floors.floorId` (association only — the AI collections are never joined into
+`floors`/`propertyUnits`); `aiRooms.floorPlanId` and `aiFloorUnits.floorPlanId`
+reference `aiFloorPlans.floorPlanId`. `buildingHeights.buildingId` references
+`buildings.buildingId` (association + optional, reviewer-gated write-back onto
+that same document — see above); `elevationDatasets` stand alone (referenced
+by `buildingHeights.jobId` via the shared `aiJobs` doc, `kind: "elevation"`).
+`gnssControlPoints.parentParcelId`/`parentULPIN` optionally reference
+`parcels.parcelId`/`ulpin` (spatial association only, never a new ULPIN);
+`boundaryVerification.parcelId`/`ulpin` and `geometryReviewProposals.parcelId`/
+`ulpin` likewise reference an existing parcel, and a proposal's
+`controlPoints` reference `gnssControlPoints.controlPointId`. Only an
+authorized `ACCEPT` on a `geometryReviewProposals` document ever writes
+`parcels.geometry`.

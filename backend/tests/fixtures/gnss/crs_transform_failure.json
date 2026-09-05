@@ -1,0 +1,13 @@
+[
+  {
+    "controlPointId": "GCP-CRSFAIL-001",
+    "latitude": 1426253.19,
+    "longitude": 416144.66,
+    "height": 8.0,
+    "accuracy": 0.05,
+    "coordinateReferenceSystem": "EPSG:999999",
+    "timestamp": "2024-01-22T10:00:00Z",
+    "source": "UPLOADED_SURVEY",
+    "surveyMethod": "Static"
+  }
+]

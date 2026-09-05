@@ -1,0 +1,4 @@
+controlPointId,latitude,longitude,height,accuracy,coordinateReferenceSystem,timestamp,source,surveyMethod
+GCP-TS-VALID,12.90045,80.22705,8.0,0.05,EPSG:4326,2024-01-24T10:00:00Z,DEMO,RTK
+GCP-TS-MISSING,12.90050,80.22710,8.1,0.05,EPSG:4326,,DEMO,RTK
+GCP-TS-INVALID,12.90040,80.22700,7.9,0.05,EPSG:4326,not-a-real-date,DEMO,RTK

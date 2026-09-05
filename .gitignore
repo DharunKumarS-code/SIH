@@ -19,6 +19,15 @@ __pycache__/
 *.pyc
 .venv/
 ai-service/.venv/
+.pytest_cache/
+
+# AI model weights / datasets (Phase 3 optional U-Net, Phase 4 optional semantic
+# segmenter + CubiCasa5K) — never commit these; download/train per docs/15, docs/16.
+*.pt
+*.pth
+*.onnx
+ai-service/weights/
+ai-service/data/
 # misc
 *.log
 .DS_Store

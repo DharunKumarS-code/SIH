@@ -10,6 +10,10 @@ import * as prop from '../controllers/propertyController.js'
 import * as gov from '../controllers/governanceController.js'
 import * as misc from '../controllers/miscController.js'
 import * as aiBld from '../controllers/aiBuildingController.js'
+import * as aiFp from '../controllers/aiFloorPlanController.js'
+import * as aiElev from '../controllers/aiElevationController.js'
+import * as gnss from '../controllers/gnssController.js'
+import * as topo from '../controllers/topologyController.js'
 
 const r = Router()
 const ulpinParam = { params: z.object({ ulpin: z.string().min(3) }) }
@@ -70,6 +74,8 @@ r.get('/gis/units', land.gisUnits)
 r.get('/gis/common-areas', land.gisCommonAreas)
 r.get('/gis/layer/:layer', land.gisLayer)
 r.get('/gis/ai-buildings', optionalAuth, aiBld.gisAiBuildings) // Phase 3 — AI-derived buildings (AI_DEMO)
+r.get('/gis/ai-floor-units', optionalAuth, aiFp.gisAiFloorUnits) // Phase 4 — AI floor-plan units (AI_DEMO)
+r.get('/gis/gnss-control-points', optionalAuth, gnss.gisGnssControlPoints) // Phase 6 — GNSS/CORS control points
 
 /* -------------------------------------------------- dashboard / analytics */
 r.get('/dashboard/stats', optionalAuth, misc.getDashboard)
@@ -90,6 +96,72 @@ r.get('/ai/buildings/:id', optionalAuth, aiBld.getAiBuilding)
 r.patch('/ai/buildings/:id/review', requireAuth, requirePermission('change-detection:review'), aiBld.reviewAiBuilding)
 r.get('/ai/jobs', optionalAuth, aiBld.listAiJobs)
 r.get('/ai/jobs/:id', optionalAuth, aiBld.getAiJob)
+
+/* Phase 4 — AI floor-plan & apartment/unit segmentation (additive; graceful if
+   the Python ai-service is unavailable). Registered before the /ai/:feature
+   catch-all. Own collections — never touches buildings / floors / propertyUnits. */
+r.post('/ai/floorplans/infer', requireAuth, requirePermission('ai:run'), aiFp.uploadImage, aiFp.inferAiFloorPlan)
+r.get('/ai/floorplans', optionalAuth, aiFp.listAiFloorPlans)
+r.get('/ai/floorplans/:id', optionalAuth, aiFp.getAiFloorPlan)
+r.get('/ai/floorplans/:id/rooms', optionalAuth, aiFp.getAiFloorPlanRooms)
+r.get('/ai/floorplans/:id/units', optionalAuth, aiFp.getAiFloorPlanUnits)
+r.get('/ai/floorplans/:id/validation', optionalAuth, aiFp.getAiFloorPlanValidation)
+r.get('/ai/floorplans/:id/status', optionalAuth, aiFp.getAiFloorPlanStatus)
+r.patch('/ai/floorplans/:id/review', requireAuth, requirePermission('change-detection:review'), aiFp.reviewAiFloorPlan)
+r.get('/ai/floor-units/:id', optionalAuth, aiFp.getAiFloorUnit)
+r.patch('/ai/floor-units/:id/review', requireAuth, requirePermission('change-detection:review'), aiFp.reviewAiFloorUnit)
+
+/* Phase 5 — elevation / LiDAR / point-cloud / DEM / DSM integration (additive;
+   graceful if the Python ai-service is unavailable). Registered before the
+   /ai/:feature catch-all. Own collections — never touches `buildings` except
+   via the explicit, reversible review/accept action below. */
+r.get('/elevation/config', optionalAuth, aiElev.getConfig)
+r.post('/elevation/upload', requireAuth, requirePermission('ai:run'), aiElev.uploadSingle, aiElev.uploadDataset)
+r.post('/elevation/process', requireAuth, requirePermission('ai:run'), aiElev.uploadProcessFiles, aiElev.processDataset)
+r.get('/elevation/datasets', optionalAuth, aiElev.listDatasets)
+r.get('/elevation/datasets/:id', optionalAuth, aiElev.getDataset)
+r.get('/elevation/datasets/:id/status', optionalAuth, aiElev.getDatasetStatus)
+r.get('/elevation/coverage', optionalAuth, aiElev.getCoverage)
+r.get('/elevation/buildings/:buildingId/height', optionalAuth, aiElev.getBuildingHeight)
+r.get('/elevation/buildings/:buildingId/quality', optionalAuth, aiElev.getBuildingQuality)
+r.patch('/elevation/buildings/:buildingId/review', requireAuth, requirePermission('change-detection:review'), aiElev.reviewBuildingHeight)
+r.post('/elevation/buildings/:buildingId/revert', requireAuth, requirePermission('change-detection:review'), aiElev.revertBuildingHeight)
+
+/* Phase 6 — GNSS/CORS high-precision spatial control (additive). Own
+   `gnssControlPoints` / `boundaryVerification` / `geometryReviewProposals`
+   collections — existing `parcels` geometry is only ever touched by the
+   explicit reviewer-gated proposal-accept action below. */
+r.get('/gnss/config', optionalAuth, gnss.getConfig)
+r.post('/gnss/control-points/validate', requireAuth, requirePermission('ai:run'), gnss.uploadSingle, gnss.validateUpload_)
+r.post('/gnss/control-points/import', requireAuth, requirePermission('ai:run'), gnss.uploadSingle, gnss.importUpload)
+r.get('/gnss/control-points', optionalAuth, gnss.listControlPoints)
+r.get('/gnss/control-points/:id', optionalAuth, gnss.getControlPoint)
+r.get('/gnss/control-points/:id/validation', optionalAuth, gnss.getControlPointValidation)
+r.get('/gnss/control-points/:id/elevation-residual', optionalAuth, gnss.getControlPointElevationResidual)
+r.post('/gnss/review', requireAuth, requirePermission('change-detection:review'), gnss.reviewControlPoint)
+r.get('/gnss/parcels/:ulpin/control-points', optionalAuth, gnss.listParcelControlPoints)
+r.get('/gnss/parcels/:ulpin/boundary-verification', optionalAuth, gnss.getParcelBoundaryVerification)
+r.post('/gnss/boundary-analysis', requireAuth, requirePermission('ai:run'), gnss.runBoundaryAnalysis)
+r.post('/gnss/transform', requireAuth, requirePermission('ai:run'), gnss.transform)
+r.post('/gnss/proposals', requireAuth, requirePermission('parcel:boundary-review'), gnss.createGeometryProposal)
+r.get('/gnss/proposals', optionalAuth, gnss.listGeometryProposals)
+r.get('/gnss/proposals/:id', optionalAuth, gnss.getGeometryProposal)
+r.patch('/gnss/proposals/:id/review', requireAuth, requirePermission('change-detection:review'), gnss.reviewGeometryProposal)
+
+/* Phase 7 — intelligent 2D/3D topology validation engine (additive; graceful
+   if the Python ai-service is unavailable). Own `topologyValidationResults`
+   collection — never touches parcels/buildings/floors/propertyUnits. */
+r.get('/topology/config', optionalAuth, topo.getConfig)
+r.post('/topology/validate', requireAuth, requirePermission('topology:validate'), topo.validateAll)
+r.post('/topology/validate/area/:areaId', requireAuth, requirePermission('topology:validate'), topo.validateArea)
+r.post('/topology/validate/parcel/:ulpin', requireAuth, requirePermission('topology:validate'), topo.validateParcel)
+r.post('/topology/validate/building/:buildingId', requireAuth, requirePermission('topology:validate'), topo.validateBuilding)
+r.post('/topology/validate/floor/:floorId', requireAuth, requirePermission('topology:validate'), topo.validateFloor)
+r.post('/topology/validate/unit/:propertyId', requireAuth, requirePermission('topology:validate'), topo.validateUnit)
+r.get('/topology/results', requireAuth, requirePermission('topology:read'), topo.listResults)
+r.get('/topology/results/:id', requireAuth, requirePermission('topology:read'), topo.getResult)
+r.get('/topology/summary', requireAuth, requirePermission('topology:read'), topo.getLatestSummary)
+r.patch('/topology/results/:id/findings/:validationId/review', requireAuth, requirePermission('topology:review'), topo.reviewFinding)
 
 r.post('/ai/:feature', requireAuth, requirePermission('ai:run'), misc.runAi)
 

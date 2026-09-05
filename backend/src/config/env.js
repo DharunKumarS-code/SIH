@@ -28,6 +28,22 @@ export const env = {
   // and the rest of the app is unaffected.
   aiMaxUploadMb: Number(process.env.AI_MAX_UPLOAD_MB) || 12,
   aiInferTimeoutMs: Number(process.env.AI_INFER_TIMEOUT_MS) || 30000,
+  // Phase 5 — elevation / LiDAR / DEM / DSM (optional/additive). Point clouds
+  // are larger than the imagery uploads above, so they get their own cap and a
+  // longer ai-service timeout; graceful INFERENCE_UNAVAILABLE if unreachable.
+  aiMaxElevationUploadMb: Number(process.env.AI_MAX_ELEVATION_UPLOAD_MB) || 60,
+  aiElevationTimeoutMs: Number(process.env.AI_ELEVATION_TIMEOUT_MS) || 60000,
+  // Phase 6 — GNSS/CORS control points (optional/additive). CSV/JSON/GeoJSON
+  // uploads are small text files, not rasters/point clouds, so the cap is
+  // conservative; CRS transformation degrades to TRANSFORMATION_UNAVAILABLE
+  // (never a guessed CRS) if the ai-service is unreachable.
+  gnssMaxUploadMb: Number(process.env.GNSS_MAX_UPLOAD_MB) || 5,
+  gnssMaxPoints: Number(process.env.GNSS_MAX_POINTS) || 5000,
+  gnssTransformTimeoutMs: Number(process.env.GNSS_TRANSFORM_TIMEOUT_MS) || 15000,
+  // Phase 7 — intelligent 2D/3D topology validation (optional/additive).
+  // Exact polygon validity/overlap degrades to GEOMETRY_ENGINE_UNAVAILABLE
+  // (never a guessed result) if the ai-service is unreachable.
+  topologyGeometryTimeoutMs: Number(process.env.TOPOLOGY_GEOMETRY_TIMEOUT_MS) || 15000,
   seedOnBoot: bool(process.env.SEED_ON_BOOT, true),
   nodeEnv: process.env.NODE_ENV || 'development',
 }

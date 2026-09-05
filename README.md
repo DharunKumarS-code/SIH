@@ -210,6 +210,74 @@ GET/POST /services (citizen workflow) · GET /audit · GET /users
   demo buildings. If the AI service is down the endpoint returns
   `INFERENCE_UNAVAILABLE` and the rest of the app is unaffected. See
   [`docs/15-ai-building-extraction.md`](docs/15-ai-building-extraction.md).
+- **AI floor-plan & apartment/unit segmentation (Phase 4)** — the same
+  `ai-service` also turns an uploaded floor-plan image into walls, rooms
+  (heuristically typed), doors/openings, a room topology graph, and AI-inferred
+  **apartment/unit boundaries** (never "every room is a unit"). A floor plan has
+  no coordinates of its own; supplying an existing `buildingId`/`floorId` fits
+  it onto that building's footprint and reuses the **Phase-2** volume model for
+  a 3D unit box — otherwise geometry stays in a local floor-plan coordinate
+  system. Results appear as an optional, **default-OFF** "AI Floor Plans /
+  Property Units" layer in the same Chennai-wide viewer, with an AI sidebar and
+  the same Accept/Reject/Needs-Correction review workflow. Output is always
+  `source: "AI_DEMO"` / `dataClassification: "DEMO_RESEARCH_DATA"` (dataset:
+  **CubiCasa5K**) / `ulpinStatus: "DEMO_NOT_OFFICIAL"` — never official
+  cadastral / survey / ownership data — and it never touches the demo
+  `floors`/`propertyUnits`. If the AI service is down the endpoint returns
+  `INFERENCE_UNAVAILABLE` and the rest of the app is unaffected. See
+  [`docs/16-ai-floor-plan-segmentation.md`](docs/16-ai-floor-plan-segmentation.md).
+- **Elevation / LiDAR / DEM / DSM (Phase 5)** — the same `ai-service` also
+  turns an uploaded LAS/LAZ point cloud or DEM/DSM GeoTIFF into ground
+  classification, a DEM, a DSM, and per-building ground/roof/height estimates
+  (robust, outlier-clipped DSM-minus-DEM sampling) with deterministic quality
+  validation and a confidence score. A result is **never** applied to a
+  building automatically — a reviewer must explicitly **Accept** it
+  (`change-detection:review`), which reversibly rescales that building's
+  `heightM`/`baseElevationM` **and** every one of its floors'/units'
+  `baseHeight`/`topHeight` in place (reusing the Phase-2 volume model, no
+  second one) and can be reverted at any time. Output is always
+  `source: "ELEVATION_DEMO"` / `RESEARCH_DATA` / `TEST_FIXTURE` /
+  `USER_SUPPLIED` (`isOfficial: false`) — never official, survey-certified
+  elevation data. If the AI service is down the endpoint returns
+  `INFERENCE_UNAVAILABLE` and the rest of the app is unaffected. See
+  [`docs/17-lidar-dem-dsm-elevation.md`](docs/17-lidar-dem-dsm-elevation.md).
+- **GNSS/CORS high-precision spatial control (Phase 6)** — upload CSV/JSON/GeoJSON
+  control points, and the backend deterministically validates them (invalid
+  coordinates, duplicates, robust MAD-based spatial/height outliers, missing
+  timestamp/accuracy), resolves their CRS (WGS84 pass-through, or a
+  `pyproj`-backed transform via the `ai-service` for a projected CRS — never
+  guessed when the CRS is missing/unknown), associates them with an existing
+  parcel (MATCHED/MULTI_PARCEL/OUTSIDE_PARCEL/REVIEW_REQUIRED, referencing
+  that parcel's own ULPIN — never a new one), and verifies them against the
+  parcel's existing boundary (observed deviation vs. a configured tolerance).
+  A suggested boundary correction is only ever applied via an explicit,
+  reviewer-**Accept**ed `geometryReviewProposals` document
+  (`change-detection:review`/`parcel:boundary-review`) — it is never
+  automatic. Reported accuracy is shown only when the uploaded dataset
+  supplied it; a computed boundary/DEM-DSM residual is always kept distinct
+  from reported accuracy and from the validation tolerance used to judge it.
+  Control points appear as an optional, **default-OFF** "GNSS / CORS Control"
+  layer in the same Chennai-wide viewer. Output is always `isOfficial: false`
+  / `isDemo: true` — never official cadastral control points or
+  government-authoritative survey data. See
+  [`docs/18-gnss-cors-spatial-control.md`](docs/18-gnss-cors-spatial-control.md).
+- **Intelligent 2D/3D topology validation (Phase 7)** — a deterministic
+  RULE_ENGINE checks geometry and hierarchy relationships across
+  Parcel → Building → Floor → Unit → 3D Volume: self-intersection, invalid
+  polygons, overlaps, gaps, empty/degenerate geometry, invalid Z/height/
+  volume, incorrect floor stacking, unexpected 3D-volume intersection,
+  duplicate entities, disconnection, and parent-child containment. Exact
+  planar polygon geometry (validity/self-intersection/overlap) is delegated
+  to `shapely` in the `ai-service`; every other check — tolerances,
+  severity, hierarchy, 3D volume math, spatial-index prefiltering (bbox
+  sweep, never a naive O(n²) full-geometry scan) — is deterministic
+  JavaScript reusing Phase 2's own AABB math and Phase 6's ring helpers. A
+  finding **never** modifies stored geometry; `suggestedFix` is guidance for
+  a separate, explicit review action. Results appear on `/topology`, with a
+  **Focus** action that reuses the existing selection/flyTo wiring in the
+  same Chennai-wide Cesium viewer — no new layer or viewer is added. No ML
+  model is used or implied. See
+  [`docs/19-intelligent-topology-validation.md`](docs/19-intelligent-topology-validation.md).
 
 Detail: [`docs/05-3d-property-model.md`](docs/05-3d-property-model.md).
 
@@ -219,12 +287,28 @@ Collections: `users`, `parcels`, `ulpins`, `owners`, `buildings`, `floors`,
 `propertyUnits`, `commonAreas`, `registrations`, `encumbrances`,
 `buildingApprovals`, `propertyTax`, `landUse`, `masterPlans`, `utilities`,
 `environment`, `boundaries`, `roads`, `disputes`, `documents`,
-`serviceRequests`, `notifications`, `auditLogs`, and (Phase 3, additive)
+`serviceRequests`, `notifications`, `auditLogs`, (Phase 3, additive)
 `aiBuildings` · `aiJobs` — AI-extracted candidate buildings + inference jobs,
-kept entirely separate from the demo `buildings`.
+kept entirely separate from the demo `buildings` — and (Phase 4, additive)
+`aiFloorPlans` · `aiRooms` · `aiFloorUnits` — AI floor-plan segmentation output,
+kept entirely separate from the demo `floors`/`propertyUnits` — and
+(Phase 5, additive) `elevationDatasets` · `buildingHeights` — validated
+elevation-dataset metadata + per-building height/quality/confidence results
+(raw LAS/LAZ/GeoTIFF bytes are never stored); `aiJobs` is reused with
+`kind: "elevation"` — and (Phase 6, additive) `gnssControlPoints` ·
+`boundaryVerification` · `geometryReviewProposals` — GNSS/CORS control
+points, stored boundary-verification results, and reviewable parcel-geometry
+correction proposals, all kept separate from `parcels` until an authorized
+reviewer explicitly accepts a proposal — and (Phase 7, additive)
+`topologyValidationResults` — one document per validation run (findings +
+summary), never touching `parcels`/`buildings`/`floors`/`propertyUnits`.
 Canonical shapes: [`docs/03-data-schema.md`](docs/03-data-schema.md),
-[`docs/15-ai-building-extraction.md`](docs/15-ai-building-extraction.md) and
-`backend/src/data/seed.js`.
+[`docs/15-ai-building-extraction.md`](docs/15-ai-building-extraction.md),
+[`docs/16-ai-floor-plan-segmentation.md`](docs/16-ai-floor-plan-segmentation.md),
+[`docs/17-lidar-dem-dsm-elevation.md`](docs/17-lidar-dem-dsm-elevation.md),
+[`docs/18-gnss-cors-spatial-control.md`](docs/18-gnss-cors-spatial-control.md),
+[`docs/19-intelligent-topology-validation.md`](docs/19-intelligent-topology-validation.md)
+and `backend/src/data/seed.js`.
 
 ### Land-data provenance (real ULPIN vs demo)
 

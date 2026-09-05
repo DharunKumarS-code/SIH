@@ -48,6 +48,15 @@ export const DEFAULT_LAYERS = {
   // AI extraction (Phase 3) — additive, OFF by default so it never affects the
   // existing map / LOD until a user explicitly turns it on.
   aiBuildings: false,
+  // AI floor-plan units (Phase 4) — additive, OFF by default.
+  aiFloorUnits: false,
+  // Elevation / LiDAR height-quality overlay (Phase 5) — additive, OFF by
+  // default. Recolors buildings that have an ACCEPTED elevation-derived
+  // height by confidence; never renders raw point clouds.
+  elevationHeightQuality: false,
+  // GNSS/CORS control points (Phase 6) — additive, OFF by default. Never
+  // renders raw survey observations at city scale; per-locality only.
+  gnssControlPoints: false,
 }
 
 const areaFromLocality = (loc) => ({
@@ -172,9 +181,25 @@ export function SelectionProvider({ children }) {
     mapApi.current.flyToAiBuilding?.(aiBuildingId)
   }, [])
 
+  // Phase 4 — an AI floor-plan-derived apartment/unit. Additive selection mode;
+  // reuses the same viewer, camera and sidebar.
+  const selectAiFloorUnit = useCallback((aiFloorUnitId) => {
+    setIsolated(false)
+    setSelection({ mode: 'ai-floor-unit', aiFloorUnitId, ulpin: null, buildingId: null, floorNumber: null, propertyId: null })
+    mapApi.current.flyToAiFloorUnit?.(aiFloorUnitId)
+  }, [])
+
+  // Phase 6 — a GNSS/CORS control point. Additive selection mode; reuses the
+  // same viewer, camera and sidebar.
+  const selectGnssPoint = useCallback((controlPointId) => {
+    setIsolated(false)
+    setSelection({ mode: 'gnss-point', controlPointId, ulpin: null, buildingId: null, floorNumber: null, propertyId: null })
+    mapApi.current.flyToGnssPoint?.(controlPointId)
+  }, [])
+
   const reset = useCallback(() => {
     setIsolated(false)
-    setSelection((s) => ({ mode: 'overview', ulpin: s.ulpin, buildingId: null, floorNumber: null, propertyId: null, aiBuildingId: null }))
+    setSelection((s) => ({ mode: 'overview', ulpin: s.ulpin, buildingId: null, floorNumber: null, propertyId: null, aiBuildingId: null, aiFloorUnitId: null }))
     mapApi.current.resetView?.()
   }, [])
 
@@ -213,6 +238,8 @@ export function SelectionProvider({ children }) {
       selectFloor,
       selectUnit,
       selectAiBuilding,
+      selectAiFloorUnit,
+      selectGnssPoint,
       reset,
     }),
     [
@@ -231,6 +258,8 @@ export function SelectionProvider({ children }) {
       selectFloor,
       selectUnit,
       selectAiBuilding,
+      selectAiFloorUnit,
+      selectGnssPoint,
       reset,
     ],
   )

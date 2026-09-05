@@ -35,6 +35,24 @@ const KEYS = {
   // Phase 3 — AI building-footprint extraction (additive; separate from `buildings`).
   aiBuildings: ['aiBuildingId', 'jobId', 'parentParcelId', 'locality'],
   aiJobs: ['jobId'],
+  // Phase 4 — AI floor-plan & apartment/unit segmentation (additive; separate
+  // from `floors` / `propertyUnits`).
+  aiFloorPlans: ['floorPlanId', 'jobId', 'buildingId', 'floorId', 'locality'],
+  aiRooms: ['roomId', 'floorPlanId', 'jobId', 'floorId'],
+  aiFloorUnits: ['aiFloorUnitId', 'floorPlanId', 'jobId', 'buildingId', 'floorId', 'locality'],
+  // Phase 5 — elevation / LiDAR / DEM / DSM integration (additive; separate
+  // from `buildings` — see services/aiElevation). Raw LAS/LAZ/GeoTIFF bytes
+  // are never stored here, only derived metadata + results.
+  elevationDatasets: ['datasetId', 'locality', 'jobId'],
+  buildingHeights: ['buildingId', 'datasetId', 'jobId'],
+  // Phase 6 — GNSS/CORS high-precision spatial control (additive; separate
+  // from `parcels` until an authorized reviewer accepts a geometry proposal).
+  gnssControlPoints: ['controlPointId', 'jobId', 'parentParcelId', 'parentULPIN', 'locality'],
+  boundaryVerification: ['boundaryVerificationId', 'parcelId', 'ulpin'],
+  geometryReviewProposals: ['proposalId', 'parcelId', 'ulpin'],
+  // Phase 7 — intelligent 2D/3D topology validation engine (additive; never
+  // touches parcels/buildings/floors/propertyUnits).
+  topologyValidationResults: ['validationRunId', 'scopeType', 'scopeId'],
 }
 
 function modelFor(name) {

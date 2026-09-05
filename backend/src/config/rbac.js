@@ -36,6 +36,7 @@ export const PERMISSIONS = {
     'gis:view',
     'audit:view-own',
     'report:view',
+    'topology:read', // Phase 7 — view-only
   ],
   'Survey Officer': [
     'parcel:search',
@@ -47,6 +48,10 @@ export const PERMISSIONS = {
     'ai:run',
     'change-detection:review',
     'report:view',
+    // Phase 7 — topology validation engine
+    'topology:read',
+    'topology:validate',
+    'topology:review',
   ],
   'Planning Officer': [
     'parcel:search',
@@ -59,6 +64,7 @@ export const PERMISSIONS = {
     'property:view',
     'gis:view',
     'report:view',
+    'topology:read', // Phase 7 — view-only
   ],
   'Revenue Officer': [
     'parcel:search',

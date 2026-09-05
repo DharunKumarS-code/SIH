@@ -30,3 +30,22 @@ pytest>=8,<9
 #     Enable with AI_MODEL=unet and provide weights. Documented in docs/15.
 #   torch>=2.2
 #   segmentation-models-pytorch>=0.3.4
+
+# --- Phase 5 — elevation / LiDAR / point-cloud / DEM / DSM integration.
+#     DEM/DSM rasters reuse rasterio + pyproj (already listed above). LAS/LAZ
+#     point clouds need laspy; LAZ (compressed) reading additionally needs one
+#     of the optional backends below — if neither is installed, LAZ uploads
+#     fail with a clear, non-fabricated "unavailable" result (plain LAS still
+#     works). PDAL and QGIS are deliberately NOT used — see docs/17.
+laspy>=2.5,<3
+lazrs>=0.5,<1
+
+# --- Phase 4 — AI floor-plan & apartment/unit segmentation.
+#     Uses ONLY the deps already listed above (numpy, Pillow, scikit-image,
+#     shapely; scipy comes with scikit-image). scikit-image supplies
+#     skeletonize / watershed / clear_border for wall + room extraction, so no
+#     new hard dependency is added.
+#     OPTIONAL trained model (NOT installed by default): enable with
+#     FLOORPLAN_MODEL=semseg + FLOORPLAN_SEMSEG_WEIGHTS. Documented in docs/16.
+#   torch>=2.2
+#   segmentation-models-pytorch>=0.3.4

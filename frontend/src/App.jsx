@@ -15,6 +15,10 @@ import Disputes from './pages/Disputes.jsx'
 import Analytics from './pages/Analytics.jsx'
 import AiStudio from './pages/AiStudio.jsx'
 import AiBuildingExtraction from './pages/AiBuildingExtraction.jsx'
+import AiFloorPlanSegmentation from './pages/AiFloorPlanSegmentation.jsx'
+import ElevationLiDAR from './pages/ElevationLiDAR.jsx'
+import GNSSControlPoints from './pages/GNSSControlPoints.jsx'
+import TopologyValidation from './pages/TopologyValidation.jsx'
 import Services from './pages/Services.jsx'
 import Reports from './pages/Reports.jsx'
 import UsersRoles from './pages/UsersRoles.jsx'
@@ -61,6 +65,10 @@ export default function App() {
                 <Route path="analytics" element={<Analytics />} />
                 <Route path="ai" element={<AiStudio />} />
                 <Route path="ai-buildings" element={<AiBuildingExtraction />} />
+                <Route path="ai-floorplans" element={<AiFloorPlanSegmentation />} />
+                <Route path="elevation" element={<ElevationLiDAR />} />
+                <Route path="gnss" element={<GNSSControlPoints />} />
+                <Route path="topology" element={<TopologyValidation />} />
                 <Route path="services" element={<Services />} />
                 <Route path="reports" element={<Reports />} />
                 <Route path="users" element={<UsersRoles />} />

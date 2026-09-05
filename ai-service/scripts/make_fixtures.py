@@ -66,6 +66,51 @@ def make_png() -> pathlib.Path:
     return path
 
 
+def make_floorplan_png() -> pathlib.Path:
+    """Synthetic floor plan for the Phase-4 AI segmentation tests.
+
+    White paper, black wall ink: an outer rectangle, a central circulation
+    corridor, and two apartments (left / right) each split into three rooms with
+    door gaps. SYNTHETIC / AI_DEMO — not a real Chennai floor plan.
+    """
+    H, W = 384, 512
+    img = np.full((H, W), 245, dtype=np.uint8)  # paper
+    t = 4  # wall thickness
+
+    def wall(y0, y1, x0, x1):
+        img[y0:y1, x0:x1] = 20
+
+    # outer shell
+    wall(20, 20 + t, 20, W - 20)
+    wall(H - 20 - t, H - 20, 20, W - 20)
+    wall(20, H - 20, 20, 20 + t)
+    wall(20, H - 20, W - 20 - t, W - 20)
+
+    # central circulation corridor — two fully-closed vertical walls ~46 px apart
+    cx = W // 2
+    wall(20, H - 20, cx - 23 - t, cx - 23)
+    wall(20, H - 20, cx + 23, cx + 23 + t)
+
+    # left apartment: two horizontal partitions -> 3 rooms, each with a door gap
+    for y in (135, 250):
+        wall(y, y + t, 20, cx - 23 - t)
+        img[y:y + t, 72:94] = 245  # interior door gap
+
+    # right apartment: two horizontal partitions -> 3 rooms, each with a door gap
+    for y in (150, 265):
+        wall(y, y + t, cx + 23 + t, W - 20)
+        img[y:y + t, W - 94:W - 72] = 245  # interior door gap
+
+    # one entrance door from each apartment into the shared corridor
+    img[96:118, cx - 23 - t:cx - 23] = 245
+    img[300:322, cx + 23:cx + 23 + t] = 245
+
+    path = FIX / "floorplan_demo.png"
+    Image.fromarray(img).save(path)
+    return path
+
+
 if __name__ == "__main__":
     print("wrote", make_geotiff())
     print("wrote", make_png())
+    print("wrote", make_floorplan_png())

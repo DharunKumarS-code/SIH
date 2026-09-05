@@ -1,0 +1,29 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [80.22705, 12.90045, 8.0] },
+      "properties": {
+        "controlPointId": "GCP-GEO-DEMO-001",
+        "accuracy": null,
+        "coordinateReferenceSystem": "EPSG:4326",
+        "timestamp": "2024-01-23T10:00:00Z",
+        "source": "DEMO",
+        "surveyMethod": "Synthetic"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [80.22710, 12.90050, 8.1] },
+      "properties": {
+        "controlPointId": "GCP-GEO-RESEARCH-001",
+        "accuracy": null,
+        "coordinateReferenceSystem": "EPSG:4326",
+        "timestamp": "2024-01-23T10:05:00Z",
+        "source": "RESEARCH",
+        "surveyMethod": "Published dataset"
+      }
+    }
+  ]
+}

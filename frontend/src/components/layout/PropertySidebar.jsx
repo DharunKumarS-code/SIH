@@ -2,7 +2,7 @@ import { useState } from 'react'
 import clsx from 'clsx'
 import {
   X, Crosshair, Focus, ShieldCheck, FileText, Share2, StickyNote, Building2, Layers, Home,
-  BadgeCheck, TriangleAlert, MapPin, ExternalLink, Box,
+  BadgeCheck, TriangleAlert, MapPin, ExternalLink, Box, Mountain, Satellite,
 } from 'lucide-react'
 import { useSelection } from '../../context/SelectionContext.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
@@ -35,6 +35,9 @@ export function PropertySidebar() {
   const isUnit = selection.mode === 'unit' && selection.propertyId
   const isParcel = selection.mode === 'parcel' && !!selection.ulpin
   const isAi = selection.mode === 'ai-building' && !!selection.aiBuildingId
+  const isAiFp = selection.mode === 'ai-floor-unit' && !!selection.aiFloorUnitId
+  const isGnss = selection.mode === 'gnss-point' && !!selection.controlPointId
+  const isBuildingLevel = (selection.mode === 'building' || selection.mode === 'floor') && !!selection.buildingId
   const { data, error, loading, reload } = useApi(
     () => (isUnit ? api.unit(selection.propertyId) : Promise.resolve(null)),
     [isUnit, selection.propertyId],
@@ -47,6 +50,29 @@ export function PropertySidebar() {
     () => (isAi ? api.aiBuilding(selection.aiBuildingId) : Promise.resolve(null)),
     [isAi, selection.aiBuildingId],
   )
+  const aiFpQ = useApi(
+    () => (isAiFp ? api.aiFloorUnit(selection.aiFloorUnitId) : Promise.resolve(null)),
+    [isAiFp, selection.aiFloorUnitId],
+  )
+  const gnssQ = useApi(
+    () => (isGnss ? api.gnssControlPoint(selection.controlPointId) : Promise.resolve(null)),
+    [isGnss, selection.controlPointId],
+  )
+  // Phase 6 — DEM/DSM elevation residual for the selected control point, when
+  // one is available (spec section 15). Never fabricated: a point with no
+  // supplied height, or no DEM/DSM-derived building height nearby, comes back
+  // dataAvailability: 'UNAVAILABLE' rather than a guessed number.
+  const gnssElevQ = useApi(
+    () => (isGnss ? api.gnssControlPointElevationResidual(selection.controlPointId).catch(() => null) : Promise.resolve(null)),
+    [isGnss, selection.controlPointId],
+  )
+  // Phase 5 — elevation-derived building height, shown alongside the
+  // building/floor placeholder (spec section 22). Purely additive: falls
+  // back to "Unavailable" if no elevation dataset has been processed yet.
+  const elevQ = useApi(
+    () => (isBuildingLevel ? api.elevationBuildingHeight(selection.buildingId).catch(() => null) : Promise.resolve(null)),
+    [isBuildingLevel, selection.buildingId],
+  )
 
   if (!isUnit) {
     if (isParcel) {
@@ -54,6 +80,12 @@ export function PropertySidebar() {
     }
     if (isAi) {
       return <AiBuildingCard query={aiQ} id={selection.aiBuildingId} onClose={reset} canReview={can('change-detection:review')} />
+    }
+    if (isAiFp) {
+      return <AiFloorUnitCard query={aiFpQ} id={selection.aiFloorUnitId} onClose={reset} mapApi={mapApi} canReview={can('change-detection:review')} />
+    }
+    if (isGnss) {
+      return <GnssPointCard query={gnssQ} elevQuery={gnssElevQ} id={selection.controlPointId} onClose={reset} mapApi={mapApi} canReview={can('change-detection:review')} />
     }
     return (
       <aside className="pointer-events-auto absolute right-3 top-3 z-30 w-80 rounded-xl panel p-4" data-testid="property-sidebar">
@@ -65,6 +97,7 @@ export function PropertySidebar() {
               ? 'Floor selected. Choose a unit from the floor plan below or in the 3D scene.'
               : 'Search a ULPIN, Survey Number, Subdivision or locality — or pick a parcel / building in the 3D scene.'}
         </p>
+        {isBuildingLevel && <BuildingElevationPanel query={elevQ} />}
       </aside>
     )
   }
@@ -289,6 +322,59 @@ export function PropertySidebar() {
         )}
       </footer>
     </aside>
+  )
+}
+
+// --------------------------------------------------------------------------
+// Building elevation panel (Phase 5, additive). Shown under the building/floor
+// placeholder in the main sidebar — ground / roof / height / source /
+// confidence / quality per spec section 22, or an explicit "Unavailable" with
+// a reason when no elevation dataset has been processed for this building.
+// --------------------------------------------------------------------------
+function BuildingElevationPanel({ query }) {
+  const { data: h, loading } = query
+  if (loading) return <div className="mt-3"><Spinner /></div>
+  if (!h) return null
+
+  if (h.dataAvailability === 'UNAVAILABLE') {
+    return (
+      <div className="mt-3 rounded-lg border border-white/10 p-2.5" data-testid="elevation-unavailable">
+        <p className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
+          <Mountain size={12} /> Building Height
+        </p>
+        <p className="mt-1 text-[12px] text-slate-300">Unavailable</p>
+        <p className="mt-0.5 text-[11px] text-slate-500">Reason: {h.reason}</p>
+      </div>
+    )
+  }
+
+  const qtone = h.qualityStatus === 'VALID' ? 'Verified' : h.qualityStatus === 'ERROR' ? 'Disputed' : 'Under Review'
+  return (
+    <div className="mt-3 rounded-lg border border-gold/30 bg-gold/10 p-2.5" data-testid="elevation-height-panel">
+      <p className="flex items-center gap-1.5 text-[11px] font-bold text-gold">
+        <Mountain size={12} /> Elevation-Derived Height <DemoTag label="ELEVATION_DEMO" />
+      </p>
+      <KeyValue
+        data={{
+          'Building Height': h.buildingHeightM != null ? `${h.buildingHeightM} m` : 'Unavailable',
+          Ground: h.groundElevationM != null ? `${h.groundElevationM} m` : '—',
+          Roof: h.roofElevationM != null ? `${h.roofElevationM} m` : '—',
+          Source: h.dataSource || '—',
+          Confidence: h.confidenceLevel || '—',
+        }}
+      />
+      <div className="mt-1.5 flex items-center gap-2">
+        <Badge status={qtone}>{h.qualityStatus}</Badge>
+        {h.appliedToBuilding && <span className="text-[10px] text-emerald-400">Applied to 3D extrusion</span>}
+      </div>
+      {(h.qualityIssues || []).length > 0 && (
+        <ul className="mt-1.5 space-y-1 text-[11px] text-slate-300">
+          {h.qualityIssues.slice(0, 3).map((i, idx) => (
+            <li key={idx}><span className={i.status === 'ERROR' ? 'text-danger' : 'text-gold'}>{i.status}</span> {i.message}</li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 
@@ -569,6 +655,363 @@ function AiBuildingCard({ query, id, onClose, canReview }) {
           </>
         )}
       </div>
+    </aside>
+  )
+}
+
+// --------------------------------------------------------------------------
+// AI floor-plan-derived apartment / property unit (Phase 4). MODEL OUTPUT /
+// AI_DEMO / DEMO_RESEARCH_DATA (dataset: CubiCasa5K). An AI-inferred apartment
+// boundary — never an official cadastral / ULPIN / ownership record. Reuses the
+// existing viewer, camera, isolation and sidebar.
+// --------------------------------------------------------------------------
+function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
+  const { isolated, setIsolated } = useSelection()
+  const { data: u, error, loading, reload } = query
+  const [busy, setBusy] = useState(false)
+
+  const setReview = async (status) => {
+    setBusy(true)
+    await api.aiFloorUnitReview(id, status).catch(() => {})
+    setBusy(false)
+    reload()
+  }
+
+  const level = u?.confidenceLevel
+  const gtone = u?.geometryStatus === 'VALID' ? 'Verified' : u?.geometryStatus === 'ERROR' ? 'Disputed' : 'Under Review'
+  const vol = u?.volume || null
+
+  return (
+    <aside
+      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
+      data-testid="property-sidebar"
+    >
+      <header className="flex items-start justify-between gap-2 border-b border-white/10 p-3">
+        <div className="min-w-0">
+          <p className="text-sm font-extrabold text-white">AI Floor-Plan Unit</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-gold" data-testid="ai-floor-unit-source">
+            <DemoTag label="AI_DEMO" /> MODEL OUTPUT · DEMO_RESEARCH_DATA — not an official record
+          </p>
+        </div>
+        <button className="btn-ghost !px-1.5 !py-1" onClick={onClose} aria-label="Close details">
+          <X size={15} />
+        </button>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-3" data-testid="ai-floor-unit-card">
+        {loading && <Spinner />}
+        <ErrorNote error={error} onRetry={reload} />
+        {u && (
+          <>
+            <div className="rounded-lg border border-gold/30 bg-gold/10 p-2.5">
+              <p className="font-mono text-[13px] font-bold text-white break-all">{u.localUnitId || u.aiFloorUnitId}</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <DemoTag label="AI / PROTOTYPE" />
+                <Badge>{level}</Badge>
+                <Badge status={gtone}>{u.geometryStatus}</Badge>
+              </div>
+              <p className="mt-1 text-[10px] text-slate-400">
+                Prototype unit identifier — <strong>not</strong> an official ULPIN.
+              </p>
+            </div>
+
+            <Section title="Model & Dataset">
+              <KeyValue
+                data={{
+                  Source: u.source,
+                  Classification: u.dataClassification || 'DEMO_RESEARCH_DATA',
+                  Dataset: u.dataset || 'CubiCasa5K',
+                  Model: u.model,
+                  'Model Version': u.modelVersion,
+                  Confidence: u.confidence != null ? `${(u.confidence * 100).toFixed(1)}%` : '—',
+                  'Confidence Level': level,
+                  Timestamp: u.timestamp ? u.timestamp.slice(0, 19).replace('T', ' ') : '—',
+                }}
+              />
+            </Section>
+
+            <Section title="Composition">
+              <KeyValue
+                data={{
+                  Rooms: (u.rooms || []).length,
+                  Types: (u.roomTypes || []).join(', ') || '—',
+                  Area: u.area != null ? `${u.area} ${u.areaUnit === 'M2' ? 'm²' : 'px²'}` : 'Not available',
+                  'Area Status': u.areaStatus,
+                }}
+              />
+              {(u.roomDetails || []).length > 0 && (
+                <ul className="mt-1.5 space-y-0.5 text-[11px] text-slate-300">
+                  {u.roomDetails.map((r) => (
+                    <li key={r.roomId}>
+                      <span className="font-mono text-slate-400">{r.localRoomId}</span> · {r.roomType || r.class}
+                      {r.reviewRequired && <span className="text-gold"> · review</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Section>
+
+            <Section title="Geometry & Placement">
+              <KeyValue
+                data={{
+                  'Geometry Status': u.geometryStatus,
+                  Placement: u.georeferenced ? `On map (${u.geoStatus})` : `Local only (${u.geoStatus})`,
+                  Building: u.buildingId || '—',
+                  Floor: u.floorId || '—',
+                  'Parent Parcel': u.parentParcelId || '—',
+                  'Parent ULPIN': u.parentULPIN || '—',
+                  'ULPIN Status': u.ulpinStatus,
+                }}
+              />
+              {(u.ambiguityReasons || []).length > 0 && (
+                <ul className="mt-1.5 space-y-1 text-[11px] text-slate-300">
+                  {u.ambiguityReasons.map((m, i) => (
+                    <li key={i}><span className="text-gold">•</span> {m}</li>
+                  ))}
+                </ul>
+              )}
+            </Section>
+
+            {vol && (
+              <Section title="3D Volume (Prototype, Phase 2 model)">
+                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] text-gold">
+                  <DemoTag label="ESTIMATED / DEMO" /> Reuses the Phase-2 prototype volume model.
+                </p>
+                <KeyValue
+                  data={{
+                    'Volume ID': vol.volumeId || '—',
+                    'X min': Number.isFinite(vol.xmin) ? vol.xmin.toFixed(6) : '—',
+                    'X max': Number.isFinite(vol.xmax) ? vol.xmax.toFixed(6) : '—',
+                    'Y min': Number.isFinite(vol.ymin) ? vol.ymin.toFixed(6) : '—',
+                    'Y max': Number.isFinite(vol.ymax) ? vol.ymax.toFixed(6) : '—',
+                    'Z min': Number.isFinite(vol.zmin) ? `${vol.zmin} m` : '—',
+                    'Z max': Number.isFinite(vol.zmax) ? `${vol.zmax} m` : '—',
+                    'Height Status': u.heightStatus,
+                  }}
+                />
+                {u.volumeValidation && (
+                  <div className="mt-1.5" data-testid="ai-floor-unit-geometry-status">
+                    <Badge status={u.volumeValidation.status === 'VALID' ? 'Verified' : u.volumeValidation.status === 'ERROR' ? 'Disputed' : 'Under Review'}>
+                      {u.volumeValidation.status}
+                    </Badge>
+                    {(u.volumeValidation.issues || []).map((it, i) => (
+                      <p key={i} className="mt-1 text-[11px] text-slate-300">
+                        <span className={it.status === 'ERROR' ? 'text-danger' : 'text-gold'}>{it.status}</span>{' '}
+                        <span className="font-mono text-slate-400">{it.rule}</span> — {it.message}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </Section>
+            )}
+
+            <Section title="Review">
+              <div className="flex items-center gap-2" data-testid="ai-floor-unit-review-status">
+                <Badge status={u.reviewStatus === 'ACCEPTED' ? 'Verified' : u.reviewStatus === 'REJECTED' ? 'Disputed' : 'Under Review'}>
+                  {u.reviewStatus}
+                </Badge>
+                {u.reviewRequired && <span className="text-[11px] text-gold">Requires Review</span>}
+              </div>
+              {canReview ? (
+                <div className="mt-2 grid grid-cols-3 gap-1.5">
+                  <button className="btn-ghost !py-1 justify-center text-[11px]" disabled={busy} onClick={() => setReview('ACCEPTED')}>Accept</button>
+                  <button className="btn-ghost !py-1 justify-center text-[11px]" disabled={busy} onClick={() => setReview('REJECTED')}>Reject</button>
+                  <button className="btn-ghost !py-1 justify-center text-[11px]" disabled={busy} onClick={() => setReview('NEEDS_CORRECTION')}>Correct</button>
+                </div>
+              ) : (
+                <p className="mt-1.5 text-[10px] text-slate-500">Review requires the change-detection:review permission.</p>
+              )}
+              <p className="mt-1.5 text-[10px] text-gold/90">
+                AI-inferred apartment boundary. Human review is required for any authoritative use; it creates no ownership,
+                rights or official cadastral record, and never an official ULPIN.
+              </p>
+            </Section>
+          </>
+        )}
+      </div>
+
+      <footer className="grid grid-cols-2 gap-1.5 border-t border-white/10 p-3">
+        <button className="btn-ghost justify-center" onClick={() => mapApi.current.flyToAiFloorUnit?.(id)}>
+          <Crosshair size={14} /> Zoom To
+        </button>
+        <button
+          className={clsx('justify-center', isolated ? 'btn-primary' : 'btn-ghost')}
+          onClick={() => setIsolated(!isolated)}
+          data-testid="ai-floor-unit-isolate"
+        >
+          <Focus size={14} /> {isolated ? 'Exit Isolation' : 'Isolate Unit'}
+        </button>
+      </footer>
+    </aside>
+  )
+}
+
+// --------------------------------------------------------------------------
+// GNSS/CORS control point (Phase 6). GNSS/CORS DEMO / MODEL OUTPUT — a
+// control-point observation from an uploaded, demonstration, research or
+// survey dataset. Never an official cadastral control point or
+// government-authoritative survey record, and accuracy is only ever shown
+// when the dataset itself supplied a number.
+// --------------------------------------------------------------------------
+function GnssPointCard({ query, elevQuery, id, onClose, mapApi, canReview }) {
+  const { data: p, error, loading, reload } = query
+  const { data: elev } = elevQuery || {}
+  const [busy, setBusy] = useState(false)
+
+  const setReview = async (action) => {
+    setBusy(true)
+    await api.gnssReview(id, action).catch(() => {})
+    setBusy(false)
+    reload()
+  }
+
+  const vtone = p?.validationStatus === 'VALID' ? 'Verified' : p?.validationStatus === 'ERROR' ? 'Disputed' : 'Under Review'
+  const ptone = p?.parcelStatus === 'MATCHED' ? 'Verified' : p?.parcelStatus === 'OUTSIDE_PARCEL' ? 'Disputed' : 'Under Review'
+
+  return (
+    <aside
+      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
+      data-testid="property-sidebar"
+    >
+      <header className="flex items-start justify-between gap-2 border-b border-white/10 p-3">
+        <div className="min-w-0">
+          <p className="text-sm font-extrabold text-white">GNSS/CORS Control Point</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-gold" data-testid="gnss-point-source">
+            <DemoTag label="GNSS/CORS DEMO" /> MODEL OUTPUT — not an official survey record
+          </p>
+        </div>
+        <button className="btn-ghost !px-1.5 !py-1" onClick={onClose} aria-label="Close details">
+          <X size={15} />
+        </button>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-3" data-testid="gnss-point-card">
+        {loading && <Spinner />}
+        <ErrorNote error={error} onRetry={reload} />
+        {p && (
+          <>
+            <div className="rounded-lg border border-gold/30 bg-gold/10 p-2.5">
+              <p className="font-mono text-[13px] font-bold text-white break-all">{p.controlPointId}</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <DemoTag label={p.source} />
+                <Badge status={vtone}>{p.validationStatus}</Badge>
+              </div>
+            </div>
+
+            <Section title="Coordinates &amp; Height">
+              <KeyValue
+                data={{
+                  Latitude: p.resolvedLatitude ?? p.latitude ?? '—',
+                  Longitude: p.resolvedLongitude ?? p.longitude ?? '—',
+                  Height: p.height != null ? `${p.height} m` : 'Not available',
+                  CRS: p.coordinateReferenceSystem || 'Unknown',
+                  'CRS Status': p.crsStatus,
+                  Timestamp: p.timestamp ? String(p.timestamp).slice(0, 19).replace('T', ' ') : 'Not available',
+                }}
+              />
+            </Section>
+
+            <Section title="Survey Metadata">
+              <KeyValue
+                data={{
+                  Source: p.source,
+                  'Survey Method': p.surveyMethod || '—',
+                  'Reported Accuracy': p.accuracy != null ? `${p.accuracy} ${p.accuracyUnit || 'm'}` : 'Not available',
+                  'Accuracy Status': p.accuracyStatus,
+                  'Fix Status': p.fixStatus || '—',
+                  Operator: p.operator || '—',
+                }}
+              />
+              <p className="mt-1.5 text-[10px] text-gold/90">
+                {p.accuracy != null
+                  ? `Reported accuracy: ${p.accuracy} ${p.accuracyUnit || 'm'}. Validation status: UNVERIFIED unless independently confirmed.`
+                  : 'Reported accuracy: Not available. Survey accuracy is not claimed for this point.'}
+              </p>
+            </Section>
+
+            <Section title="Validation">
+              <div className="flex items-center gap-2" data-testid="gnss-validation-status">
+                <Badge status={vtone}>{p.validationStatus}</Badge>
+              </div>
+              {(p.validationIssues || []).length > 0 && (
+                <ul className="mt-1.5 space-y-1 text-[11px] text-slate-300">
+                  {p.validationIssues.map((i, idx) => (
+                    <li key={idx}>
+                      <span className={i.status === 'ERROR' ? 'text-danger' : 'text-gold'}>{i.status}</span>{' '}
+                      <span className="font-mono text-slate-400">{i.rule}</span> — {i.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Section>
+
+            <Section title="Parcel Association">
+              <div className="flex items-center gap-2">
+                <Badge status={ptone}>{p.parcelStatus}</Badge>
+              </div>
+              <KeyValue
+                data={{
+                  'Parent Parcel': p.parentParcelId || '—',
+                  'Parent ULPIN': p.parentULPIN || '—',
+                  'Association Confidence': p.associationConfidence != null ? `${Math.round(p.associationConfidence * 100)}%` : '—',
+                  'Nearest Boundary': p.nearestBoundaryM != null ? `${p.nearestBoundaryM} m` : '—',
+                }}
+              />
+              <p className="mt-1 text-[10px] text-slate-500">A control point never creates or changes a ULPIN.</p>
+            </Section>
+
+            <Section title="DEM/DSM Elevation Residual">
+              {elev?.dataAvailability === 'AVAILABLE' ? (
+                <>
+                  <KeyValue
+                    data={{
+                      'Observed Elevation (GNSS)': `${elev.observedElevation} m`,
+                      'Model Elevation': `${elev.modelElevation} m`,
+                      'Model Source': elev.modelSource,
+                      Residual: `${elev.elevationResidualM} m`,
+                      'Vertical Datum': elev.verticalDatumStatus,
+                    }}
+                  />
+                  <p className="mt-1.5 text-[10px] text-gold/90">
+                    Observed difference only — this does not mean the GNSS reading or the DEM/DSM model is "correct".
+                    {elev.verticalDatumStatus !== 'MATCHED' && ' Vertical datum is not confirmed matched, which limits comparability.'}
+                  </p>
+                </>
+              ) : (
+                <p className="text-[11px] text-slate-500" data-testid="gnss-elevation-unavailable">
+                  {elev?.reason || 'No DEM/DSM-derived elevation is available for comparison at this control point.'}
+                </p>
+              )}
+            </Section>
+
+            <Section title="Review">
+              <div className="flex items-center gap-2" data-testid="gnss-review-status">
+                <Badge status={p.verificationStatus === 'ACCEPTED' ? 'Verified' : p.verificationStatus === 'REJECTED' ? 'Disputed' : 'Under Review'}>
+                  {p.verificationStatus || 'UNVERIFIED'}
+                </Badge>
+              </div>
+              {canReview ? (
+                <div className="mt-2 grid grid-cols-2 gap-1.5">
+                  <button className="btn-ghost !py-1 justify-center text-[11px]" disabled={busy} onClick={() => setReview('ACCEPTED')}>Accept</button>
+                  <button className="btn-ghost !py-1 justify-center text-[11px]" disabled={busy} onClick={() => setReview('REJECTED')}>Reject</button>
+                </div>
+              ) : (
+                <p className="mt-1.5 text-[10px] text-slate-500">Review requires the change-detection:review permission.</p>
+              )}
+              <p className="mt-1.5 text-[10px] text-gold/90">
+                GNSS/CORS DEMO / MODEL OUTPUT — not automatically an official cadastral control point. Existing parcel
+                geometry is never overwritten without explicit authorized review.
+              </p>
+            </Section>
+          </>
+        )}
+      </div>
+
+      <footer className="grid grid-cols-1 gap-1.5 border-t border-white/10 p-3">
+        <button className="btn-ghost justify-center" onClick={() => mapApi.current.flyToGnssPoint?.(id)}>
+          <Satellite size={14} /> Zoom To
+        </button>
+      </footer>
     </aside>
   )
 }

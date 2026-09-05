@@ -42,7 +42,7 @@ export function ExplorerDock() {
     <div
       className={clsx(
         'pointer-events-auto absolute bottom-3 left-3 z-10 rounded-xl panel p-3 transition-all',
-        ['unit', 'parcel', 'ai-building'].includes(selection.mode) ? 'right-3 xl:right-[21.5rem]' : 'right-3',
+        ['unit', 'parcel', 'ai-building', 'ai-floor-unit'].includes(selection.mode) ? 'right-3 xl:right-[21.5rem]' : 'right-3',
         collapsed ? 'max-h-12 overflow-hidden' : 'max-h-[46vh]',
       )}
       data-testid="explorer-dock"

@@ -141,5 +141,19 @@ export async function aiStatus() {
       source: 'AI_DEMO',
       note: 'Model output — candidate building geometry only. Not official cadastral / ULPIN / survey data.',
     },
+    // Phase 4 — AI floor-plan & apartment/unit segmentation. Optional/additive:
+    // if the Python ai-service is unreachable the endpoint returns
+    // INFERENCE_UNAVAILABLE and the rest of the app is unaffected.
+    floorPlanSegmentation: {
+      endpoint: '/api/ai/floorplans/infer',
+      aiServiceConfigured: Boolean(env.aiServiceUrl),
+      supportedInput: ['png', 'jpg', 'jpeg', 'tif', 'tiff'],
+      source: 'AI_DEMO',
+      dataClassification: 'DEMO_RESEARCH_DATA',
+      dataset: 'CubiCasa5K',
+      note: 'Model output — floor-plan geometry, room labels and AI-inferred apartment/unit boundaries. '
+        + 'Not official Tamil Nadu cadastral / Chennai building-approval / ULPIN / ownership data. '
+        + 'A floor-plan image has no coordinates; geographic placement needs a valid building/floor reference.',
+    },
   }
 }

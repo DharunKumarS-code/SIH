@@ -39,11 +39,28 @@ const COL = {
   aiBuilding: Cesium.Color.fromCssColorString('#f2822f').withAlpha(0.30),   // AI_DEMO candidate building
   aiBuildingLine: Cesium.Color.fromCssColorString('#f2822f').withAlpha(0.9),
   aiReview: Cesium.Color.fromCssColorString('#e4566e').withAlpha(0.30),     // needs review
+  aiFloorUnit: Cesium.Color.fromCssColorString('#38c9d6').withAlpha(0.34),  // Phase 4 AI floor-plan unit
+  aiFloorUnitLine: Cesium.Color.fromCssColorString('#38c9d6').withAlpha(0.9),
+  aiFloorUnitSel: Cesium.Color.fromCssColorString('#f2b807').withAlpha(0.8),
+  // Phase 5 — height-quality overlay for buildings with an ACCEPTED
+  // elevation-derived height (LiDAR/DSM-DEM), coloured by confidence.
+  elevationHigh: Cesium.Color.fromCssColorString('#22c55e').withAlpha(0.4),
+  elevationMedium: Cesium.Color.fromCssColorString('#f2b807').withAlpha(0.4),
+  elevationLow: Cesium.Color.fromCssColorString('#e4566e').withAlpha(0.4),
+  // Phase 6 — GNSS/CORS control points, coloured by validationStatus. A
+  // distinct magenta/violet family so they never read as a parcel, building,
+  // AI overlay or DEM/DSM layer.
+  gnssValid: Cesium.Color.fromCssColorString('#c084fc'),
+  gnssWarning: Cesium.Color.fromCssColorString('#a855f7'),
+  gnssError: Cesium.Color.fromCssColorString('#7e22ce'),
+  gnssSelected: Cesium.Color.fromCssColorString('#f2b807'),
 }
 
 // AI buildings have no surveyed height — extrude with a clearly-flagged
 // ESTIMATED / DEMO value only (heightStatus stays UNAVAILABLE in the record).
 const ESTIMATED_AI_HEIGHT_M = 24
+// AI floor-plan units without a floor z-range: a thin ESTIMATED/DEMO slab only.
+const ESTIMATED_AI_UNIT_HEIGHT_M = 3
 
 export function Cesium3DMap() {
   const hostRef = useRef(null)
@@ -60,6 +77,8 @@ export function Cesium3DMap() {
   const buildingShellRef = useRef(new Map()) // buildingId -> Entity
   const parcelEntityRef = useRef(new Map()) // ulpin -> Entity
   const aiBuildingsRef = useRef(new Map()) // aiBuildingId -> Entity (Phase 3, AI_DEMO)
+  const aiFloorUnitsRef = useRef(new Map()) // aiFloorUnitId -> Entity (Phase 4, AI_DEMO)
+  const gnssPointsRef = useRef(new Map()) // controlPointId -> Entity (Phase 6, GNSS/CORS DEMO)
   const cityAreaRef = useRef(new Map()) // areaId -> { fill, line }
   const activeAreaRef = useRef(DEFAULT_AREA_ID)
   const lodRef = useRef('area')
@@ -361,6 +380,8 @@ export function Cesium3DMap() {
     } catch { /* ignore */ }
 
     await ensureAiBuildings(areaId)
+    await ensureAiFloorUnits(areaId)
+    await ensureGnssControlPoints(areaId)
     if (!liveViewer()) return
     applyLayerVisibility()
     liveViewer().scene.requestRender()
@@ -399,6 +420,98 @@ export function Cesium3DMap() {
         added += 1
       }
     } catch { /* AI layer is optional — never block the map */ }
+    if (added && liveViewer()) {
+      applyLayerVisibility()
+      liveViewer().scene.requestRender()
+    }
+    return added
+  }
+
+  // Phase 4 — AI floor-plan-derived apartment/property units (AI_DEMO). Own
+  // layer, separate from the demo `propertyUnits`. Only GEOREFERENCED units
+  // (associated to an existing building/floor) are placed on the map; local-only
+  // floor plans stay on the AI Floor Plan page. Idempotent (guarded per
+  // aiFloorUnitId) so it can be re-run after a new inference without dupes.
+  async function ensureAiFloorUnits(areaId) {
+    if (!liveViewer()) return 0
+    let added = 0
+    try {
+      const fc = await api.gisAiFloorUnits({ locality: areaId })
+      const viewer = liveViewer()
+      if (!viewer) return 0
+      for (const f of fc.features || []) {
+        const id = f.properties.aiFloorUnitId
+        if (!id || aiFloorUnitsRef.current.has(id)) continue
+        const positions = ring(f.geometry)
+        if (positions.length < 6) continue
+        const review = f.properties.reviewRequired || f.properties.reviewStatus === 'REVIEW_REQUIRED'
+        const base = finite(f.properties.baseHeight) ? f.properties.baseHeight : 0
+        const top = finite(f.properties.topHeight)
+          ? f.properties.topHeight
+          : base + ESTIMATED_AI_UNIT_HEIGHT_M // ESTIMATED / DEMO — never survey-derived
+        const ent = viewer.entities.add({
+          show: false,
+          polygon: {
+            hierarchy: Cesium.Cartesian3.fromDegreesArray(positions),
+            material: review ? COL.aiReview : COL.aiFloorUnit,
+            outline: true,
+            outlineColor: COL.aiFloorUnitLine,
+            height: base,
+            extrudedHeight: top,
+          },
+          properties: { kind: 'ai-floor-unit', estimated: true, ...f.properties },
+        })
+        ent.__area = areaId
+        ent.__review = review
+        aiFloorUnitsRef.current.set(id, ent)
+        ;(groupsRef.current.aiFloorUnits ||= []).push(ent)
+        added += 1
+      }
+    } catch { /* AI layer is optional — never block the map */ }
+    if (added && liveViewer()) {
+      applyLayerVisibility()
+      liveViewer().scene.requestRender()
+    }
+    return added
+  }
+
+  // Phase 6 — GNSS/CORS control points (GNSS/CORS DEMO). Own layer, OFF by
+  // default. Rendered as small points (never a raw point-cloud splat), one
+  // per validated control point that resolved to a usable WGS84 coordinate.
+  // Idempotent (guarded per controlPointId), so re-running an import updates
+  // the layer without duplicating entities.
+  async function ensureGnssControlPoints(areaId) {
+    if (!liveViewer()) return 0
+    let added = 0
+    try {
+      const fc = await api.gisGnssControlPoints({ locality: areaId })
+      const viewer = liveViewer()
+      if (!viewer) return 0
+      for (const f of fc.features || []) {
+        const id = f.properties.controlPointId
+        if (!id || gnssPointsRef.current.has(id)) continue
+        const [lon, lat] = f.geometry.coordinates
+        if (!finite(lon) || !finite(lat)) continue
+        const status = f.properties.validationStatus
+        const color = status === 'ERROR' ? COL.gnssError : status === 'WARNING' ? COL.gnssWarning : COL.gnssValid
+        const ent = viewer.entities.add({
+          show: false,
+          position: Cesium.Cartesian3.fromDegrees(lon, lat, finite(f.properties.height) ? f.properties.height : 5),
+          point: {
+            pixelSize: 10,
+            color,
+            outlineColor: Cesium.Color.WHITE,
+            outlineWidth: 1.5,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+          properties: { kind: 'gnss-point', estimated: false, ...f.properties },
+        })
+        ent.__area = areaId
+        gnssPointsRef.current.set(id, ent)
+        ;(groupsRef.current.gnssControlPoints ||= []).push(ent)
+        added += 1
+      }
+    } catch { /* GNSS layer is optional — never block the map */ }
     if (added && liveViewer()) {
       applyLayerVisibility()
       liveViewer().scene.requestRender()
@@ -585,6 +698,10 @@ export function Cesium3DMap() {
         s.selectParcel(valueOf(props.ulpin))
       } else if (kind === 'ai-building') {
         s.selectAiBuilding(valueOf(props.aiBuildingId))
+      } else if (kind === 'ai-floor-unit') {
+        s.selectAiFloorUnit(valueOf(props.aiFloorUnitId))
+      } else if (kind === 'gnss-point') {
+        s.selectGnssPoint(valueOf(props.controlPointId))
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
   }
@@ -649,9 +766,21 @@ export function Cesium3DMap() {
         const ent = aiBuildingsRef.current.get(aiBuildingId)
         if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(35), Cesium.Math.toRadians(-28), 220) }).catch(() => {})
       },
+      flyToAiFloorUnit: (aiFloorUnitId) => {
+        const ent = aiFloorUnitsRef.current.get(aiFloorUnitId)
+        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(40), Cesium.Math.toRadians(-24), 120) }).catch(() => {})
+      },
+      flyToGnssPoint: (controlPointId) => {
+        const ent = gnssPointsRef.current.get(controlPointId)
+        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(30), Cesium.Math.toRadians(-35), 80) }).catch(() => {})
+      },
       // Pull freshly-extracted AI buildings into the running viewer (called by
       // the AI Building Extraction page after an inference completes).
       refreshAiBuildings: (areaId) => ensureAiBuildings(areaId || activeAreaRef.current),
+      // Same for Phase 4 AI floor-plan units.
+      refreshAiFloorUnits: (areaId) => ensureAiFloorUnits(areaId || activeAreaRef.current),
+      // Same for Phase 6 GNSS/CORS control points.
+      refreshGnssControlPoints: (areaId) => ensureGnssControlPoints(areaId || activeAreaRef.current),
     }
   }
 
@@ -664,6 +793,8 @@ export function Cesium3DMap() {
     cityViewRef.current = false
     await ensureAreaLayers(areaId)
     await ensureAiBuildings(areaId) // idempotent — picks up any newly-extracted AI buildings
+    await ensureAiFloorUnits(areaId) // idempotent — picks up any newly-segmented AI floor-plan units
+    await ensureGnssControlPoints(areaId) // idempotent — picks up any newly-imported GNSS/CORS control points
     const viewer = liveViewer()
     if (!viewer) return
     const h = loc.cameraHeightM || 1500
@@ -737,6 +868,12 @@ export function Cesium3DMap() {
     if (mode === 'ai-building' && selection.aiBuildingId) {
       await ensureAiBuildings(activeAreaRef.current)
     }
+    if (mode === 'ai-floor-unit' && selection.aiFloorUnitId) {
+      await ensureAiFloorUnits(activeAreaRef.current)
+    }
+    if (mode === 'gnss-point' && selection.controlPointId) {
+      await ensureGnssControlPoints(activeAreaRef.current)
+    }
     const viewer = liveViewer()
     if (!viewer) return
 
@@ -748,6 +885,8 @@ export function Cesium3DMap() {
     else if ((mode === 'building' || mode === 'floor') && buildingId) mapApi.flyToBuilding?.(buildingId)
     else if (mode === 'parcel') mapApi.flyToParcel?.(selection.ulpin)
     else if (mode === 'ai-building' && selection.aiBuildingId) mapApi.flyToAiBuilding?.(selection.aiBuildingId)
+    else if (mode === 'ai-floor-unit' && selection.aiFloorUnitId) mapApi.flyToAiFloorUnit?.(selection.aiFloorUnitId)
+    else if (mode === 'gnss-point' && selection.controlPointId) mapApi.flyToGnssPoint?.(selection.controlPointId)
     else if (mode === 'overview') flyToOverview(1.4)
 
     viewer.scene.requestRender()
@@ -775,7 +914,7 @@ export function Cesium3DMap() {
 
     // Generic overlay/base groups: gated by layer switch + active area + LOD.
     for (const [key, ents] of Object.entries(groupsRef.current)) {
-      if (key === 'units3d' || key === 'commonAreas' || key === 'buildings' || key === 'floorVolumes') continue
+      if (key === 'units3d' || key === 'commonAreas' || key === 'buildings' || key === 'floorVolumes' || key === 'aiFloorUnits' || key === 'gnssControlPoints') continue
       const layerOn = L[key] ?? true
       for (const ent of ents || []) {
         ent.show = layerOn && areaOk(ent) && lod !== 'city'
@@ -801,7 +940,16 @@ export function Cesium3DMap() {
       const active = id === buildingId && mode !== 'overview' && mode !== 'parcel'
       ent.show =
         L.buildings && detailOk && areaOk(ent) && !(isolated && id !== buildingId)
-      ent.polygon.material = active ? COL.buildingShellSel : COL.buildingShell
+      // Phase 5 — optional height-quality overlay: only buildings with an
+      // ACCEPTED elevation-derived height are recoloured; everything else
+      // keeps its normal shell colour.
+      const elevActive = L.elevationHeightQuality && valueOf(ent.properties?.elevationOverrideActive)
+      if (elevActive) {
+        const level = valueOf(ent.properties?.elevationConfidenceLevel)
+        ent.polygon.material = level === 'HIGH' ? COL.elevationHigh : level === 'MEDIUM' ? COL.elevationMedium : COL.elevationLow
+      } else {
+        ent.polygon.material = active ? COL.buildingShellSel : COL.buildingShell
+      }
     }
 
     // parcels highlight
@@ -852,6 +1000,41 @@ export function Cesium3DMap() {
         bId === buildingId &&
         (mode === 'building' || mode === 'floor') &&
         !isolated
+    }
+
+    // Phase 4 — AI floor-plan units: own layer, OFF by default. Progressive:
+    // only at building-level zoom (not city / area) so the Chennai-wide view and
+    // LOD are untouched. The explicitly-selected unit is always shown; isolation
+    // hides the rest (existing show/hide pattern, picking preserved).
+    for (const [id, ent] of aiFloorUnitsRef.current) {
+      const isSel = mode === 'ai-floor-unit' && id === selection.aiFloorUnitId
+      let show = (L.aiFloorUnits ?? false) && detailOk && areaOk(ent) && lod === 'building'
+      if (mode === 'ai-floor-unit' && !isSel && isolated) show = false
+      if (isSel) show = detailOk && areaOk(ent)
+      ent.show = show
+      if (ent.polygon) {
+        ent.polygon.material = isSel
+          ? COL.aiFloorUnitSel
+          : ent.__review ? COL.aiReview : COL.aiFloorUnit
+        ent.polygon.outlineColor = isSel
+          ? Cesium.Color.fromCssColorString('#f2b807')
+          : COL.aiFloorUnitLine
+      }
+    }
+
+    // Phase 6 — GNSS/CORS control points: own layer, OFF by default. Visible
+    // at area + building zoom (never at the city overview), coloured by
+    // validationStatus; the selected point is highlighted.
+    for (const [id, ent] of gnssPointsRef.current) {
+      const isSel = mode === 'gnss-point' && id === selection.controlPointId
+      ent.show = (L.gnssControlPoints ?? false) && detailOk && areaOk(ent)
+      if (ent.point) {
+        const status = valueOf(ent.properties?.validationStatus)
+        ent.point.color = isSel
+          ? COL.gnssSelected
+          : status === 'ERROR' ? COL.gnssError : status === 'WARNING' ? COL.gnssWarning : COL.gnssValid
+        ent.point.pixelSize = isSel ? 14 : 10
+      }
     }
   }
 
