@@ -20,6 +20,8 @@ import { rectRing, polygon, point, gridCells, ringAreaM2, mToDegLon, mToDegLat }
 import { makeProtoPropertyId } from '../services/idService.js'
 import { DEMO_PEOPLE, DEMO_BANKS } from './names.js'
 import { LOCALITIES, DEFAULT_LOCALITY_ID, CHENNAI_CITY, getLocality, localityPublic } from './localities.js'
+import { buildLocalityUndergroundInfrastructure } from './underground.js'
+import { buildLocalityIdentifiers } from './identifier3d.js'
 
 // deterministic RNG so ids / owners are stable across boots
 function mulberry32(seed) {
@@ -699,10 +701,25 @@ export function buildSeed() {
       { id: fid('ROAD', 'INT-2'), name: '5th Main Road', class: 'Local', geometry: { type: 'LineString', coordinates: [[BASE.lon - 0.0026, BASE.lat + 0.0016], [BASE.lon + 0.0026, BASE.lat + 0.0016]] }, locality: LID, isDemo: true },
     ]
 
+    // ---- Phase 8 — DEMO underground infrastructure (additive) ------
+    // Deterministic synthetic network per locality. Spatial association is
+    // computed from the parcels/buildings just built above — geometry facts
+    // only, never legal ownership.
+    const undergroundInfrastructure = buildLocalityUndergroundInfrastructure(loc, parcels, buildings)
+
+    // ---- Phase 9 — Proposed 3D Property Identifier (additive) ------
+    // Research / prototype cross-hierarchy references + geometry version
+    // history. Never fabricates an Official ULPIN; one record per locality
+    // deliberately has officialULPIN = null.
+    const { proposed3DPropertyIdentifiers, geometryVersions } =
+      buildLocalityIdentifiers(loc, parcels, buildings, floors, units)
+
     return {
       parcels, ulpins, landUse, buildings, floors, units, commonAreas,
       registrations, encumbrances, buildingApprovals, propertyTax, disputes,
       documents, masterPlans, utilities, environment, boundaries, roads,
+      undergroundInfrastructure,
+      proposed3DPropertyIdentifiers, geometryVersions,
     }
   }
 
@@ -711,6 +728,8 @@ export function buildSeed() {
     parcels: [], ulpins: [], landUse: [], buildings: [], floors: [], units: [], commonAreas: [],
     registrations: [], encumbrances: [], buildingApprovals: [], propertyTax: [], disputes: [],
     documents: [], masterPlans: [], utilities: [], environment: [], boundaries: [], roads: [],
+    undergroundInfrastructure: [],
+    proposed3DPropertyIdentifiers: [], geometryVersions: [],
   }
   for (const loc of LOCALITIES) {
     const part = buildLocality(loc)
@@ -792,6 +811,9 @@ export function buildSeed() {
     roads: agg.roads,
     disputes: agg.disputes,
     documents: agg.documents,
+    undergroundInfrastructure: agg.undergroundInfrastructure,
+    proposed3DPropertyIdentifiers: agg.proposed3DPropertyIdentifiers,
+    geometryVersions: agg.geometryVersions,
     serviceRequests,
     notifications,
     auditLogs,

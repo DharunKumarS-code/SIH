@@ -80,6 +80,7 @@ export const api = {
   gisLayer: (layer, params) => get(`/gis/layer/${layer}`, params),
   gisAiBuildings: (params) => get('/gis/ai-buildings', params),
   gisAiFloorUnits: (params) => get('/gis/ai-floor-units', params),
+  gisUndergroundInfrastructure: (params) => get('/gis/underground-infrastructure', params),
 
   // dashboards
   dashboard: () => get('/dashboard/stats'),
@@ -166,6 +167,34 @@ export const api = {
   topologySummary: (params) => get('/topology/summary', params),
   topologyReviewFinding: (runId, validationId, action) =>
     unwrap(http.patch(`/topology/results/${encodeURIComponent(runId)}/findings/${encodeURIComponent(validationId)}/review`, { action })),
+
+  // underground — Phase 8: underground 3D infrastructure mapping
+  infrastructureConfig: () => get('/infrastructure/config'),
+  infrastructureSummary: (params) => get('/infrastructure/summary', params),
+  infrastructureList: (params) => get('/infrastructure', params),
+  infrastructure: (id) => get(`/infrastructure/${encodeURIComponent(id)}`),
+  infrastructureRelations: (id) => get(`/infrastructure/${encodeURIComponent(id)}/relations`),
+  infrastructureElevation: (id) => get(`/infrastructure/${encodeURIComponent(id)}/elevation`),
+  infrastructureUploadValidate: (formData) => unwrap(http.post('/infrastructure/upload', formData, { timeout: 30000 })),
+  infrastructureImport: (formData) => unwrap(http.post('/infrastructure/import', formData, { timeout: 30000 })),
+  infrastructureValidate: (payload) => post('/infrastructure/validate', payload),
+  infrastructureCollisions: (payload) => post('/infrastructure/collisions', payload),
+  infrastructureReview: (id, action) => unwrap(http.patch(`/infrastructure/${encodeURIComponent(id)}/review`, { action })),
+
+  // 3d-identifiers — Phase 9: Proposed 3D Property Identifier
+  identifierConfig: () => get('/3d-identifiers/config'),
+  identifierList: (params) => get('/3d-identifiers', params),
+  identifier: (id) => get(`/3d-identifiers/${encodeURIComponent(id)}`),
+  identifierHierarchy: (id) => get(`/3d-identifiers/${encodeURIComponent(id)}/hierarchy`),
+  identifierGeometry: (id) => get(`/3d-identifiers/${encodeURIComponent(id)}/geometry`),
+  identifierVersions: (id) => get(`/3d-identifiers/${encodeURIComponent(id)}/versions`),
+  identifierSearch: (q) => get('/3d-identifiers/search', { q }),
+  identifierValidate: (payload) => post('/3d-identifiers/validate', payload),
+  identifierCreate: (payload) => post('/3d-identifiers', payload),
+  identifierAddVersion: (id, payload) => post(`/3d-identifiers/${encodeURIComponent(id)}/versions`, payload),
+  identifierReviewVersion: (id, payload) => unwrap(http.patch(`/3d-identifiers/${encodeURIComponent(id)}/versions/review`, payload)),
+  identifierRevalidate: (id) => post(`/3d-identifiers/${encodeURIComponent(id)}/revalidate`),
+  ulpinIdentifiers: (ulpin) => get(`/ulpins/${encodeURIComponent(ulpin)}/3d-identifiers`),
 
   // services / workflow
   services: (params) => get('/services', params),

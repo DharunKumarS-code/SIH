@@ -1,8 +1,9 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 import {
   X, Crosshair, Focus, ShieldCheck, FileText, Share2, StickyNote, Building2, Layers, Home,
-  BadgeCheck, TriangleAlert, MapPin, ExternalLink, Box, Mountain, Satellite,
+  BadgeCheck, TriangleAlert, MapPin, ExternalLink, Box, Mountain, Satellite, Waypoints,
 } from 'lucide-react'
 import { useSelection } from '../../context/SelectionContext.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
@@ -37,9 +38,15 @@ export function PropertySidebar() {
   const isAi = selection.mode === 'ai-building' && !!selection.aiBuildingId
   const isAiFp = selection.mode === 'ai-floor-unit' && !!selection.aiFloorUnitId
   const isGnss = selection.mode === 'gnss-point' && !!selection.controlPointId
+  const isInfra = selection.mode === 'infrastructure' && !!selection.infrastructureId
   const isBuildingLevel = (selection.mode === 'building' || selection.mode === 'floor') && !!selection.buildingId
   const { data, error, loading, reload } = useApi(
     () => (isUnit ? api.unit(selection.propertyId) : Promise.resolve(null)),
+    [isUnit, selection.propertyId],
+  )
+  // Phase 9 — Proposed 3D Property Identifier(s) linked to this unit, if any.
+  const idQ = useApi(
+    () => (isUnit ? api.identifierList({ propertyId: selection.propertyId }).catch(() => []) : Promise.resolve([])),
     [isUnit, selection.propertyId],
   )
   const parcelQ = useApi(
@@ -57,6 +64,18 @@ export function PropertySidebar() {
   const gnssQ = useApi(
     () => (isGnss ? api.gnssControlPoint(selection.controlPointId) : Promise.resolve(null)),
     [isGnss, selection.controlPointId],
+  )
+  const infraQ = useApi(
+    () => (isInfra ? api.infrastructure(selection.infrastructureId) : Promise.resolve(null)),
+    [isInfra, selection.infrastructureId],
+  )
+  const infraRelQ = useApi(
+    () => (isInfra ? api.infrastructureRelations(selection.infrastructureId).catch(() => null) : Promise.resolve(null)),
+    [isInfra, selection.infrastructureId],
+  )
+  const infraElevQ = useApi(
+    () => (isInfra ? api.infrastructureElevation(selection.infrastructureId).catch(() => null) : Promise.resolve(null)),
+    [isInfra, selection.infrastructureId],
   )
   // Phase 6 — DEM/DSM elevation residual for the selected control point, when
   // one is available (spec section 15). Never fabricated: a point with no
@@ -86,6 +105,9 @@ export function PropertySidebar() {
     }
     if (isGnss) {
       return <GnssPointCard query={gnssQ} elevQuery={gnssElevQ} id={selection.controlPointId} onClose={reset} mapApi={mapApi} canReview={can('change-detection:review')} />
+    }
+    if (isInfra) {
+      return <InfrastructureCard query={infraQ} relQuery={infraRelQ} elevQuery={infraElevQ} id={selection.infrastructureId} onClose={reset} mapApi={mapApi} canReview={can('infrastructure:review')} />
     }
     return (
       <aside className="pointer-events-auto absolute right-3 top-3 z-30 w-80 rounded-xl panel p-4" data-testid="property-sidebar">
@@ -172,6 +194,25 @@ export function PropertySidebar() {
                 </li>
               </ul>
             </Section>
+
+            {(idQ.data || []).length > 0 && (
+              <Section title="Proposed 3D Property Identifier">
+                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] text-gold">
+                  <DemoTag label="PROPOSED / RESEARCH" /> Not an Official ULPIN · not a government-approved 3D ULPIN standard.
+                </p>
+                <div data-testid="sidebar-identifier">
+                  {idQ.data.map((r) => (
+                    <div key={r.identifierId} className="mb-1 rounded border border-gold/25 bg-gold/5 p-2 text-[11px]">
+                      <p className="font-mono text-white break-all">{r.canonicalIdentifier}</p>
+                      <p className="mt-0.5 text-slate-400">
+                        Official ULPIN: <span className="font-mono text-white">{r.officialULPIN || 'NOT AVAILABLE'}</span> · {r.geometryVersion} · {r.status}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <Link to="/identifier" className="text-[11px] text-primary underline">Open the 3D Property Identifier page →</Link>
+              </Section>
+            )}
 
             {vol && (
               <Section title="3D Geometry (Prototype)">
@@ -1010,6 +1051,234 @@ function GnssPointCard({ query, elevQuery, id, onClose, mapApi, canReview }) {
       <footer className="grid grid-cols-1 gap-1.5 border-t border-white/10 p-3">
         <button className="btn-ghost justify-center" onClick={() => mapApi.current.flyToGnssPoint?.(id)}>
           <Satellite size={14} /> Zoom To
+        </button>
+      </footer>
+    </aside>
+  )
+}
+
+// --------------------------------------------------------------------------
+// Underground infrastructure (Phase 8). Data is shown ONLY from available
+// official / authorized / uploaded / research / demonstration datasets.
+// Spatial intersection does NOT establish legal ownership. Depth/elevation is
+// only shown when the source supplied it; DEMO depth is labelled DEMO DEPTH and
+// unknown depth is labelled DEPTH UNKNOWN — never a fabricated value.
+// --------------------------------------------------------------------------
+function DepthDiagram({ p }) {
+  const surf = Number.isFinite(p.surfaceElevationM) ? p.surfaceElevationM : null
+  const top = Number.isFinite(p.topElevationM) ? p.topElevationM : null
+  const bot = Number.isFinite(p.bottomElevationM) ? p.bottomElevationM : null
+  const depth = Number.isFinite(p.depthBelowSurfaceM) ? p.depthBelowSurfaceM : null
+  const demo = p.verificationStatus === 'DEMO' || p.source === 'DEMO'
+  if (top == null && depth == null) {
+    return (
+      <div className="rounded-lg border border-white/10 bg-white/5 p-2.5 text-[11px]" data-testid="infra-depth-unknown">
+        <p className="font-bold text-slate-400">DEPTH UNKNOWN</p>
+        <p className="mt-0.5 text-slate-500">This dataset did not supply a reliable depth or elevation. No value is shown or drawn as real.</p>
+      </div>
+    )
+  }
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/5 p-2.5 font-mono text-[11px] text-slate-300" data-testid="infra-depth-diagram">
+      <div className="flex items-center justify-between"><span>Surface</span><span>{surf != null ? `${surf} m` : '—'}</span></div>
+      <div className="my-1 border-t border-dashed border-slate-600" />
+      <div className="flex items-center justify-between text-white">
+        <span>{String(p.type || '').replace(/_/g, ' ')}</span>
+        <span>{depth != null ? `−${depth} m` : (top != null && surf != null ? `−${(surf - top).toFixed(2)} m` : '—')}</span>
+      </div>
+      <div className="mt-0.5 flex items-center justify-between text-slate-500">
+        <span>crown / invert</span>
+        <span>{top != null ? `${top}` : '—'} / {bot != null ? `${bot}` : '—'} m</span>
+      </div>
+      <p className="mt-1 text-[10px] text-gold/90">
+        {demo
+          ? 'DEMO DEPTH — illustrative, relative to local ground surface; vertical datum UNKNOWN.'
+          : `Reference: ${p.depthReference || 'UNKNOWN'} · Vertical datum: ${p.verticalDatum || 'UNKNOWN'}`}
+      </p>
+    </div>
+  )
+}
+
+function InfrastructureCard({ query, relQuery, elevQuery, id, onClose, mapApi, canReview }) {
+  const { data: p, error, loading, reload } = query
+  const { data: rel } = relQuery || {}
+  const { data: elev } = elevQuery || {}
+  const [busy, setBusy] = useState(false)
+
+  const official = Boolean(p?.isOfficial)
+  const stone = p?.status === 'OPERATIONAL' ? 'Verified' : p?.status === 'ABANDONED' ? 'Disputed' : 'Under Review'
+
+  const review = async (action) => {
+    setBusy(true)
+    await api.infrastructureReview(id, action).catch(() => {})
+    setBusy(false)
+    reload()
+  }
+
+  return (
+    <aside
+      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
+      data-testid="property-sidebar"
+    >
+      <header className="flex items-start justify-between gap-2 border-b border-white/10 p-3">
+        <div className="min-w-0">
+          <p className="text-sm font-extrabold text-white">Underground Infrastructure</p>
+          <p
+            className={clsx('mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold', official ? 'text-emerald-400' : 'text-gold')}
+            data-testid="infra-source"
+          >
+            {official ? <BadgeCheck size={12} /> : <TriangleAlert size={12} />}
+            {official ? `${p.source} — authoritative dataset` : `${p?.source || 'UNVERIFIED'} — not authoritative Chennai infrastructure`}
+          </p>
+        </div>
+        <button className="btn-ghost !px-1.5 !py-1" onClick={onClose} aria-label="Close details">
+          <X size={15} />
+        </button>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-3" data-testid="infra-card">
+        {loading && <Spinner />}
+        <ErrorNote error={error} onRetry={reload} />
+        {p && (
+          <>
+            <div className={clsx('rounded-lg border p-2.5', official ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-gold/30 bg-gold/10')}>
+              <p className="font-mono text-[13px] font-bold text-white break-all" data-testid="infra-id">{p.infrastructureId}</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {!official && <DemoTag label={p.verificationStatus || 'DEMO'} />}
+                <Badge>{p.type}</Badge>
+                <Badge status={stone}>{p.status}</Badge>
+              </div>
+            </div>
+
+            <Section title="Infrastructure">
+              <KeyValue
+                data={{
+                  Type: p.type,
+                  Subtype: p.subtype || '—',
+                  'Owner / Authority': p.ownerAuthority || 'Not provided',
+                  Status: p.status,
+                  Diameter: p.diameterM != null ? `${p.diameterM} m` : undefined,
+                  Width: p.widthM != null ? `${p.widthM} m` : undefined,
+                  Height: p.heightM != null ? `${p.heightM} m` : undefined,
+                  Source: p.source,
+                  Verification: p.verificationStatus,
+                  Timestamp: p.timestamp ? String(p.timestamp).slice(0, 19).replace('T', ' ') : 'Not available',
+                }}
+              />
+            </Section>
+
+            <Section title="Depth & Elevation">
+              <DepthDiagram p={p} />
+              <div className="mt-2">
+                <KeyValue
+                  data={{
+                    'Surface Elevation': p.surfaceElevationM != null ? `${p.surfaceElevationM} m` : 'Not available',
+                    'Top Elevation': p.topElevationM != null ? `${p.topElevationM} m` : 'Not available',
+                    'Bottom Elevation': p.bottomElevationM != null ? `${p.bottomElevationM} m` : 'Not available',
+                    'Depth Below Surface': p.depthBelowSurfaceM != null ? `${p.depthBelowSurfaceM} m` : 'Not available',
+                    'Depth Reference': p.depthReference || 'UNKNOWN',
+                    'Vertical Datum': p.verticalDatum || 'UNKNOWN',
+                    'Vertical Status': p.verticalStatus || 'UNKNOWN',
+                  }}
+                />
+              </div>
+              {elev?.dataAvailability === 'AVAILABLE' && (
+                <p className="mt-1.5 text-[10px] text-slate-500">
+                  Phase 5 context: nearest building {elev.nearestBuildingId} at {elev.nearestBuildingDistanceM} m ·
+                  surface ≈ {elev.surfaceElevationM} m ({elev.surfaceElevationSource}). {elev.note}
+                </p>
+              )}
+            </Section>
+
+            <Section title="CRS">
+              <KeyValue
+                data={{
+                  'Input CRS': p.inputCRS || 'Unknown',
+                  'Output CRS': p.outputCRS || 'EPSG:4326',
+                  'CRS Status': p.crsStatus || 'UNKNOWN',
+                  'Horizontal Datum': p.horizontalDatum || '—',
+                }}
+              />
+            </Section>
+
+            {(p.controlPointId || p.surveySessionId || p.reportedAccuracyM != null || p.surveyMethod) && (
+              <Section title="Survey Linkage (Phase 6)">
+                <KeyValue
+                  data={{
+                    'Control Point': p.controlPointId || '—',
+                    'Survey Session': p.surveySessionId || '—',
+                    'Reference Station': p.referenceStation || '—',
+                    'Survey Method': p.surveyMethod || '—',
+                    'Reported Accuracy': p.reportedAccuracyM != null ? `${p.reportedAccuracyM} m` : 'Not claimed',
+                  }}
+                />
+              </Section>
+            )}
+
+            <Section title="Property Relationship">
+              <p className="mb-1.5 text-[10px] text-gold/90">
+                Spatial and legal relationships are shown separately. A spatial intersection does <strong>not</strong> establish legal ownership.
+              </p>
+              <KeyValue
+                data={{
+                  'Related Parcel': p.parentParcelULPIN || p.parentParcel || '—',
+                  'Spatial Relation': p.spatialRelation || '—',
+                  'Related Building': p.parentBuilding || '—',
+                  'Legal Ownership': p.legalOwnership || 'NOT_PROVIDED',
+                }}
+              />
+              {(rel?.parcelRelations || []).length > 0 && (
+                <ul className="mt-1.5 space-y-0.5 text-[11px] text-slate-300" data-testid="infra-parcel-relations">
+                  {rel.parcelRelations.slice(0, 4).map((r) => (
+                    <li key={r.parcelId}>
+                      <span className="font-mono text-slate-400">{r.ulpin || r.parcelId}</span> · {r.spatialRelation}
+                      <span className="text-slate-500"> · {r.nearestBoundaryM} m</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-1 text-[10px] text-slate-500">{rel?.ownershipNote || 'Legal ownership is only shown when authoritative data supplies it.'}</p>
+            </Section>
+
+            <Section title="Provenance & Confidence" defaultOpen={false}>
+              <KeyValue
+                data={{
+                  Source: p.source,
+                  'Verification Status': p.verificationStatus,
+                  'Is Official': official ? 'Yes' : 'No',
+                  Confidence: p.confidence != null ? `${Math.round(p.confidence * 100)}%` : 'Not provided',
+                  'Review Action': p.reviewAction || '—',
+                  Note: p.provenanceNote || '—',
+                }}
+              />
+            </Section>
+
+            {canReview && (
+              <Section title="Review">
+                <div className="grid grid-cols-3 gap-1.5">
+                  <button className="btn-ghost !py-1 justify-center text-[11px]" disabled={busy} onClick={() => review('ACKNOWLEDGED')}>Acknowledge</button>
+                  <button className="btn-ghost !py-1 justify-center text-[11px]" disabled={busy} onClick={() => review('ACCEPTED')}>Accept</button>
+                  <button className="btn-ghost !py-1 justify-center text-[11px]" disabled={busy} onClick={() => review('NEEDS_CORRECTION')}>Correct</button>
+                </div>
+                <p className="mt-1.5 text-[10px] text-gold/90">
+                  A review records that a reviewer looked at this record. It never promotes the source to official and never changes geometry or depth.
+                </p>
+              </Section>
+            )}
+
+            <p className="mt-2 text-[10px] text-gold/90" data-testid="infra-disclaimer">
+              UNDERGROUND INFRASTRUCTURE DATA. Geometry, depth, elevation, ownership/authority and status are shown only from available
+              official, authorized, uploaded, research or demonstration datasets. Spatial intersection does not establish legal ownership.
+              Underground depth/elevation is only reported when supported by source data. Demonstration data is clearly labelled DEMO and
+              is not authoritative Chennai utility infrastructure.
+            </p>
+          </>
+        )}
+      </div>
+
+      <footer className="grid grid-cols-1 gap-1.5 border-t border-white/10 p-3">
+        <button className="btn-ghost justify-center" data-testid="infra-focus" onClick={() => mapApi.current.flyToInfrastructure?.(id)}>
+          <Waypoints size={14} /> Focus
         </button>
       </footer>
     </aside>

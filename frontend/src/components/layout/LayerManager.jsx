@@ -91,6 +91,13 @@ const GROUPS = [
       ['gnssControlPoints', 'GNSS/CORS Control Points'],
     ],
   },
+  {
+    title: 'Underground Infrastructure',
+    demo: true,
+    rows: [
+      ['undergroundInfrastructure', 'Underground Infrastructure'],
+    ],
+  },
 ]
 
 export function LayerManager() {

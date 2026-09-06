@@ -14,6 +14,8 @@ import * as aiFp from '../controllers/aiFloorPlanController.js'
 import * as aiElev from '../controllers/aiElevationController.js'
 import * as gnss from '../controllers/gnssController.js'
 import * as topo from '../controllers/topologyController.js'
+import * as infra from '../controllers/undergroundController.js'
+import * as id3d from '../controllers/identifierController.js'
 
 const r = Router()
 const ulpinParam = { params: z.object({ ulpin: z.string().min(3) }) }
@@ -36,6 +38,7 @@ r.post('/parcels/:ulpin/verify', requireAuth, requirePermission('parcel:verify')
 
 /* ----------------------------------------------------------------- ulpins */
 r.get('/ulpins', optionalAuth, land.listUlpins)
+r.get('/ulpins/:ulpin/3d-identifiers', optionalAuth, id3d.byOfficialUlpin) // Phase 9 — proposed 3D refs for an Official ULPIN
 r.get('/ulpins/:ulpin', optionalAuth, land.getUlpin)
 
 /* -------------------------------------------------------------- buildings */
@@ -76,6 +79,7 @@ r.get('/gis/layer/:layer', land.gisLayer)
 r.get('/gis/ai-buildings', optionalAuth, aiBld.gisAiBuildings) // Phase 3 — AI-derived buildings (AI_DEMO)
 r.get('/gis/ai-floor-units', optionalAuth, aiFp.gisAiFloorUnits) // Phase 4 — AI floor-plan units (AI_DEMO)
 r.get('/gis/gnss-control-points', optionalAuth, gnss.gisGnssControlPoints) // Phase 6 — GNSS/CORS control points
+r.get('/gis/underground-infrastructure', optionalAuth, infra.gisUndergroundInfrastructure) // Phase 8 — underground infrastructure
 
 /* -------------------------------------------------- dashboard / analytics */
 r.get('/dashboard/stats', optionalAuth, misc.getDashboard)
@@ -162,6 +166,45 @@ r.get('/topology/results', requireAuth, requirePermission('topology:read'), topo
 r.get('/topology/results/:id', requireAuth, requirePermission('topology:read'), topo.getResult)
 r.get('/topology/summary', requireAuth, requirePermission('topology:read'), topo.getLatestSummary)
 r.patch('/topology/results/:id/findings/:validationId/review', requireAuth, requirePermission('topology:review'), topo.reviewFinding)
+
+/* Phase 8 — underground 3D infrastructure mapping (additive; graceful if the
+   Python ai-service is unavailable — CRS transform for a projected CRS then
+   reports TRANSFORMATION_FAILED, never a guess). Own `undergroundInfrastructure`
+   / `infrastructureValidationResults` / `infrastructureJobs` collections — never
+   touches parcels/buildings/floors/propertyUnits. Rendered inside the EXISTING
+   Chennai-wide Cesium viewer. */
+r.get('/infrastructure/config', optionalAuth, infra.getConfig)
+r.get('/infrastructure/summary', optionalAuth, infra.getSummary)
+r.get('/infrastructure/validation-results', requireAuth, requirePermission('infrastructure:read'), infra.listValidationResults)
+r.get('/infrastructure/validation-results/:id', requireAuth, requirePermission('infrastructure:read'), infra.getValidationResult)
+r.get('/infrastructure', optionalAuth, infra.listInfrastructure)
+r.get('/infrastructure/:id', optionalAuth, infra.getInfrastructure)
+r.get('/infrastructure/:id/relations', optionalAuth, infra.getRelations)
+r.get('/infrastructure/:id/elevation', optionalAuth, infra.getElevation)
+r.post('/infrastructure/upload', requireAuth, requirePermission('infrastructure:upload'), infra.uploadSingle, infra.uploadValidate)
+r.post('/infrastructure/import', requireAuth, requirePermission('infrastructure:upload'), infra.uploadSingle, infra.uploadImport)
+r.post('/infrastructure/validate', requireAuth, requirePermission('infrastructure:validate'), infra.validateInfrastructure)
+r.post('/infrastructure/collisions', requireAuth, requirePermission('infrastructure:validate'), infra.getCollisions)
+r.patch('/infrastructure/:id/review', requireAuth, requirePermission('infrastructure:review'), infra.reviewInfrastructure)
+
+/* Phase 9 — Proposed 3D Property Identifier (a.k.a. "3D Cadastral Reference ID").
+   A RESEARCH / PROTOTYPE application-level reference linking an Official parcel
+   ULPIN with Building → Floor → Unit → 3D Volume → Geometry Version. It is NOT
+   an official government 3D ULPIN standard and never replaces the Official
+   ULPIN. Own `proposed3DPropertyIdentifiers` / `geometryVersions` collections —
+   pointers only, never touches parcels/buildings/floors/propertyUnits. */
+r.get('/3d-identifiers/config', optionalAuth, id3d.getConfig)
+r.get('/3d-identifiers/search', optionalAuth, id3d.search)
+r.get('/3d-identifiers', optionalAuth, id3d.listAll)
+r.post('/3d-identifiers', requireAuth, requirePermission('3didentifier:create'), id3d.create)
+r.post('/3d-identifiers/validate', requireAuth, requirePermission('3didentifier:validate'), id3d.validate)
+r.get('/3d-identifiers/:identifierId', optionalAuth, id3d.getOne)
+r.get('/3d-identifiers/:identifierId/hierarchy', optionalAuth, id3d.getHierarchy)
+r.get('/3d-identifiers/:identifierId/geometry', optionalAuth, id3d.getGeometry)
+r.get('/3d-identifiers/:identifierId/versions', optionalAuth, id3d.getVersions)
+r.post('/3d-identifiers/:identifierId/versions', requireAuth, requirePermission('3didentifier:create'), id3d.addVersion)
+r.patch('/3d-identifiers/:identifierId/versions/review', requireAuth, requirePermission('3didentifier:review'), id3d.reviewVersion)
+r.post('/3d-identifiers/:identifierId/revalidate', requireAuth, requirePermission('3didentifier:validate'), id3d.revalidate)
 
 r.post('/ai/:feature', requireAuth, requirePermission('ai:run'), misc.runAi)
 

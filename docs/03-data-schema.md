@@ -28,6 +28,11 @@ key (`backend/src/store/mongo.js`). All spatial layers carry `isDemo: true`.
 | `roads` | `id` | road centrelines |
 | `disputes` | `disputeId`, `ulpin`, `propertyId` | linked to ULPIN/parcel/building/floor/unit |
 | `documents` | `docId`, `ulpin`, `propertyId`, `buildingId` | demo document cards |
+| `undergroundInfrastructure` | `infrastructureId`, `type`, `status`, `source`, `verificationStatus`, `parentParcel`, `parentBuilding`, `ownerAuthority`, `locality` | Phase 8 — one underground utility / tunnel / metro / duct / manhole / chamber; GeoJSON Point/LineString/Polygon + true Z depth model + explicit provenance. Seed-mirrored DEMO network + additive uploads. Never joined into `parcels`/`buildings`. |
+| `infrastructureValidationResults` | `validationRunId`, `scopeType`, `scopeId` | Phase 8 — one deterministic validation run (findings + summary), Phase 7 result model. Never touches `undergroundInfrastructure` geometry. |
+| `infrastructureJobs` | `jobId`, `locality` | Phase 8 — one upload/import job summary. |
+| `proposed3DPropertyIdentifiers` | `identifierId`, `canonicalIdentifier` (unique), `officialULPIN`, `parcelId`, `buildingId`, `floorId`, `unitId`, `propertyId`, `volumeId`, `geometryVersion`, `status`, `locality` | Phase 9 — RESEARCH/PROTOTYPE cross-hierarchy reference linking an Official parcel ULPIN with Building→Floor→Unit→3D Volume→Geometry Version. `status: PROPOSED`, `isOfficial: false`. Pointers only — never joined into `parcels`/`buildings`/`floors`/`propertyUnits`. |
+| `geometryVersions` | `geometryVersionId`, `entityType`, `entityId` (unit `propertyId`), `geometryVersion`, `status` | Phase 9 — geometry version history (reference records; `geometryRef`, never a geometry copy). Historical versions are never deleted; a finalized version is immutable. |
 | `serviceRequests` | `requestId`, `raisedBy` | citizen request + workflow `history[]` |
 | `notifications` | `notificationId`, `forRole` | approval / dispute / tax / change alerts |
 | `auditLogs` | `logId`, `entityId` | user · action · entity · before/after · timestamp |
@@ -325,6 +330,95 @@ only ever adds `reviewAction`/`reviewedBy`/`reviewedAt` to one finding
 within its own run document — it never touches `parcels`/`buildings`/
 `floors`/`propertyUnits` geometry.
 
+### Underground infrastructure (Phase 8)
+
+```json
+{
+  "infrastructureId": "INF-DEMO-SHLN-WATER-0001",
+  "type": "WATER_PIPELINE",               // controlled list — see docs/20 §3
+  "subtype": "Distribution main",
+  "ownerAuthority": "Chennai Metro Water (DEMO)",
+  "status": "OPERATIONAL",
+  "geometry": { "type": "LineString", "coordinates": [ /* [lon,lat] */ ] },
+  "source": "DEMO",                        // OFFICIAL | AUTHORIZED | REAL_SURVEY | UPLOADED_SURVEY | DEMO | RESEARCH | UNVERIFIED | UNAVAILABLE
+  "verificationStatus": "DEMO",            // mirrors `source` — NEVER auto-promoted
+  "isOfficial": false,                     // true only for OFFICIAL / AUTHORIZED
+  "diameterM": 0.3,                        // pipes/cables; null when N/A
+  "widthM": null, "heightM": null,         // rectangular drains / tunnels / chambers
+  "surfaceElevationM": 8, "topElevationM": 6.5, "bottomElevationM": 6.2,
+  "depthBelowSurfaceM": 1.5,
+  "depthReference": "GROUND_SURFACE",      // GROUND_SURFACE | PARCEL_SURFACE | TERRAIN | ABSOLUTE | UNKNOWN
+  "verticalDatum": "UNKNOWN",              // never silently assumed
+  "verticalReference": "Local ground surface (approx.)",
+  "verticalStatus": "DEMO",               // KNOWN | KNOWN_RELATIVE | DERIVED | DEMO | UNKNOWN
+  "inputCRS": "EPSG:4326", "outputCRS": "EPSG:4326",
+  "crsStatus": "MATCHED",                  // MATCHED | REPROJECTED | UNKNOWN | TRANSFORMATION_FAILED
+  "controlPointId": null, "surveySessionId": null, "reportedAccuracyM": null,
+  "spatialRelation": "CROSSES_PARCEL",     // geometry fact only
+  "parentParcel": "PCL-CHN-SHLN-0001", "parentParcelULPIN": "TN-CHN-123456789",
+  "parentBuilding": null,
+  "parcelRelations": [ { "parcelId": "…", "ulpin": "…", "spatialRelation": "CROSSES_PARCEL", "nearestBoundaryM": 0 } ],
+  "legalOwnership": "NOT_PROVIDED",        // ONLY from authoritative data — never inferred from intersection
+  "locality": "sholinganallur",
+  "isDemo": true
+}
+```
+
+If the source has **no reliable Z**, `topElevationM` / `bottomElevationM` /
+`depthBelowSurfaceM` are `null`, `verticalStatus` is `UNKNOWN` and (for a real
+source) `reviewRequired` is `true` — a depth is **never invented** (docs/20
+§9). A `depthBelowSurfaceM` filter on `GET /api/infrastructure` only ever
+matches records that actually carry a depth.
+
+### Proposed 3D Property Identifier (Phase 9)
+
+```json
+{
+  "identifierId": "P3DI-000123",
+  "canonicalIdentifier": "3DPR:TN-CHN-123456789:B01:F02:U201:V0201:v2",
+  "officialULPIN": "TN-CHN-123456789",        // null when NOT AVAILABLE (never fabricated)
+  "officialULPINStatus": "DEMO_NOT_OFFICIAL",  // the parcel's OWN status — never upgraded
+  "officialULPINVerified": false,
+  "internalParcelRef": null,                   // set when officialULPIN is null
+  "parcelId": "PCL-CHN-SHLN-0001",
+  "buildingId": "TN-CHN-123456789-B01", "buildingSegment": "B01",
+  "floorId": "TN-CHN-123456789-B01-F02", "floorSegment": "F02",
+  "unitId": "U201", "propertyId": "TN-CHN-123456789-B01-F02-U201", "unitSegment": "U201",
+  "volumeId": "V0201", "geometryVersion": "v2",
+  "status": "PROPOSED",                        // never OFFICIAL / AUTHORIZED
+  "source": "DEMO", "verificationStatus": "DEMO", "isOfficial": false,
+  "legalStatus": "NOT_ESTABLISHED", "ownershipStatus": "NOT_PROVIDED",
+  "rightsStatus": "NOT_ESTABLISHED", "encumbranceStatus": "NOT_PROVIDED",
+  "conceptualVolumetricRights": { "volumeId": "V0201", "rights": [], "restrictions": [], "encumbrances": [] },
+  "geometryStatus": "VALID",                   // recomputed on read
+  "locality": "sholinganallur", "createdAt": "…", "updatedAt": "…"
+}
+```
+
+Canonical form (documented in
+[`21-proposed-3d-property-identifier.md`](21-proposed-3d-property-identifier.md#5-canonical-format-spec-section-5)):
+`3DPR:<parcelKey>:B<dd>:F<dd>:U<unit>:V<dddd>:v<n>` — 7 `:`-separated tokens,
+`:` reserved, deterministic, parsed backend-side.
+
+### Geometry version (Phase 9)
+
+```json
+{
+  "geometryVersionId": "GVER-000045",
+  "entityType": "VOLUME", "entityId": "TN-CHN-123456789-B01-F02-U201",
+  "geometryVersion": "v2", "previousVersion": "v1",
+  "status": "ACTIVE",           // DRAFT|PENDING_REVIEW|ACTIVE|SUPERSEDED|REJECTED|ARCHIVED
+  "source": "UPLOADED_SURVEY", "reason": "…", "isOfficial": false,
+  "geometryRef": { "kind": "VOLUME", "id": "V0201", "unitPropertyId": "…", "buildingId": "…" },
+  "supersededBy": null, "createdAt": "…", "updatedAt": "…"
+}
+```
+
+Keyed to the unit `propertyId` (the Phase-2 `volumeId` is unique only within a
+building). Historical versions are never deleted; a finalized version is
+immutable — a change creates a new version, and taking `ACTIVE` supersedes the
+prior `ACTIVE` in place.
+
 ## Relationships
 
 `parcels.ulpin` 1—N `buildings.ulpin` 1—N `floors.buildingId` 1—N
@@ -346,3 +440,27 @@ by `buildingHeights.jobId` via the shared `aiJobs` doc, `kind: "elevation"`).
 `controlPoints` reference `gnssControlPoints.controlPointId`. Only an
 authorized `ACCEPT` on a `geometryReviewProposals` document ever writes
 `parcels.geometry`.
+
+`undergroundInfrastructure.parentParcel`/`parentParcelULPIN` and
+`parentBuilding` optionally reference `parcels.parcelId`/`ulpin` and
+`buildings.buildingId` (spatial association only — the collection is never
+joined into `parcels`/`buildings`, and a spatial relationship is never a legal
+ownership claim). `undergroundInfrastructure.controlPointId` optionally
+references `gnssControlPoints.controlPointId` (Phase 6).
+`infrastructureValidationResults` stand alone (scoped by `locality` or
+`infrastructureId`); `infrastructureJobs` summarise an upload. A validation
+finding and a `PATCH /api/infrastructure/:id/review` only ever add
+`reviewAction`/`reviewedBy`/`reviewedAt` — they never change geometry, depth or
+`verificationStatus`.
+
+`proposed3DPropertyIdentifiers` holds only POINTERS:
+`officialULPIN`/`parcelId` → `parcels`, `buildingId` → `buildings`,
+`floorId` → `floors`, `propertyId` → `propertyUnits`, `volumeId` → the Phase-2
+prototype volume of that unit. It is never joined into those collections and
+never writes to them. `geometryVersions.entityId` references a unit
+`propertyId`; `geometryRef` carries the `volumeId`. Phase 9 reads (but never
+re-runs unless `POST /api/3d-identifiers/:id/revalidate` is called) the latest
+parcel-scoped `topologyValidationResults` and references
+`undergroundInfrastructure` spatial relations — always as relationships, never
+as ownership. The Official ULPIN's own value and provenance are never modified
+by Phase 9.

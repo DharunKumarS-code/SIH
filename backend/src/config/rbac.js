@@ -20,6 +20,8 @@ export const PERMISSIONS = {
     'service:track',
     'gis:view',
     'report:view-own',
+    'infrastructure:read', // Phase 8 — view-only underground infrastructure
+    '3didentifier:read', // Phase 9 — view-only proposed 3D property identifier
   ],
   'Land Officer': [
     'parcel:search',
@@ -37,6 +39,8 @@ export const PERMISSIONS = {
     'audit:view-own',
     'report:view',
     'topology:read', // Phase 7 — view-only
+    'infrastructure:read', // Phase 8 — view-only
+    '3didentifier:read', // Phase 9 — view-only
   ],
   'Survey Officer': [
     'parcel:search',
@@ -52,6 +56,16 @@ export const PERMISSIONS = {
     'topology:read',
     'topology:validate',
     'topology:review',
+    // Phase 8 — underground 3D infrastructure mapping
+    'infrastructure:read',
+    'infrastructure:upload',
+    'infrastructure:validate',
+    'infrastructure:review',
+    // Phase 9 — proposed 3D property identifier
+    '3didentifier:read',
+    '3didentifier:create',
+    '3didentifier:validate',
+    '3didentifier:review',
   ],
   'Planning Officer': [
     'parcel:search',
@@ -65,6 +79,8 @@ export const PERMISSIONS = {
     'gis:view',
     'report:view',
     'topology:read', // Phase 7 — view-only
+    'infrastructure:read', // Phase 8 — view-only
+    '3didentifier:read', // Phase 9 — view-only
   ],
   'Revenue Officer': [
     'parcel:search',
@@ -74,6 +90,8 @@ export const PERMISSIONS = {
     'property:view',
     'gis:view',
     'report:view',
+    'infrastructure:read', // Phase 8 — view-only
+    '3didentifier:read', // Phase 9 — view-only
   ],
   Administrator: ['*'],
 }

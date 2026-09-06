@@ -44,6 +44,11 @@ export const env = {
   // Exact polygon validity/overlap degrades to GEOMETRY_ENGINE_UNAVAILABLE
   // (never a guessed result) if the ai-service is unreachable.
   topologyGeometryTimeoutMs: Number(process.env.TOPOLOGY_GEOMETRY_TIMEOUT_MS) || 15000,
+  // Phase 8 — underground 3D infrastructure mapping (optional/additive).
+  // GeoJSON/CSV/JSON uploads are small text files. CRS transformation for a
+  // projected CRS reuses the Phase 6 ai-service pyproj endpoint and degrades to
+  // TRANSFORMATION_FAILED (never a guessed CRS) if the ai-service is unreachable.
+  infraMaxUploadMb: Number(process.env.INFRA_MAX_UPLOAD_MB) || 6,
   seedOnBoot: bool(process.env.SEED_ON_BOOT, true),
   nodeEnv: process.env.NODE_ENV || 'development',
 }
