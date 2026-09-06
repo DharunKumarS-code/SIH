@@ -57,6 +57,10 @@ export const DEFAULT_LAYERS = {
   // GNSS/CORS control points (Phase 6) — additive, OFF by default. Never
   // renders raw survey observations at city scale; per-locality only.
   gnssControlPoints: false,
+  // Underground 3D infrastructure (Phase 8) — additive, OFF by default so it
+  // never affects the existing map / LOD until a user turns it on. Rendered in
+  // the SAME Chennai-wide Cesium viewer; loaded per-locality.
+  undergroundInfrastructure: false,
 }
 
 const areaFromLocality = (loc) => ({
@@ -197,9 +201,17 @@ export function SelectionProvider({ children }) {
     mapApi.current.flyToGnssPoint?.(controlPointId)
   }, [])
 
+  // Phase 8 — an underground infrastructure object. Additive selection mode;
+  // reuses the same viewer, camera and sidebar (spec sections 29-30).
+  const selectInfrastructure = useCallback((infrastructureId) => {
+    setIsolated(false)
+    setSelection({ mode: 'infrastructure', infrastructureId, ulpin: null, buildingId: null, floorNumber: null, propertyId: null })
+    mapApi.current.flyToInfrastructure?.(infrastructureId)
+  }, [])
+
   const reset = useCallback(() => {
     setIsolated(false)
-    setSelection((s) => ({ mode: 'overview', ulpin: s.ulpin, buildingId: null, floorNumber: null, propertyId: null, aiBuildingId: null, aiFloorUnitId: null }))
+    setSelection((s) => ({ mode: 'overview', ulpin: s.ulpin, buildingId: null, floorNumber: null, propertyId: null, aiBuildingId: null, aiFloorUnitId: null, infrastructureId: null }))
     mapApi.current.resetView?.()
   }, [])
 
@@ -240,6 +252,7 @@ export function SelectionProvider({ children }) {
       selectAiBuilding,
       selectAiFloorUnit,
       selectGnssPoint,
+      selectInfrastructure,
       reset,
     }),
     [
@@ -260,6 +273,7 @@ export function SelectionProvider({ children }) {
       selectAiBuilding,
       selectAiFloorUnit,
       selectGnssPoint,
+      selectInfrastructure,
       reset,
     ],
   )

@@ -10,7 +10,7 @@
     "start": "node src/server.js",
     "seed": "node src/scripts/seed.js",
     "seed:fresh": "node src/scripts/seed.js --fresh",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test --test-concurrency=1 tests/*.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

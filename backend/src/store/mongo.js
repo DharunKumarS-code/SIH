@@ -53,6 +53,17 @@ const KEYS = {
   // Phase 7 — intelligent 2D/3D topology validation engine (additive; never
   // touches parcels/buildings/floors/propertyUnits).
   topologyValidationResults: ['validationRunId', 'scopeType', 'scopeId'],
+  // Phase 8 — underground 3D infrastructure mapping (additive; own collections,
+  // never touches parcels/buildings/floors/propertyUnits). Demo network is
+  // seed-mirrored; uploads and validation runs are additive.
+  undergroundInfrastructure: ['infrastructureId', 'type', 'status', 'source', 'verificationStatus', 'parentParcel', 'parentBuilding', 'ownerAuthority', 'locality'],
+  infrastructureValidationResults: ['validationRunId', 'scopeType', 'scopeId'],
+  infrastructureJobs: ['jobId', 'locality'],
+  // Phase 9 — Proposed 3D Property Identifier (additive; research/prototype
+  // cross-hierarchy reference + geometry version history). Never touches
+  // parcels/buildings/floors/propertyUnits — pointers only.
+  proposed3DPropertyIdentifiers: ['identifierId', 'canonicalIdentifier', 'officialULPIN', 'parcelId', 'buildingId', 'floorId', 'unitId', 'propertyId', 'volumeId', 'geometryVersion', 'status', 'locality'],
+  geometryVersions: ['geometryVersionId', 'entityType', 'entityId', 'geometryVersion', 'status'],
 }
 
 function modelFor(name) {
@@ -84,6 +95,12 @@ class MongoCollection {
 
   async count(filter = {}) {
     return this.model.countDocuments(filter).exec()
+  }
+
+  /** Fast, metadata-only "does this collection have any documents?" probe. */
+  async isEmpty() {
+    const n = await this.model.estimatedDocumentCount().exec()
+    return n === 0
   }
 
   async create(doc) {

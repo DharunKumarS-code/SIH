@@ -44,12 +44,14 @@ export async function connectStore() {
     const mongoStore = createMongoStore()
 
     // Mirror seed into any empty collection so the demo works on a fresh cluster.
+    // The per-collection emptiness probe uses `estimatedDocumentCount` (see
+    // store/mongo.js) so this boot-time sweep stays cheap even when several test
+    // files open their own connection to a small Atlas tier at the same time.
     let mirrored = 0
     if (env.seedOnBoot) {
       for (const [name, docs] of Object.entries(seed)) {
         const col = mongoStore.collection(name)
-        const existing = await col.count({})
-        if (existing === 0 && docs.length) {
+        if (docs.length && (await col.isEmpty())) {
           await col.insertMany(docs)
           mirrored += docs.length
         }

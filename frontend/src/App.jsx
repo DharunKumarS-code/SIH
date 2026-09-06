@@ -19,6 +19,8 @@ import AiFloorPlanSegmentation from './pages/AiFloorPlanSegmentation.jsx'
 import ElevationLiDAR from './pages/ElevationLiDAR.jsx'
 import GNSSControlPoints from './pages/GNSSControlPoints.jsx'
 import TopologyValidation from './pages/TopologyValidation.jsx'
+import UndergroundInfrastructure from './pages/UndergroundInfrastructure.jsx'
+import Property3DIdentifier from './pages/Property3DIdentifier.jsx'
 import Services from './pages/Services.jsx'
 import Reports from './pages/Reports.jsx'
 import UsersRoles from './pages/UsersRoles.jsx'
@@ -69,6 +71,8 @@ export default function App() {
                 <Route path="elevation" element={<ElevationLiDAR />} />
                 <Route path="gnss" element={<GNSSControlPoints />} />
                 <Route path="topology" element={<TopologyValidation />} />
+                <Route path="underground" element={<UndergroundInfrastructure />} />
+                <Route path="identifier" element={<Property3DIdentifier />} />
                 <Route path="services" element={<Services />} />
                 <Route path="reports" element={<Reports />} />
                 <Route path="users" element={<UsersRoles />} />

@@ -170,6 +170,10 @@ GET  /gis/parcels|buildings|units|common-areas|layer/:layer   (all accept ?local
 GET  /dashboard/stats · GET /analytics · GET /search?q= · GET /system/status
 POST /ai/:feature · GET /ai/status
 GET/POST /services (citizen workflow) · GET /audit · GET /users
+GET  /infrastructure · GET /infrastructure/:id · GET /infrastructure/:id/relations|elevation
+POST /infrastructure/upload|import|validate|collisions · GET /gis/underground-infrastructure   (Phase 8)
+GET  /3d-identifiers · GET /3d-identifiers/:id · GET /3d-identifiers/:id/hierarchy|geometry|versions
+POST /3d-identifiers · POST /3d-identifiers/validate · GET /ulpins/:ulpin/3d-identifiers        (Phase 9)
 ```
 
 ## 11. 3D architecture
@@ -278,6 +282,43 @@ GET/POST /services (citizen workflow) · GET /audit · GET /users
   same Chennai-wide Cesium viewer — no new layer or viewer is added. No ML
   model is used or implied. See
   [`docs/19-intelligent-topology-validation.md`](docs/19-intelligent-topology-validation.md).
+- **Underground 3D infrastructure mapping (Phase 8)** — an optional,
+  **default-OFF** "Underground Infrastructure" layer in the **same** Chennai-wide
+  viewer renders water / sewer / stormwater / electrical / telecom / gas
+  pipelines, tunnels, metro, utility ducts, manholes and chambers at **true
+  Z/depth** — linear assets as depth-placed polylines, manholes as cylinders,
+  chambers as bounded 3D volumes. Every object carries explicit provenance
+  (`OFFICIAL` / `AUTHORIZED` / `REAL_SURVEY` / `UPLOADED_SURVEY` / `DEMO` /
+  `RESEARCH` / `UNVERIFIED` / `UNAVAILABLE`) that is **never auto-promoted**;
+  depth/elevation is stored only when the source supplies it (a real record
+  with no Z keeps `null` and `verticalStatus: UNKNOWN` — never invented);
+  `verticalDatum` is never assumed; a missing CRS stays `UNKNOWN` (a projected
+  CRS is transformed via the Phase-6 `pyproj` client, never guessed). A 2D
+  crossing is **not** automatically a 3D collision — the engine reports the
+  measured vertical separation and only flags `INF_3D_COLLISION` when the
+  vertical bands actually overlap. Spatial relationship, `ownerAuthority` and
+  `legalOwnership` are separate concepts — **spatial intersection never
+  establishes ownership** (`legalOwnership: NOT_PROVIDED` unless authoritative).
+  Validation reuses and extends the Phase-7 result model; no new Python is
+  added. All shipped data is synthetic **DEMO** — no real Chennai government
+  utility infrastructure. New page `/underground`; ingests GeoJSON / CSV / JSON.
+  See [`docs/20-underground-infrastructure.md`](docs/20-underground-infrastructure.md).
+- **Proposed 3D Property Identifier (Phase 9)** — a **RESEARCH / PROTOTYPE**
+  machine-readable reference (`3DPR:<parcelKey>:B01:F02:U201:V0201:v2`) that
+  links a parcel's **Official ULPIN** with Building → Floor → Unit → 3D Volume →
+  Geometry Version. It is deterministic (a documented 7-token canonical form,
+  `:` reserved, parsed backend-side), it reuses the Phase-2 volume model and
+  Phase-5/6/7/8 references, and it carries **geometry version history**
+  (`v1 → v2` supersession chains, immutable finalized versions, one `ACTIVE` per
+  unit, full audit trail). It is **NOT** an Official ULPIN and **NOT** a
+  government-approved 3D ULPIN standard — every record is `status: PROPOSED` /
+  `isOfficial: false`, the Official ULPIN keeps its own provenance and is never
+  overwritten, a missing Official ULPIN shows **"NOT AVAILABLE"** (never
+  fabricated), and rights / ownership / restrictions / encumbrances are
+  conceptual placeholders (`NOT_ESTABLISHED` / `NOT_PROVIDED`) — spatial
+  intersection never implies ownership. New page `/identifier`; **no new Cesium
+  viewer** — focus reuses the existing unit selection. See
+  [`docs/21-proposed-3d-property-identifier.md`](docs/21-proposed-3d-property-identifier.md).
 
 Detail: [`docs/05-3d-property-model.md`](docs/05-3d-property-model.md).
 
@@ -301,7 +342,16 @@ points, stored boundary-verification results, and reviewable parcel-geometry
 correction proposals, all kept separate from `parcels` until an authorized
 reviewer explicitly accepts a proposal — and (Phase 7, additive)
 `topologyValidationResults` — one document per validation run (findings +
-summary), never touching `parcels`/`buildings`/`floors`/`propertyUnits`.
+summary), never touching `parcels`/`buildings`/`floors`/`propertyUnits` — and
+(Phase 8, additive) `undergroundInfrastructure` · `infrastructureValidationResults`
+· `infrastructureJobs` — underground utility / tunnel / metro / duct / manhole /
+chamber geometry with a true Z depth model + explicit provenance, deterministic
+validation runs, and upload jobs, all kept entirely separate from
+`parcels`/`buildings`/`floors`/`propertyUnits` — and (Phase 9, additive)
+`proposed3DPropertyIdentifiers` · `geometryVersions` — a research/prototype
+cross-hierarchy reference (`status: PROPOSED`, never an Official ULPIN) plus
+immutable geometry version history, holding only pointers into the existing
+collections.
 Canonical shapes: [`docs/03-data-schema.md`](docs/03-data-schema.md),
 [`docs/15-ai-building-extraction.md`](docs/15-ai-building-extraction.md),
 [`docs/16-ai-floor-plan-segmentation.md`](docs/16-ai-floor-plan-segmentation.md),

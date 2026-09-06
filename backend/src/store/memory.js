@@ -45,6 +45,10 @@ class MemoryCollection {
     return this.docs.filter((d) => matches(d, filter)).length
   }
 
+  async isEmpty() {
+    return this.docs.length === 0
+  }
+
   async create(doc) {
     const row = clone(doc)
     this.docs.push(row)

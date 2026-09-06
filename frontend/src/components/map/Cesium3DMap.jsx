@@ -54,7 +54,31 @@ const COL = {
   gnssWarning: Cesium.Color.fromCssColorString('#a855f7'),
   gnssError: Cesium.Color.fromCssColorString('#7e22ce'),
   gnssSelected: Cesium.Color.fromCssColorString('#f2b807'),
+  // Phase 8 — underground infrastructure, coloured by utility type. An
+  // earthy / amber family so it never reads as a parcel, building, AI overlay,
+  // DEM/DSM or GNSS layer. Selected = the same gold used everywhere else.
+  infra: {
+    WATER_PIPELINE: Cesium.Color.fromCssColorString('#4fa9ff'),
+    SEWER_PIPELINE: Cesium.Color.fromCssColorString('#9b7b4f'),
+    STORMWATER_DRAIN: Cesium.Color.fromCssColorString('#4fbf9f'),
+    ELECTRICAL: Cesium.Color.fromCssColorString('#f2b807'),
+    TELECOM: Cesium.Color.fromCssColorString('#a86fd1'),
+    GAS: Cesium.Color.fromCssColorString('#e4566e'),
+    TUNNEL: Cesium.Color.fromCssColorString('#c9925b'),
+    METRO: Cesium.Color.fromCssColorString('#d98a3f'),
+    UTILITY_DUCT: Cesium.Color.fromCssColorString('#8b97ad'),
+    MANHOLE: Cesium.Color.fromCssColorString('#cbb26b'),
+    CHAMBER: Cesium.Color.fromCssColorString('#b5895b'),
+    OTHER: Cesium.Color.fromCssColorString('#9aa7bd'),
+  },
+  infraSelected: Cesium.Color.fromCssColorString('#f2b807'),
+  infraUnknownDepth: Cesium.Color.fromCssColorString('#8b97ad').withAlpha(0.5),
 }
+
+// Underground records without a supplied depth are drawn just below the surface
+// with a faded, dashed style so the UI NEVER visually implies that an unknown
+// depth is a real surveyed one (spec section 27).
+const UNKNOWN_DEPTH_Z = 7.0
 
 // AI buildings have no surveyed height — extrude with a clearly-flagged
 // ESTIMATED / DEMO value only (heightStatus stays UNAVAILABLE in the record).
@@ -79,6 +103,7 @@ export function Cesium3DMap() {
   const aiBuildingsRef = useRef(new Map()) // aiBuildingId -> Entity (Phase 3, AI_DEMO)
   const aiFloorUnitsRef = useRef(new Map()) // aiFloorUnitId -> Entity (Phase 4, AI_DEMO)
   const gnssPointsRef = useRef(new Map()) // controlPointId -> Entity (Phase 6, GNSS/CORS DEMO)
+  const infraEntitiesRef = useRef(new Map()) // infrastructureId -> Entity (Phase 8, underground infrastructure)
   const cityAreaRef = useRef(new Map()) // areaId -> { fill, line }
   const activeAreaRef = useRef(DEFAULT_AREA_ID)
   const lodRef = useRef('area')
@@ -382,6 +407,7 @@ export function Cesium3DMap() {
     await ensureAiBuildings(areaId)
     await ensureAiFloorUnits(areaId)
     await ensureGnssControlPoints(areaId)
+    await ensureUndergroundInfrastructure(areaId)
     if (!liveViewer()) return
     applyLayerVisibility()
     liveViewer().scene.requestRender()
@@ -512,6 +538,102 @@ export function Cesium3DMap() {
         added += 1
       }
     } catch { /* GNSS layer is optional — never block the map */ }
+    if (added && liveViewer()) {
+      applyLayerVisibility()
+      liveViewer().scene.requestRender()
+    }
+    return added
+  }
+
+  // Phase 8 — underground 3D infrastructure (DEMO / uploaded / authorized). Own
+  // layer, OFF by default. Rendered INSIDE THIS SAME viewer at true Z/depth:
+  // linear assets as depth-placed polylines, manholes as cylinders, chambers as
+  // bounded 3D volumes. Records with no supplied depth are drawn just below the
+  // surface, faded + dashed, so unknown depth never looks like a surveyed one.
+  // Idempotent (guarded per infrastructureId).
+  async function ensureUndergroundInfrastructure(areaId) {
+    if (!liveViewer()) return 0
+    let added = 0
+    try {
+      const fc = await api.gisUndergroundInfrastructure({ locality: areaId })
+      const viewer = liveViewer()
+      if (!viewer) return 0
+      for (const f of fc.features || []) {
+        const p = f.properties || {}
+        const id = p.infrastructureId
+        if (!id || infraEntitiesRef.current.has(id)) continue
+        const g = f.geometry
+        if (!g) continue
+        const typeColor = COL.infra[p.type] || COL.infra.OTHER
+        const depthUnknown = !finite(p.topElevationM)
+        const zTop = finite(p.topElevationM) ? p.topElevationM : UNKNOWN_DEPTH_Z
+        const zBot = finite(p.bottomElevationM) ? p.bottomElevationM : zTop - 0.3
+        const isOfficial = Boolean(p.isOfficial)
+        let ent = null
+
+        if (g.type === 'LineString') {
+          const positions = []
+          for (const c of g.coordinates) positions.push(c[0], c[1], zTop)
+          if (positions.length < 6) continue
+          const widthPx = Math.max(3, Math.min(14, (finite(p.diameterM) ? p.diameterM : finite(p.widthM) ? p.widthM : 0.3) * 12))
+          ent = viewer.entities.add({
+            show: false,
+            polyline: {
+              positions: Cesium.Cartesian3.fromDegreesArrayHeights(positions),
+              width: widthPx,
+              arcType: Cesium.ArcType.NONE,
+              material: depthUnknown
+                ? new Cesium.PolylineDashMaterialProperty({ color: COL.infraUnknownDepth, dashLength: 12 })
+                : isOfficial
+                  ? typeColor
+                  : new Cesium.PolylineDashMaterialProperty({ color: typeColor, dashLength: 24 }),
+            },
+            properties: { kind: 'infra', ...p },
+          })
+        } else if (g.type === 'Point') {
+          const [lon, lat] = g.coordinates
+          if (!finite(lon) || !finite(lat)) continue
+          const len = Math.max(0.6, (finite(p.depthBelowSurfaceM) ? p.depthBelowSurfaceM : 2) )
+          const radius = Math.max(0.4, (finite(p.widthM) ? p.widthM : 1.2) / 2)
+          const midZ = finite(p.surfaceElevationM) ? p.surfaceElevationM - len / 2 : UNKNOWN_DEPTH_Z
+          ent = viewer.entities.add({
+            show: false,
+            position: Cesium.Cartesian3.fromDegrees(lon, lat, midZ),
+            cylinder: {
+              length: len,
+              topRadius: radius,
+              bottomRadius: radius,
+              material: (depthUnknown ? COL.infraUnknownDepth : typeColor).withAlpha(0.6),
+              outline: true,
+              outlineColor: COL.outline,
+            },
+            properties: { kind: 'infra', ...p },
+          })
+        } else if (g.type === 'Polygon') {
+          const flat = []
+          for (const c of g.coordinates[0] || []) flat.push(c[0], c[1])
+          if (flat.length < 6) continue
+          ent = viewer.entities.add({
+            show: false,
+            polygon: {
+              hierarchy: Cesium.Cartesian3.fromDegreesArray(flat),
+              material: (depthUnknown ? COL.infraUnknownDepth : typeColor).withAlpha(0.35),
+              outline: true,
+              outlineColor: typeColor,
+              height: Math.min(zBot, zTop),
+              extrudedHeight: Math.max(zBot, zTop),
+            },
+            properties: { kind: 'infra', ...p },
+          })
+        }
+        if (!ent) continue
+        ent.__area = areaId
+        ent.__depthUnknown = depthUnknown
+        infraEntitiesRef.current.set(id, ent)
+        ;(groupsRef.current.undergroundInfrastructure ||= []).push(ent)
+        added += 1
+      }
+    } catch { /* underground layer is optional — never block the map */ }
     if (added && liveViewer()) {
       applyLayerVisibility()
       liveViewer().scene.requestRender()
@@ -702,6 +824,8 @@ export function Cesium3DMap() {
         s.selectAiFloorUnit(valueOf(props.aiFloorUnitId))
       } else if (kind === 'gnss-point') {
         s.selectGnssPoint(valueOf(props.controlPointId))
+      } else if (kind === 'infra') {
+        s.selectInfrastructure(valueOf(props.infrastructureId))
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
   }
@@ -774,6 +898,10 @@ export function Cesium3DMap() {
         const ent = gnssPointsRef.current.get(controlPointId)
         if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(30), Cesium.Math.toRadians(-35), 80) }).catch(() => {})
       },
+      flyToInfrastructure: (infrastructureId) => {
+        const ent = infraEntitiesRef.current.get(infrastructureId)
+        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(30), Cesium.Math.toRadians(-32), 160) }).catch(() => {})
+      },
       // Pull freshly-extracted AI buildings into the running viewer (called by
       // the AI Building Extraction page after an inference completes).
       refreshAiBuildings: (areaId) => ensureAiBuildings(areaId || activeAreaRef.current),
@@ -781,6 +909,8 @@ export function Cesium3DMap() {
       refreshAiFloorUnits: (areaId) => ensureAiFloorUnits(areaId || activeAreaRef.current),
       // Same for Phase 6 GNSS/CORS control points.
       refreshGnssControlPoints: (areaId) => ensureGnssControlPoints(areaId || activeAreaRef.current),
+      // Same for Phase 8 underground infrastructure.
+      refreshUndergroundInfrastructure: (areaId) => ensureUndergroundInfrastructure(areaId || activeAreaRef.current),
     }
   }
 
@@ -795,6 +925,7 @@ export function Cesium3DMap() {
     await ensureAiBuildings(areaId) // idempotent — picks up any newly-extracted AI buildings
     await ensureAiFloorUnits(areaId) // idempotent — picks up any newly-segmented AI floor-plan units
     await ensureGnssControlPoints(areaId) // idempotent — picks up any newly-imported GNSS/CORS control points
+    await ensureUndergroundInfrastructure(areaId) // idempotent — picks up any newly-imported underground infrastructure
     const viewer = liveViewer()
     if (!viewer) return
     const h = loc.cameraHeightM || 1500
@@ -874,6 +1005,9 @@ export function Cesium3DMap() {
     if (mode === 'gnss-point' && selection.controlPointId) {
       await ensureGnssControlPoints(activeAreaRef.current)
     }
+    if (mode === 'infrastructure' && selection.infrastructureId) {
+      await ensureUndergroundInfrastructure(activeAreaRef.current)
+    }
     const viewer = liveViewer()
     if (!viewer) return
 
@@ -887,6 +1021,7 @@ export function Cesium3DMap() {
     else if (mode === 'ai-building' && selection.aiBuildingId) mapApi.flyToAiBuilding?.(selection.aiBuildingId)
     else if (mode === 'ai-floor-unit' && selection.aiFloorUnitId) mapApi.flyToAiFloorUnit?.(selection.aiFloorUnitId)
     else if (mode === 'gnss-point' && selection.controlPointId) mapApi.flyToGnssPoint?.(selection.controlPointId)
+    else if (mode === 'infrastructure' && selection.infrastructureId) mapApi.flyToInfrastructure?.(selection.infrastructureId)
     else if (mode === 'overview') flyToOverview(1.4)
 
     viewer.scene.requestRender()
@@ -914,7 +1049,7 @@ export function Cesium3DMap() {
 
     // Generic overlay/base groups: gated by layer switch + active area + LOD.
     for (const [key, ents] of Object.entries(groupsRef.current)) {
-      if (key === 'units3d' || key === 'commonAreas' || key === 'buildings' || key === 'floorVolumes' || key === 'aiFloorUnits' || key === 'gnssControlPoints') continue
+      if (key === 'units3d' || key === 'commonAreas' || key === 'buildings' || key === 'floorVolumes' || key === 'aiFloorUnits' || key === 'gnssControlPoints' || key === 'undergroundInfrastructure') continue
       const layerOn = L[key] ?? true
       for (const ent of ents || []) {
         ent.show = layerOn && areaOk(ent) && lod !== 'city'
@@ -1019,6 +1154,34 @@ export function Cesium3DMap() {
         ent.polygon.outlineColor = isSel
           ? Cesium.Color.fromCssColorString('#f2b807')
           : COL.aiFloorUnitLine
+      }
+    }
+
+    // Phase 8 — underground infrastructure: own layer, OFF by default. Visible
+    // at area + building zoom (never at the city overview). The selected asset
+    // is highlighted gold; isolation hides the rest. Depth-unknown records keep
+    // their faded style so they never look like surveyed depth.
+    for (const [id, ent] of infraEntitiesRef.current) {
+      const isSel = mode === 'infrastructure' && id === selection.infrastructureId
+      let show = (L.undergroundInfrastructure ?? false) && detailOk && areaOk(ent)
+      if (isolated && !isSel) show = false
+      ent.show = show
+      const typeColor = COL.infra[valueOf(ent.properties?.type)] || COL.infra.OTHER
+      const baseColor = ent.__depthUnknown ? COL.infraUnknownDepth : typeColor
+      if (ent.polyline) {
+        ent.polyline.material = isSel
+          ? COL.infraSelected
+          : ent.__depthUnknown
+            ? new Cesium.PolylineDashMaterialProperty({ color: COL.infraUnknownDepth, dashLength: 12 })
+            : valueOf(ent.properties?.isOfficial)
+              ? typeColor
+              : new Cesium.PolylineDashMaterialProperty({ color: typeColor, dashLength: 24 })
+        ent.polyline.width = isSel ? 10 : Math.max(3, Math.min(14, (valueOf(ent.properties?.diameterM) || valueOf(ent.properties?.widthM) || 0.3) * 12))
+      }
+      if (ent.cylinder) ent.cylinder.material = (isSel ? COL.infraSelected : baseColor).withAlpha(0.6)
+      if (ent.polygon) {
+        ent.polygon.material = (isSel ? COL.infraSelected : baseColor).withAlpha(0.35)
+        ent.polygon.outlineColor = isSel ? COL.infraSelected : typeColor
       }
     }
 

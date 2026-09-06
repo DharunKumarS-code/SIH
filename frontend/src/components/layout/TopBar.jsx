@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { useNavigate } from 'react-router-dom'
-import { Menu, Search, MapPin, LogOut, Building, Home, User2, Layers, Layers3 } from 'lucide-react'
+import { Menu, Search, MapPin, LogOut, Building, Home, User2, Layers, Layers3, Waypoints, Boxes } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useSelection } from '../../context/SelectionContext.jsx'
 import { api } from '../../lib/api.js'
 import { NotificationBell } from './NotificationBell.jsx'
 
-const KIND_ICON = { unit: Home, building: Building, floor: Layers3, parcel: Layers, owner: User2 }
+const KIND_ICON = { unit: Home, building: Building, floor: Layers3, parcel: Layers, owner: User2, infrastructure: Waypoints, identifier: Boxes }
 
 export function TopBar({ onToggleNav }) {
   const { user, logout } = useAuth()
-  const { selectParcel, selectBuilding, selectFloor, selectUnit, localities, area, selectArea } = useSelection()
+  const { selectParcel, selectBuilding, selectFloor, selectUnit, selectInfrastructure, setLayerGroup, localities, area, selectArea } = useSelection()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
   const [results, setResults] = useState([])
@@ -51,6 +51,15 @@ export function TopBar({ onToggleNav }) {
     else if (r.kind === 'building') selectBuilding(r.ref.buildingId, r.ref.ulpin)
     else if (r.kind === 'floor') selectFloor(r.ref.buildingId, r.ref.floorNumber, r.ref.ulpin)
     else if (r.kind === 'owner') selectUnit(r.ref)
+    else if (r.kind === 'infrastructure') {
+      if (r.ref.locality && r.ref.locality !== area?.id) selectArea(r.ref.locality)
+      setLayerGroup(['undergroundInfrastructure'], true)
+      selectInfrastructure(r.ref.infrastructureId)
+    }
+    else if (r.kind === 'identifier') {
+      if (r.ref.locality && r.ref.locality !== area?.id) selectArea(r.ref.locality)
+      if (r.ref.propertyId) selectUnit(r.ref) // reuse existing unit selection -> volume focus + sidebar
+    }
     else selectParcel(r.ref.ulpin)
   }
 

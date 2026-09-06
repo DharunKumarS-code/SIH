@@ -7,6 +7,7 @@ import { recordAudit } from '../services/auditService.js'
 import { parseProtoPropertyId } from '../services/idService.js'
 import { demoProvenance } from '../services/landData/index.js'
 import { parseVolumeId, deriveVolumeId } from '../services/geometry3d/index.js'
+import { searchIdentifiers } from '../services/identifier3d/index.js'
 
 /* --------------------------------------------------------------- dashboard */
 export const getDashboard = asyncHandler(async (_req, res) => ok(res, await dashboardStats()))
@@ -265,6 +266,43 @@ export const search = asyncHandler(async (req, res) => {
         centroid: f.centroid,
       })
     }
+  }
+
+  // Phase 8 — underground infrastructure (by infrastructureId / type / owner
+  // authority / status / source). Selecting a result focuses the object in the
+  // existing Chennai Cesium viewer.
+  const infra = await db.collection('undergroundInfrastructure').find({
+    $or: [
+      { infrastructureId: rx }, { type: rx }, { subtype: rx },
+      { ownerAuthority: rx }, { status: rx }, { source: rx }, { parentParcel: rx },
+    ],
+  }, { limit: 6 })
+  for (const inf of infra) {
+    results.push({
+      kind: 'infrastructure',
+      title: inf.infrastructureId,
+      subtitle: `${inf.type}${inf.subtype ? ` · ${inf.subtype}` : ''} · ${inf.ownerAuthority || inf.source}`,
+      verification: inf.verificationStatus,
+      ref: { infrastructureId: inf.infrastructureId, locality: inf.locality },
+      centroid: null,
+    })
+  }
+
+  // Phase 9 — Proposed 3D Property Identifier (canonical 3DPR:... string, or any
+  // hierarchy component). Selecting a result focuses the referenced unit/volume
+  // in the SAME Chennai Cesium viewer (reuses the existing unit selection).
+  const idRows = await searchIdentifiers(q, { limit: 6 })
+  for (const r of idRows) {
+    results.push({
+      kind: 'identifier',
+      title: r.canonicalIdentifier,
+      subtitle: `Proposed 3D Property Identifier · ULPIN ${r.officialULPIN || 'NOT AVAILABLE'} · ${r.geometryVersion} · ${r.status}`,
+      verification: r.verificationStatus,
+      ref: r.propertyId
+        ? { propertyId: r.propertyId, buildingId: r.buildingId, floorNumber: Number(String(r.floorSegment || 'F00').slice(1)), ulpin: r.officialULPIN, identifierId: r.identifierId, locality: r.locality }
+        : { identifierId: r.identifierId, locality: r.locality },
+      centroid: null,
+    })
   }
 
   const [parcels, buildings, floors, units, owners] = await Promise.all([
