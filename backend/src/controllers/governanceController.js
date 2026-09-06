@@ -1,6 +1,7 @@
 import { db } from '../store/index.js'
 import { asyncHandler, ok, list, notFoundError } from '../utils/http.js'
 import { adapters, unifiedRecord } from '../services/adapters/index.js'
+import { listLandSources } from '../services/landData/index.js'
 
 const scoped = (ulpin, propertyId) =>
   propertyId ? { $or: [{ propertyId }, { ulpin, scope: 'Parcel' }] } : { ulpin }
@@ -75,4 +76,71 @@ export const getDepartmentView = asyncHandler(async (req, res) => {
   const adapter = adapters[req.params.department]
   if (!adapter) throw notFoundError(`Unknown department "${req.params.department}"`)
   ok(res, await adapter.fetch(req.params.ulpin, { propertyId: req.query.propertyId, buildingId: req.query.buildingId }))
+})
+
+/* ---------------------------------------------------------------------------
+ * Phase 10 — Governance overview. A READ-ONLY roll-up of what already exists
+ * across the platform (data-source registry, data-quality validation runs,
+ * pending reviews, governance/service requests, documents, audit trail). It
+ * fabricates no government integration and creates no new authoritative data.
+ * ------------------------------------------------------------------------- */
+export const getGovernanceOverview = asyncHandler(async (_req, res) => {
+  const [
+    sources, parcels, buildings, units,
+    topoRuns, infraRuns, gnssProposals, geomProposals,
+    aiJobs, serviceRequests, documents, auditLogs,
+    undergroundInfra, identifiers,
+  ] = await Promise.all([
+    Promise.resolve(listLandSources()),
+    db.collection('parcels').count({}),
+    db.collection('buildings').count({}),
+    db.collection('propertyUnits').count({}),
+    db.collection('topologyValidationResults').find({}, { sort: { createdAt: -1 }, limit: 1, projection: { findings: 0 } }),
+    db.collection('infrastructureValidationResults').find({}, { sort: { createdAt: -1 }, limit: 1, projection: { findings: 0 } }),
+    db.collection('geometryReviewProposals').find({ reviewStatus: 'PENDING_REVIEW' }),
+    db.collection('geometryReviewProposals').find({}),
+    db.collection('aiJobs').find({}, { sort: { createdAt: -1 }, limit: 200 }),
+    db.collection('serviceRequests').find({}),
+    db.collection('documents').count({}),
+    db.collection('auditLogs').find({}, { sort: { at: -1 }, limit: 12 }),
+    db.collection('undergroundInfrastructure').count({}),
+    db.collection('proposed3DPropertyIdentifiers').count({}),
+  ])
+
+  const openServices = serviceRequests.filter((s) => !['Approved', 'Rejected'].includes(s.status)).length
+  const pendingAiReview = aiJobs.filter((j) => j.status === 'PROCESSING' || j.reviewRequired).length
+  const latestTopo = topoRuns[0] || null
+  const latestInfra = infraRuns[0] || null
+
+  ok(res, {
+    generatedAt: new Date().toISOString(),
+    isDemo: true,
+    disclaimer:
+      'Governance overview. Read-only roll-up of existing platform records. No live government connectivity; ' +
+      'Land Records / Registration / Property Tax integrations are DEMO / MOCK adapters. No authoritative data is created here.',
+    dataSources: {
+      chennaiAvailability: sources.chennai?.status || sources.availability?.status || 'UNAVAILABLE',
+      registered: (sources.sources || []).length,
+      sources: sources.sources || [],
+      summary: sources.chennai?.summary || sources.availability?.summary || null,
+    },
+    holdings: { parcels, buildings, units, undergroundInfrastructure: undergroundInfra, proposed3DIdentifiers: identifiers },
+    dataQuality: {
+      topology: latestTopo ? { runId: latestTopo.validationRunId, scopeType: latestTopo.scopeType, overallStatus: latestTopo.summary?.overallStatus || null, summary: latestTopo.summary || null, createdAt: latestTopo.createdAt } : null,
+      infrastructure: latestInfra ? { runId: latestInfra.validationRunId, scopeType: latestInfra.scopeType, overallStatus: latestInfra.summary?.overallStatus || null, summary: latestInfra.summary || null, createdAt: latestInfra.createdAt } : null,
+    },
+    pendingReviews: {
+      geometryProposals: gnssProposals.length,
+      geometryProposalsTotal: geomProposals.length,
+      aiJobs: pendingAiReview,
+      total: gnssProposals.length + pendingAiReview,
+    },
+    governanceRequests: {
+      total: serviceRequests.length,
+      open: openServices,
+      byStatus: serviceRequests.reduce((m, s) => { m[s.status] = (m[s.status] || 0) + 1; return m }, {}),
+    },
+    documents: { total: documents, note: 'Demo document cards only — see docs/06-security-framework.md.' },
+    audit: { recent: auditLogs.map(({ _id, ...r }) => r) },
+  })
 })

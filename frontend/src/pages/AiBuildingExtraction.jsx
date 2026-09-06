@@ -103,12 +103,12 @@ export default function AiBuildingExtraction() {
         <DemoTag label="AI / PROTOTYPE — MODEL OUTPUT" />
       </PageHeader>
 
-      <p className="mb-4 rounded-lg border border-gold/30 bg-gold/10 p-2.5 text-[12px] leading-relaxed text-gold">
+      <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[12px] leading-relaxed text-amber-700">
         <strong>AI_DEMO / MODEL OUTPUT.</strong> This tool produces <em>candidate</em> building geometry from an
         automated model. It is <strong>not</strong> official cadastral, survey, ULPIN, building-approval or ownership
         data, and it never overwrites the existing demo buildings. Every result requires human review.
         {status && (
-          <span className="ml-1 text-slate-400">
+          <span className="ml-1 text-slate-500">
             AI service: {status.buildingExtraction?.aiServiceConfigured ? 'configured' : 'not configured (results will be INFERENCE_UNAVAILABLE)'}.
           </span>
         )}
@@ -125,21 +125,21 @@ export default function AiBuildingExtraction() {
             onChange={(e) => onPick(e.target.files?.[0])}
           />
           <button
-            className="flex w-full flex-col items-center gap-2 rounded-lg border border-dashed border-white/20 p-6 text-slate-300 hover:bg-white/5"
+            className="flex w-full flex-col items-center gap-2 rounded-lg border border-dashed border-slate-300 p-6 text-slate-600 hover:bg-slate-100"
             onClick={() => fileRef.current?.click()}
           >
             <UploadCloud size={22} className="text-primary" />
             <span className="text-sm">{file ? file.name : 'Choose a PNG / JPG / GeoTIFF'}</span>
             <span className="text-[11px] text-slate-500">GeoTIFF ⇒ map-placed & parcel-associated · PNG/JPG ⇒ pixel-space preview only</span>
           </button>
-          {preview && <img src={preview} alt="preview" className="mt-3 max-h-52 rounded-lg border border-white/10" />}
+          {preview && <img src={preview} alt="preview" className="mt-3 max-h-52 rounded-lg border border-slate-200" />}
           <div className="mt-3 flex items-center gap-2">
-            <label className="text-[12px] text-slate-400">Target area</label>
+            <label className="text-[12px] text-slate-500">Target area</label>
             <select
               value={locality}
               onChange={(e) => setLocality(e.target.value)}
               data-testid="ai-locality"
-              className="input !py-1 !w-auto [&>option]:bg-navy-900"
+              className="input !py-1 !w-auto [&>option]:bg-white"
             >
               {AREAS.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
@@ -156,10 +156,10 @@ export default function AiBuildingExtraction() {
         </Card>
 
         <Card title="Pipeline">
-          <ol className="space-y-1.5 text-[12px] text-slate-300">
+          <ol className="space-y-1.5 text-[12px] text-slate-600">
             {PIPELINE.map((step, i) => (
               <li key={step} className="flex items-center gap-2">
-                <span className="grid h-5 w-5 place-items-center rounded-full bg-white/10 text-[10px]">{i + 1}</span>
+                <span className="grid h-5 w-5 place-items-center rounded-full bg-slate-100 text-[10px]">{i + 1}</span>
                 {step}
               </li>
             ))}
@@ -179,7 +179,7 @@ export default function AiBuildingExtraction() {
           right={<Badge status={unavailable ? 'Under Review' : 'Verified'}>{result.status}</Badge>}
         >
           {unavailable ? (
-            <p className="text-sm text-gold" data-testid="ai-unavailable">
+            <p className="text-sm text-amber-700" data-testid="ai-unavailable">
               {result.status} — {result.reason || 'the AI service is not reachable. The rest of the app is unaffected.'}
             </p>
           ) : (
@@ -220,7 +220,7 @@ export default function AiBuildingExtraction() {
                   <MapIcon size={15} /> View on Cesium (same Chennai viewer)
                 </button>
               )}
-              <p className="mt-2 text-[10px] text-gold/90">{result.disclaimer}</p>
+              <p className="mt-2 text-[10px] text-amber-700">{result.disclaimer}</p>
             </>
           )}
         </Card>

@@ -57,6 +57,7 @@ r.post('/units/:propertyId/verify', requireAuth, requirePermission('property:ver
 r.get('/common-areas', optionalAuth, prop.listCommonAreas)
 
 /* ------------------------------------------------------------- governance */
+r.get('/governance/overview', optionalAuth, gov.getGovernanceOverview) // Phase 10 — read-only roll-up
 r.get('/ror/:ulpin', optionalAuth, gov.getRoR)
 r.get('/registration/:ulpin', optionalAuth, gov.getRegistration)
 r.get('/encumbrance/:ulpin', optionalAuth, gov.getEncumbrance)

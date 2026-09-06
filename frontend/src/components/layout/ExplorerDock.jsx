@@ -60,7 +60,7 @@ export function ExplorerDock() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_120px_260px]">
           {/* Building blocks */}
           <div>
-            <p className="mb-1 text-[11px] font-semibold text-slate-400">Building Blocks</p>
+            <p className="mb-1 text-[11px] font-semibold text-slate-500">Building Blocks</p>
             <div className="flex flex-wrap gap-1.5">
               {buildings.map((b) => (
                 <button
@@ -69,8 +69,8 @@ export function ExplorerDock() {
                   className={clsx(
                     'rounded-md border px-2.5 py-1.5 text-left text-[11px] transition-colors',
                     selection.buildingId === b.buildingId
-                      ? 'border-primary bg-primary/20 text-white'
-                      : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10',
+                      ? 'border-primary bg-primary/10 text-slate-900'
+                      : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-200',
                   )}
                   data-testid={`building-block-${b.buildingSegment}`}
                 >
@@ -86,7 +86,7 @@ export function ExplorerDock() {
 
           {/* Floors */}
           <div className="min-w-0">
-            <p className="mb-1 text-[11px] font-semibold text-slate-400">
+            <p className="mb-1 text-[11px] font-semibold text-slate-500">
               Floors {selection.buildingId ? `— ${selection.buildingId.split('-').pop()}` : ''}
             </p>
             <div className="flex max-h-36 flex-col gap-1 overflow-y-auto pr-1">
@@ -98,8 +98,8 @@ export function ExplorerDock() {
                   className={clsx(
                     'rounded px-2 py-1 text-left text-[11px]',
                     selection.floorNumber === f.floorNumber
-                      ? 'bg-primary/25 text-white'
-                      : 'bg-white/5 text-slate-300 hover:bg-white/10',
+                      ? 'bg-primary/15 text-slate-900'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-200',
                   )}
                   data-testid={`floor-row-${f.floorSegment}`}
                 >
@@ -111,7 +111,7 @@ export function ExplorerDock() {
 
           {/* Floor plan */}
           <div className="min-w-0">
-            <p className="mb-1 flex items-center justify-between text-[11px] font-semibold text-slate-400">
+            <p className="mb-1 flex items-center justify-between text-[11px] font-semibold text-slate-500">
               Floor Plan
               {floorUnits.length > 0 && <Badge>{floorUnits.length} units</Badge>}
             </p>

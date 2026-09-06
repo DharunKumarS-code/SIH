@@ -55,7 +55,7 @@ export default function Map3D() {
         <CamButton onClick={() => m().tiltBy?.(8)} title="Tilt"><MoveVertical size={15} /></CamButton>
         <CamButton onClick={() => m().topView?.()} title="Top view"><ArrowUpToLine size={15} /></CamButton>
         <CamButton onClick={reset} title="Reset view"><Home size={15} /></CamButton>
-        <div className="mx-1 h-5 w-px bg-white/15" />
+        <div className="mx-1 h-5 w-px bg-slate-200" />
         <button
           className="btn-primary !py-1.5"
           data-testid="focus-selected"

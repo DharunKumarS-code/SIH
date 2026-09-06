@@ -18,7 +18,7 @@ export default function Buildings() {
           rowKey={(r) => r.buildingId}
           onRowClick={(r) => navigate(`/map?building=${encodeURIComponent(r.buildingId)}`)}
           columns={[
-            { key: 'name', header: 'Building', render: (r) => <span className="font-semibold text-white">{r.name}</span> },
+            { key: 'name', header: 'Building', render: (r) => <span className="font-semibold text-slate-900">{r.name}</span> },
             { key: 'buildingId', header: 'Building ID', render: (r) => <span className="font-mono text-xs">{r.buildingId}</span> },
             { key: 'totalFloors', header: 'Floors' },
             { key: 'unitCount', header: 'Units' },

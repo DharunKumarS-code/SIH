@@ -40,7 +40,7 @@ export function AreaSelector() {
         <div className="space-y-2 px-3 pb-3">
           <button
             onClick={cityView}
-            className="flex w-full items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-[12px] text-slate-200 hover:bg-white/10"
+            className="flex w-full items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[12px] text-slate-700 hover:bg-slate-200"
             data-testid="area-city-overview"
           >
             <Home size={13} /> Chennai overview
@@ -56,8 +56,8 @@ export function AreaSelector() {
                   className={clsx(
                     'w-full rounded-md border px-2.5 py-1.5 text-left text-[12px] transition-colors',
                     on
-                      ? 'border-primary bg-primary/20 text-white'
-                      : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10',
+                      ? 'border-primary bg-primary/10 text-slate-900'
+                      : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-200',
                   )}
                   data-testid={`area-option-${l.id}`}
                 >
@@ -65,7 +65,7 @@ export function AreaSelector() {
                     {l.name}
                     {on && <span className="text-[10px] uppercase text-primary">active</span>}
                   </span>
-                  <span className="mt-0.5 flex items-center gap-3 text-[10px] text-slate-400">
+                  <span className="mt-0.5 flex items-center gap-3 text-[10px] text-slate-500">
                     <span className="flex items-center gap-1">
                       <Layers size={10} /> {l.counts?.parcels ?? '—'}
                     </span>
@@ -80,9 +80,9 @@ export function AreaSelector() {
           </div>
 
           {active && (
-            <div className="rounded-md border border-white/10 bg-navy-950/40 p-2 text-[11px] text-slate-300">
-              <p className="font-semibold text-white">{active.label || active.name}</p>
-              {active.zone && <p className="text-slate-400">{active.zone}</p>}
+            <div className="rounded-md border border-slate-200 bg-[#f5f7fa]/40 p-2 text-[11px] text-slate-600">
+              <p className="font-semibold text-slate-900">{active.label || active.name}</p>
+              {active.zone && <p className="text-slate-500">{active.zone}</p>}
               <p className="mt-1 font-mono text-[10px] text-cyan">{active.ulpinPrimary}</p>
               <p className="mt-1 text-slate-500">
                 {selection.mode === 'overview'

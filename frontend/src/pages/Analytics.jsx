@@ -26,14 +26,14 @@ export default function Analytics() {
             <PieCard title="Unit Facing Mix" data={data.facingMix} />
           </div>
           <Card className="mt-3" title="Building Density Heatmap (data)">
-            <p className="mb-2 text-xs text-slate-400">
+            <p className="mb-2 text-xs text-slate-500">
               Weighted points used by the 3D map’s density visualisation. Open the 3D Map for the spatial heatmap.
             </p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
               {data.heatmap.map((h) => (
-                <div key={h.buildingId} className="rounded bg-white/5 p-2 text-xs">
+                <div key={h.buildingId} className="rounded bg-slate-50 p-2 text-xs">
                   <div className="font-mono text-[10px] text-slate-500">{h.buildingId.split('-').pop()}</div>
-                  <div className="text-lg font-bold text-white">{h.weight}</div>
+                  <div className="text-lg font-bold text-slate-900">{h.weight}</div>
                   <div className="text-slate-500">units</div>
                 </div>
               ))}

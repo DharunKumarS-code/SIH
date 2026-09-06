@@ -27,7 +27,7 @@ export default function UsersRoles() {
           rowKey={(r) => r[0]}
           columns={[
             { key: 'role', header: 'Role', render: (r) => <Badge>{r[0]}</Badge> },
-            { key: 'perm', header: 'Permissions', render: (r) => <span className="text-slate-300">{r[1]}</span> },
+            { key: 'perm', header: 'Permissions', render: (r) => <span className="text-slate-600">{r[1]}</span> },
           ]}
           rows={PERMISSION_MATRIX}
         />
@@ -40,7 +40,7 @@ export default function UsersRoles() {
           <DataTable
             rowKey={(r) => r.username}
             columns={[
-              { key: 'name', header: 'Name', render: (r) => <span className="text-white">{r.name}</span> },
+              { key: 'name', header: 'Name', render: (r) => <span className="text-slate-900">{r.name}</span> },
               { key: 'username', header: 'Username' },
               { key: 'email', header: 'Email' },
               { key: 'role', header: 'Role', render: (r) => <Badge>{r.role}</Badge> },

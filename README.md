@@ -50,7 +50,7 @@ Prototype 3D Property ID     TN-CHN-123456789-B01-F02-U201
 
 | Tier | Stack | Port |
 | --- | --- | --- |
-| Frontend | React 19 · Vite · React Router · Tailwind · **CesiumJS** · Recharts · Lucide · Axios | 5173 |
+| Frontend | React 19 · Vite · React Router · Tailwind · **CesiumJS** (single geographic 3D viewer) · **Three.js** (lazy — detailed `/3d-explorer` tab only) · Recharts · Lucide · Axios | 5173 |
 | Backend | Node · **Express** · Mongoose · JWT · Zod · Helmet · rate-limit | 4000 |
 | AI service (optional) | Python · **FastAPI** (plug-in mock inference) | 8000 |
 | Database (optional) | **MongoDB Atlas** — falls back to a seeded in-memory demo store | — |
@@ -177,6 +177,11 @@ POST /3d-identifiers · POST /3d-identifiers/validate · GET /ulpins/:ulpin/3d-i
 ```
 
 ## 11. 3D architecture
+
+> **CesiumJS is the single geographic 3D viewer.** Three.js appears **only** in
+> the standalone `/3d-explorer` tab (Phase 10) as a lazy-loaded chunk for a
+> focused single-building massing view — it is never imported into the Chennai
+> map. New tab ≠ new Chennai viewer.
 
 - **One Chennai-wide `Cesium.Viewer` / one scene.** Sholinganallur, Adyar and
   Anna Nagar are localities *inside* it — the area selector (map panel + TopBar)
@@ -319,6 +324,23 @@ POST /3d-identifiers · POST /3d-identifiers/validate · GET /ulpins/:ulpin/3d-i
   intersection never implies ownership. New page `/identifier`; **no new Cesium
   viewer** — focus reuses the existing unit selection. See
   [`docs/21-proposed-3d-property-identifier.md`](docs/21-proposed-3d-property-identifier.md).
+- **Government-portal redesign + Governance roll-up + Detailed 3D Building
+  Explorer (Phase 10)** — the whole UI moved to a light government land-portal
+  design system (white/off-white surfaces, muted navy/teal, restrained
+  amber/red for status only; no dark theme). A new read-only `/governance` page
+  rolls up data sources, data quality, pending reviews, service requests,
+  documents and the audit trail from existing collections
+  (`GET /api/governance/overview`) — it creates nothing and never claims live
+  government connectivity. A new **Detailed 3D Building Explorer** opens in a
+  **new browser tab** from a unit record
+  (`/3d-explorer?area=…&ulpin=…&buildingId=B01&floorId=F02&unitId=U201`): a
+  focused **Three.js** massing view of one building (stacked floor slabs +
+  apartments on the active floor), fed only by the existing
+  `/api/buildings` · `/api/floors` · `/api/units` responses. **Three.js is
+  loaded only in that lazy chunk — it is never added to the Chennai CesiumJS
+  viewer**, which stays the single geographic 3D viewer. The combined identifier
+  is still labelled "Proposed 3D Property Identifier / Not an Official ULPIN".
+  See [`docs/22-government-portal-redesign-and-governance.md`](docs/22-government-portal-redesign-and-governance.md).
 
 Detail: [`docs/05-3d-property-model.md`](docs/05-3d-property-model.md).
 
@@ -377,20 +399,26 @@ Sources & Provenance*. Full write-up:
 ```bash
 npm run test:backend      # Node test runner + fetch — API / auth / RBAC / hierarchy / interop / GIS / AI
 npm run test:ai           # pytest — AI pipeline: preprocessing / segmentation / polygonise / validate / georef
-npm run test:e2e          # Playwright — full demo scenario, routes, RBAC, responsive, honesty, AI extraction
+npm run test:e2e          # Playwright — full demo scenario, routes, RBAC, responsive, honesty, AI extraction, 3D Building Explorer
 npm test                  # all three
 ```
 
 The e2e suite starts the backend and frontend automatically (Playwright
-`webServer`). First run: `npx playwright install chromium`.
+`webServer`). First run: `npx playwright install chromium`. `tests/e2e/explorer3d.spec.js`
+covers the Phase 10 new-tab Three.js explorer (deep link, scene render, floor/unit
+navigation, and that closing it leaves exactly one Cesium viewer intact).
+
+Backend tests connect to the Atlas cluster in `backend/.env` when set; if the
+cluster is unreachable the store falls back to the seeded in-memory dataset and
+the suite still passes.
 
 ## 14. Project structure
 
 ```
-frontend/     React SPA (components/ pages/ context/ lib/ 3d map)
+frontend/     React SPA (components/ pages/ context/ lib/ · Cesium 3D map · components/explorer/ Three.js building scene)
 backend/      Express API (controllers/ routes/ services/ middleware/ store/ data/ tests/)
 ai-service/   FastAPI mock inference gateway (app/ pipelines/ models/)
-docs/         01–12 technical documentation
+docs/         01–22 technical documentation
 tests/e2e/    Playwright end-to-end suite
 ```
 
@@ -404,6 +432,7 @@ tests/e2e/    Playwright end-to-end suite
 | `…-B01-F02-U201` | **Prototype 3D Property Identifier** — not an official ULPIN |
 | Land Records / Registration / Planning / Property Tax / Dispute / Utility APIs | **DEMO / MOCK INTEGRATION** adapters |
 | AI features | **Simulated** (`mode: "demo"`) — plug-in architecture for real models |
+| `/3d-explorer` Three.js building view | **PROTOTYPE** massing of the Phase-2 synthetic volume model — not a surveyed cadastral volume; opens in a new tab, reuses `/api/buildings`·`/api/floors`·`/api/units` |
 | MongoDB | optional; demo store used when `MONGODB_URI` is unset |
 
 ## 16. License / usage

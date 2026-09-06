@@ -46,7 +46,7 @@ export default function Reports() {
 
       <Card className="mb-4">
         <div className="flex flex-wrap items-end gap-2">
-          <label className="text-xs text-slate-400">
+          <label className="text-xs text-slate-500">
             Report type
             <select
               className="input mt-1"
@@ -61,7 +61,7 @@ export default function Reports() {
               <option value="building">Building Report</option>
             </select>
           </label>
-          <label className="flex-1 text-xs text-slate-400">
+          <label className="flex-1 text-xs text-slate-500">
             Identifier
             <input className="input mt-1" value={id} onChange={(e) => setId(e.target.value)} />
           </label>
@@ -82,7 +82,7 @@ export default function Reports() {
             </div>
           }
         >
-          <p className="mb-3 text-[11px] text-gold">{state.report.disclaimer}</p>
+          <p className="mb-3 text-[11px] text-amber-700">{state.report.disclaimer}</p>
           {state.report.sections.map((s) => (
             <div key={s.heading} className="mb-3">
               <p className="section-title mb-1">{s.heading}</p>

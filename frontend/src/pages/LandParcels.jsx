@@ -34,7 +34,7 @@ export default function LandParcels() {
               rowKey={(r) => r.ulpin}
               onRowClick={(r) => navigate(`/parcels/${encodeURIComponent(r.ulpin)}`)}
               columns={[
-                { key: 'ulpin', header: 'ULPIN', render: (r) => <span className="font-mono text-xs text-white">{r.ulpin}</span> },
+                { key: 'ulpin', header: 'ULPIN', render: (r) => <span className="font-mono text-xs text-slate-900">{r.ulpin}</span> },
                 { key: 'landUse', header: 'Land Use' },
                 { key: 'areaSqft', header: 'Area (sq.ft)', render: (r) => num(r.areaSqft) },
                 { key: 'status', header: 'Status', render: (r) => <Badge status={r.status} /> },
@@ -45,7 +45,7 @@ export default function LandParcels() {
         </div>
 
         <div>
-          {!ulpin && <Card title="Parcel detail"><p className="text-sm text-slate-400">Select a parcel to view its full record and 3D property.</p></Card>}
+          {!ulpin && <Card title="Parcel detail"><p className="text-sm text-slate-500">Select a parcel to view its full record and 3D property.</p></Card>}
           {detail.loading && <Spinner />}
           <ErrorNote error={detail.error} onRetry={detail.reload} />
           {detail.data && (
@@ -74,11 +74,11 @@ export default function LandParcels() {
                 {detail.data.buildings.map((b) => (
                   <li key={b.buildingId}>
                     <button
-                      className="flex w-full items-center justify-between rounded bg-white/5 px-2 py-1.5 text-sm hover:bg-white/10"
+                      className="flex w-full items-center justify-between rounded bg-slate-50 px-2 py-1.5 text-sm hover:bg-slate-200"
                       onClick={() => navigate(`/map?building=${encodeURIComponent(b.buildingId)}`)}
                     >
-                      <span className="text-white">{b.name}</span>
-                      <span className="text-xs text-slate-400">{b.totalFloors} floors · {b.unitCount} units</span>
+                      <span className="text-slate-900">{b.name}</span>
+                      <span className="text-xs text-slate-500">{b.totalFloors} floors · {b.unitCount} units</span>
                     </button>
                   </li>
                 ))}

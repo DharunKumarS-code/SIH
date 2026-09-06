@@ -1223,15 +1223,15 @@ export function Cesium3DMap() {
     <div className="relative h-full w-full" data-testid="cesium-map">
       <div ref={hostRef} className="h-full w-full" />
       {!ready && !error && (
-        <div className="pointer-events-none absolute inset-0 grid place-items-center bg-navy-950/60 text-sm text-slate-300">
+        <div className="pointer-events-none absolute inset-0 grid place-items-center bg-white/85 text-sm text-slate-600">
           Loading Chennai 3D scene…
         </div>
       )}
       {error && (
-        <div className="absolute inset-0 grid place-items-center bg-navy-950/80 p-6 text-center">
+        <div className="absolute inset-0 grid place-items-center bg-white/85 p-6 text-center">
           <div>
-            <p className="font-bold text-white">3D map unavailable</p>
-            <p className="mt-1 max-w-sm text-sm text-slate-400">{error}</p>
+            <p className="font-bold text-slate-900">3D map unavailable</p>
+            <p className="mt-1 max-w-sm text-sm text-slate-500">{error}</p>
           </div>
         </div>
       )}

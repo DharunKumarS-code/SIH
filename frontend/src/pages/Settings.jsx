@@ -28,8 +28,8 @@ export default function Settings() {
           {data && (
             <ul className="space-y-1">
               {Object.entries(data.services).map(([k, v]) => (
-                <li key={k} className="flex items-center justify-between gap-2 border-b border-white/5 py-1.5 text-sm last:border-0">
-                  <span className="text-slate-300">{k}</span>
+                <li key={k} className="flex items-center justify-between gap-2 border-b border-slate-200 py-1.5 text-sm last:border-0">
+                  <span className="text-slate-600">{k}</span>
                   <Badge status={/Connected|Active/.test(v) && !/Demo/.test(v) ? 'Verified' : 'Under Review'}>{v}</Badge>
                 </li>
               ))}
@@ -52,8 +52,8 @@ export default function Settings() {
         </Card>
 
         <Card title="Prototype disclaimer" right={<DemoTag />}>
-          <p className="text-xs leading-relaxed text-slate-400">{APP_DISCLAIMER}</p>
-          {data && <p className="mt-2 text-[11px] text-gold">{data.disclaimer}</p>}
+          <p className="text-xs leading-relaxed text-slate-500">{APP_DISCLAIMER}</p>
+          {data && <p className="mt-2 text-[11px] text-amber-700">{data.disclaimer}</p>}
         </Card>
 
         <Card
@@ -61,13 +61,13 @@ export default function Settings() {
           right={<Badge status="Under Review">Chennai ULPIN: {land.chennai?.status || 'UNAVAILABLE'}</Badge>}
           className="lg:col-span-2"
         >
-          <p className="text-xs leading-relaxed text-gold" data-testid="ulpin-availability">
+          <p className="text-xs leading-relaxed text-amber-700" data-testid="ulpin-availability">
             Official Chennai ULPIN parcel data is <strong>UNAVAILABLE</strong> via public channels — every
             authoritative Government of India / Tamil Nadu source requires an Aadhaar OTP, a CAPTCHA, or a
             registered login, none of which this prototype bypasses. <strong>All parcels shown in the app are
             DEMO data</strong>, clearly labelled as such.
           </p>
-          <p className="mt-2 text-[11px] text-slate-400">
+          <p className="mt-2 text-[11px] text-slate-500">
             ULPIN is a {land.ulpinSpec?.length || 14}-digit identifier for a <strong>land parcel only</strong> —
             never a building, floor or apartment ({land.ulpinSpec?.authority}).
           </p>
@@ -75,7 +75,7 @@ export default function Settings() {
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-left text-[11px]">
               <thead className="text-slate-500">
-                <tr className="border-b border-white/10">
+                <tr className="border-b border-slate-200">
                   <th className="py-1 pr-3 font-semibold">Source</th>
                   <th className="py-1 pr-3 font-semibold">Dataset</th>
                   <th className="py-1 pr-3 font-semibold">Access barrier</th>
@@ -84,16 +84,16 @@ export default function Settings() {
               </thead>
               <tbody>
                 {(land.sources || []).map((s) => (
-                  <tr key={s.id} className="border-b border-white/5 align-top last:border-0">
+                  <tr key={s.id} className="border-b border-slate-200 align-top last:border-0">
                     <td className="py-1.5 pr-3">
                       <a href={s.url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
                         {s.organization}
                       </a>
                     </td>
-                    <td className="py-1.5 pr-3 text-slate-300">{s.dataset}</td>
-                    <td className="py-1.5 pr-3 text-slate-400">{s.accessBarrier}</td>
+                    <td className="py-1.5 pr-3 text-slate-600">{s.dataset}</td>
+                    <td className="py-1.5 pr-3 text-slate-500">{s.accessBarrier}</td>
                     <td className="py-1.5">
-                      <span className="rounded bg-gold/20 px-1.5 py-0.5 font-bold uppercase text-gold">
+                      <span className="rounded bg-amber-100 px-1.5 py-0.5 font-bold uppercase text-amber-700">
                         {s.chennaiAvailability}
                       </span>
                     </td>

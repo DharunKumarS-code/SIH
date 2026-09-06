@@ -36,7 +36,7 @@ function FilePicker({ file, onPick }) {
     <div>
       <input ref={ref} type="file" accept={ACCEPT} data-testid="gnss-file-input" className="hidden" onChange={(e) => onPick(e.target.files?.[0] || null)} />
       <button
-        className="flex w-full flex-col items-center gap-1.5 rounded-lg border border-dashed border-white/20 p-4 text-slate-300 hover:bg-white/5"
+        className="flex w-full flex-col items-center gap-1.5 rounded-lg border border-dashed border-slate-300 p-4 text-slate-600 hover:bg-slate-100"
         onClick={() => ref.current?.click()}
         type="button"
       >
@@ -181,7 +181,7 @@ export default function GNSSControlPoints() {
         <DemoTag label="GNSS/CORS DEMO — MODEL OUTPUT" />
       </PageHeader>
 
-      <p className="mb-4 rounded-lg border border-gold/30 bg-gold/10 p-2.5 text-[12px] leading-relaxed text-gold">
+      <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[12px] leading-relaxed text-amber-700">
         <strong>GNSS/CORS DEMO / MODEL OUTPUT.</strong> Control-point coordinates, elevations, deviations and validation
         results are derived from uploaded, demonstration, research or survey datasets. They are <strong>not</strong>{' '}
         automatically official cadastral control points or government-authoritative survey data. GNSS/CORS accuracy is
@@ -195,14 +195,14 @@ export default function GNSSControlPoints() {
 
           <div className="mt-3 grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[12px] text-slate-400">Target area</label>
-              <select value={locality} onChange={(e) => setLocality(e.target.value)} data-testid="gnss-locality" className="input mt-1 !py-1 [&>option]:bg-navy-900">
+              <label className="text-[12px] text-slate-500">Target area</label>
+              <select value={locality} onChange={(e) => setLocality(e.target.value)} data-testid="gnss-locality" className="input mt-1 !py-1 [&>option]:bg-white">
                 {AREAS.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[12px] text-slate-400">Provenance / source</label>
-              <select value={sourceLabel} onChange={(e) => setSourceLabel(e.target.value)} data-testid="gnss-source-label" className="input mt-1 !py-1 [&>option]:bg-navy-900">
+              <label className="text-[12px] text-slate-500">Provenance / source</label>
+              <select value={sourceLabel} onChange={(e) => setSourceLabel(e.target.value)} data-testid="gnss-source-label" className="input mt-1 !py-1 [&>option]:bg-white">
                 {SOURCES.map((s2) => <option key={s2} value={s2}>{s2}</option>)}
               </select>
             </div>
@@ -221,13 +221,13 @@ export default function GNSSControlPoints() {
           {preview && (
             <div className="mt-3 space-y-1.5" data-testid="gnss-validation">
               <div className="flex items-center justify-between text-[12px]">
-                <span className="text-slate-300">Overall</span>
+                <span className="text-slate-600">Overall</span>
                 <Badge status={statusTone(preview.overallStatus)}>{preview.overallStatus}</Badge>
               </div>
-              <div className="max-h-56 overflow-y-auto rounded border border-white/10">
+              <div className="max-h-56 overflow-y-auto rounded border border-slate-200">
                 {rows.map((p) => (
-                  <div key={p.index} className="flex items-center justify-between gap-2 border-b border-white/5 px-2 py-1 text-[11px] last:border-0">
-                    <span className="font-mono text-slate-300">{p.controlPointId}</span>
+                  <div key={p.index} className="flex items-center justify-between gap-2 border-b border-slate-200 px-2 py-1 text-[11px] last:border-0">
+                    <span className="font-mono text-slate-600">{p.controlPointId}</span>
                     <span className="text-slate-500">{p.crsStatus}</span>
                     <Badge status={statusTone(p.validationStatus)}>{p.validationStatus}</Badge>
                   </div>
@@ -238,14 +238,14 @@ export default function GNSSControlPoints() {
         </Card>
 
         <Card title="Pipeline">
-          <ol className="space-y-1.5 text-[12px] text-slate-300">
+          <ol className="space-y-1.5 text-[12px] text-slate-600">
             {(config?.pipeline || [
               'File input (CSV / JSON / GeoJSON)', 'Field + batch validation', 'CRS resolution / transformation',
               'Outlier detection', 'Parcel association', 'Boundary verification', 'DEM/DSM elevation residual (optional)',
               'Storage (gnssControlPoints)',
             ]).map((step, i) => (
               <li key={step} className="flex items-center gap-2">
-                <span className="grid h-5 w-5 place-items-center rounded-full bg-white/10 text-[10px]">{i + 1}</span>
+                <span className="grid h-5 w-5 place-items-center rounded-full bg-slate-100 text-[10px]">{i + 1}</span>
                 {step}
               </li>
             ))}
@@ -254,7 +254,7 @@ export default function GNSSControlPoints() {
             Boundary tolerance: {config?.thresholds?.boundaryToleranceM ?? '—'} m · outlier MAD-k: {config?.thresholds?.outlierMadK ?? '—'}
           </p>
           {config?.transform === null && (
-            <p className="mt-2 text-[11px] text-gold">AI service unreachable — CRS transformation for projected coordinates will report TRANSFORMATION_UNAVAILABLE.</p>
+            <p className="mt-2 text-[11px] text-amber-700">AI service unreachable — CRS transformation for projected coordinates will report TRANSFORMATION_UNAVAILABLE.</p>
           )}
         </Card>
       </div>
@@ -287,7 +287,7 @@ export default function GNSSControlPoints() {
                     key: 'review', header: 'Review',
                     render: (r) => (
                       r.verificationStatus === 'ACCEPTED'
-                        ? <span className="flex items-center gap-1 text-[11px] text-emerald-400"><CheckCircle2 size={12} /> Accepted</span>
+                        ? <span className="flex items-center gap-1 text-[11px] text-emerald-700"><CheckCircle2 size={12} /> Accepted</span>
                         : r.verificationStatus === 'REJECTED'
                           ? <span className="text-[11px] text-slate-500">Rejected</span>
                           : can('change-detection:review') ? (
@@ -303,7 +303,7 @@ export default function GNSSControlPoints() {
                 empty="No control points imported."
               />
             </div>
-            <p className="mt-2 flex items-center gap-1.5 text-[10px] text-gold/90">
+            <p className="mt-2 flex items-center gap-1.5 text-[10px] text-amber-700">
               <Satellite size={11} /> {result.disclaimer}
             </p>
           </Card>
@@ -313,7 +313,7 @@ export default function GNSSControlPoints() {
       <Card className="mt-4" title="4 · Boundary verification">
         <div className="flex flex-wrap items-end gap-2">
           <div>
-            <label className="text-[12px] text-slate-400">Parcel ULPIN</label>
+            <label className="text-[12px] text-slate-500">Parcel ULPIN</label>
             <input value={ulpin} onChange={(e) => setUlpin(e.target.value)} data-testid="gnss-boundary-ulpin" className="input mt-1 w-64 !py-1 font-mono text-[12px]" />
           </div>
           <button className="btn-primary justify-center" data-testid="gnss-run-boundary" disabled={boundaryBusy} onClick={runBoundaryAnalysis}>

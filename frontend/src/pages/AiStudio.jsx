@@ -45,7 +45,7 @@ export default function AiStudio() {
         <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
           {PIPELINE.map((step, i) => (
             <span key={step} className="flex items-center gap-1.5">
-              <span className="rounded bg-white/5 px-2 py-1 text-slate-300">{step}</span>
+              <span className="rounded bg-slate-50 px-2 py-1 text-slate-600">{step}</span>
               {i < PIPELINE.length - 1 && <span className="text-slate-600">→</span>}
             </span>
           ))}
@@ -55,7 +55,7 @@ export default function AiStudio() {
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
         {(status?.features || []).map((f) => (
           <Card key={f.key} title={f.name}>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-500">
               <span className="text-slate-500">Input:</span> {f.input}
               <br />
               <span className="text-slate-500">Output:</span> {f.output}
@@ -71,10 +71,10 @@ export default function AiStudio() {
 
       {result && (
         <Card className="mt-4" title={`Result — ${result.feature}`} right={<DemoTag label="SIMULATED" />}>
-          <p className="mb-2 flex items-center gap-2 text-xs text-gold">
+          <p className="mb-2 flex items-center gap-2 text-xs text-amber-700">
             <Cpu size={13} /> {result.r.disclaimer}
           </p>
-          <pre className="max-h-80 overflow-auto rounded bg-navy-950 p-3 text-[11px] text-slate-300">
+          <pre className="max-h-80 overflow-auto rounded bg-[#f5f7fa] p-3 text-[11px] text-slate-600">
             {JSON.stringify(result.r, null, 2)}
           </pre>
         </Card>
@@ -84,7 +84,7 @@ export default function AiStudio() {
         <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
           {['Previous imagery', 'Current imagery', 'AI comparison', 'Detected change', 'Officer review', 'Update property record'].map((s, i, a) => (
             <span key={s} className="flex items-center gap-1.5">
-              <span className="rounded bg-white/5 px-2 py-1 text-slate-300">{s}</span>
+              <span className="rounded bg-slate-50 px-2 py-1 text-slate-600">{s}</span>
               {i < a.length - 1 && <span className="text-slate-600">→</span>}
             </span>
           ))}

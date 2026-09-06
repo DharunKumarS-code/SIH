@@ -61,7 +61,7 @@ const CONFIG = {
     load: (ulpin) => api.propertyTax(ulpin),
     render: (d) => (
       <>
-        <p className="mb-2 text-sm text-slate-300">
+        <p className="mb-2 text-sm text-slate-600">
           Total outstanding: <span className="font-bold text-warn">{inr(d.totalDueRs)}</span>
         </p>
         <DataTable

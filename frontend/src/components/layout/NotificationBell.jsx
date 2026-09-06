@@ -34,7 +34,7 @@ export function NotificationBell() {
       >
         <Bell size={16} />
         {unread > 0 && (
-          <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[9px] font-bold text-white">
+          <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[9px] font-bold text-slate-900">
             {unread}
           </span>
         )}
@@ -42,20 +42,20 @@ export function NotificationBell() {
       {open && (
         <div className="panel absolute right-0 top-11 z-40 w-80 rounded-lg p-2">
           <p className="px-2 py-1 section-title">Notifications</p>
-          <ul className="max-h-80 divide-y divide-white/5 overflow-y-auto">
-            {items.length === 0 && <li className="px-2 py-3 text-xs text-slate-400">No notifications.</li>}
+          <ul className="max-h-80 divide-y divide-slate-200 overflow-y-auto">
+            {items.length === 0 && <li className="px-2 py-3 text-xs text-slate-500">No notifications.</li>}
             {items.map((n) => (
               <li key={n.notificationId}>
                 <button
                   onClick={() => markRead(n)}
-                  className="block w-full px-2 py-2 text-left hover:bg-white/5"
+                  className="block w-full px-2 py-2 text-left hover:bg-slate-100"
                   type="button"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className={`text-xs font-semibold ${n.read ? 'text-slate-400' : 'text-white'}`}>{n.kind}</span>
+                    <span className={`text-xs font-semibold ${n.read ? 'text-slate-500' : 'text-slate-900'}`}>{n.kind}</span>
                     <span className="text-[10px] text-slate-500">{dateShort(n.createdAt)}</span>
                   </div>
-                  <p className="mt-0.5 text-xs text-slate-400">{n.message}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">{n.message}</p>
                 </button>
               </li>
             ))}

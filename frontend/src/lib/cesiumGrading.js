@@ -72,12 +72,14 @@ export function applyGrading(viewer, Cesium) {
       name: 'landstack_colour_grade',
       fragmentShader: GRADE_FS,
       uniforms: {
-        u_exposure: 1.03,
-        u_gamma: 0.9,
-        u_contrast: 1.12,
-        u_saturation: 1.16,
-        u_vignette: 0.24,
-        u_lift: 0.02,
+        // Restrained "official basemap" grade — near-neutral, minimal vignette
+        // (government portal, Phase 10). Kept subtle; never dark/cinematic.
+        u_exposure: 1.02,
+        u_gamma: 0.95,
+        u_contrast: 1.05,
+        u_saturation: 1.05,
+        u_vignette: 0.08,
+        u_lift: 0.015,
         u_balance: () => new Cesium.Cartesian3(1.025, 1.0, 0.965),
         u_shadowTint: () => new Cesium.Cartesian3(0.965, 0.99, 1.07),
         u_highTint: () => new Cesium.Cartesian3(1.055, 1.005, 0.93),

@@ -30,7 +30,7 @@ function FilePicker({ label, hint, accept, file, onPick, testId }) {
     <div>
       <input ref={ref} type="file" accept={accept} data-testid={testId} className="hidden" onChange={(e) => onPick(e.target.files?.[0] || null)} />
       <button
-        className="flex w-full flex-col items-center gap-1.5 rounded-lg border border-dashed border-white/20 p-4 text-slate-300 hover:bg-white/5"
+        className="flex w-full flex-col items-center gap-1.5 rounded-lg border border-dashed border-slate-300 p-4 text-slate-600 hover:bg-slate-100"
         onClick={() => ref.current?.click()}
         type="button"
       >
@@ -145,7 +145,7 @@ export default function ElevationLiDAR() {
         <DemoTag label="ELEVATION_DEMO — MODEL OUTPUT" />
       </PageHeader>
 
-      <p className="mb-4 rounded-lg border border-gold/30 bg-gold/10 p-2.5 text-[12px] leading-relaxed text-gold">
+      <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[12px] leading-relaxed text-amber-700">
         <strong>ELEVATION_DEMO / MODEL OUTPUT.</strong> Building height, ground and roof elevation are estimated from
         DSM-minus-DEM analysis of demo/research or uploaded elevation data. This is <strong>not</strong> official,
         survey-certified or government-authoritative elevation data, and it never overwrites an existing building's
@@ -166,8 +166,8 @@ export default function ElevationLiDAR() {
           {validation && (
             <div className="mt-3 space-y-1.5" data-testid="elev-validation">
               {Object.entries(validation).map(([type, v]) => (
-                <div key={type} className="flex items-center justify-between rounded border border-white/10 px-2 py-1 text-[12px]">
-                  <span className="text-slate-300">{type}</span>
+                <div key={type} className="flex items-center justify-between rounded border border-slate-200 px-2 py-1 text-[12px]">
+                  <span className="text-slate-600">{type}</span>
                   <Badge status={v.status === 'VALIDATED' ? 'Verified' : v.status === 'FAILED' ? 'Disputed' : 'Under Review'}>{v.status}</Badge>
                   <span className="font-mono text-[10px] text-slate-500">{v.metadata?.crs || v.metadata?.crsStatus || '—'}</span>
                 </div>
@@ -177,14 +177,14 @@ export default function ElevationLiDAR() {
 
           <div className="mt-3 grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[12px] text-slate-400">Target area</label>
-              <select value={locality} onChange={(e) => setLocality(e.target.value)} data-testid="elev-locality" className="input mt-1 !py-1 [&>option]:bg-navy-900">
+              <label className="text-[12px] text-slate-500">Target area</label>
+              <select value={locality} onChange={(e) => setLocality(e.target.value)} data-testid="elev-locality" className="input mt-1 !py-1 [&>option]:bg-white">
                 {AREAS.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[12px] text-slate-400">Source label</label>
-              <select value={sourceLabel} onChange={(e) => setSourceLabel(e.target.value)} data-testid="elev-source-label" className="input mt-1 !py-1 [&>option]:bg-navy-900">
+              <label className="text-[12px] text-slate-500">Source label</label>
+              <select value={sourceLabel} onChange={(e) => setSourceLabel(e.target.value)} data-testid="elev-source-label" className="input mt-1 !py-1 [&>option]:bg-white">
                 <option value="ELEVATION_DEMO">ELEVATION_DEMO</option>
                 <option value="RESEARCH_DATA">RESEARCH_DATA</option>
                 <option value="TEST_FIXTURE">TEST_FIXTURE</option>
@@ -193,7 +193,7 @@ export default function ElevationLiDAR() {
             </div>
           </div>
           <div className="mt-2">
-            <label className="text-[12px] text-slate-400">Building IDs (comma-separated — blank = every building in the area)</label>
+            <label className="text-[12px] text-slate-500">Building IDs (comma-separated — blank = every building in the area)</label>
             <input
               value={buildingIdsText}
               onChange={(e) => setBuildingIdsText(e.target.value)}
@@ -210,14 +210,14 @@ export default function ElevationLiDAR() {
         </Card>
 
         <Card title="Pipeline">
-          <ol className="space-y-1.5 text-[12px] text-slate-300">
+          <ol className="space-y-1.5 text-[12px] text-slate-600">
             {(config?.pipeline || [
               'Point cloud / DEM / DSM input', 'Validation', 'Ground classification', 'DEM generation',
               'Surface classification', 'DSM generation', 'DSM − DEM height estimate', 'Building height sampling',
               'Quality & confidence', 'Building height results',
             ]).map((step, i) => (
               <li key={step} className="flex items-center gap-2">
-                <span className="grid h-5 w-5 place-items-center rounded-full bg-white/10 text-[10px]">{i + 1}</span>
+                <span className="grid h-5 w-5 place-items-center rounded-full bg-slate-100 text-[10px]">{i + 1}</span>
                 {step}
               </li>
             ))}
@@ -232,7 +232,7 @@ export default function ElevationLiDAR() {
         <div data-testid="elev-results">
           <Card className="mt-4" title="3 · Results" right={<Badge status={unavailable ? 'Under Review' : 'Verified'}>{result.status}</Badge>}>
             {unavailable ? (
-              <p className="text-sm text-gold" data-testid="elev-unavailable">
+              <p className="text-sm text-amber-700" data-testid="elev-unavailable">
                 {result.status} — {result.reason || 'the AI service is not reachable. The rest of the app is unaffected.'}
               </p>
             ) : (
@@ -267,7 +267,7 @@ export default function ElevationLiDAR() {
                         key: 'review', header: 'Review',
                         render: (r) => (
                           r.reviewStatus === 'ACCEPTED'
-                            ? <span className="flex items-center gap-1 text-[11px] text-emerald-400"><CheckCircle2 size={12} /> Applied</span>
+                            ? <span className="flex items-center gap-1 text-[11px] text-emerald-700"><CheckCircle2 size={12} /> Applied</span>
                             : r.reviewStatus === 'REJECTED'
                               ? <span className="text-[11px] text-slate-500">Rejected</span>
                               : can('change-detection:review') ? (
@@ -283,7 +283,7 @@ export default function ElevationLiDAR() {
                     empty="No building height results."
                   />
                 </div>
-                <p className="mt-2 flex items-center gap-1.5 text-[10px] text-gold/90">
+                <p className="mt-2 flex items-center gap-1.5 text-[10px] text-amber-700">
                   <Mountain size={11} /> {result.disclaimer}
                 </p>
               </>

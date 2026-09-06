@@ -133,7 +133,7 @@ export function LayerManager() {
                 {g.rows.map(([key, label]) => (
                   <label
                     key={key}
-                    className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-[12px] text-slate-300 hover:bg-white/5"
+                    className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-[12px] text-slate-600 hover:bg-slate-100"
                   >
                     <input
                       type="checkbox"

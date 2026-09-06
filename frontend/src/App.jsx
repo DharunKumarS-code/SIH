@@ -1,7 +1,12 @@
+import { Suspense, lazy } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext.jsx'
 import { AppShell } from './components/layout/AppShell.jsx'
 import { Spinner } from './components/ui/primitives.jsx'
+
+// Detailed 3D Building Explorer — standalone tab, lazy-loaded so its Three.js
+// bundle never touches the main Chennai CesiumJS viewer.
+const BuildingExplorer3D = lazy(() => import('./pages/BuildingExplorer3D.jsx'))
 
 import Login from './pages/Login.jsx'
 import Dashboard from './pages/Dashboard.jsx'
@@ -21,6 +26,7 @@ import GNSSControlPoints from './pages/GNSSControlPoints.jsx'
 import TopologyValidation from './pages/TopologyValidation.jsx'
 import UndergroundInfrastructure from './pages/UndergroundInfrastructure.jsx'
 import Property3DIdentifier from './pages/Property3DIdentifier.jsx'
+import Governance from './pages/Governance.jsx'
 import Services from './pages/Services.jsx'
 import Reports from './pages/Reports.jsx'
 import UsersRoles from './pages/UsersRoles.jsx'
@@ -45,6 +51,14 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route
+        path="/3d-explorer"
+        element={
+          <Suspense fallback={<div className="grid h-full place-items-center"><Spinner label="Loading 3D Building Explorer…" /></div>}>
+            <BuildingExplorer3D />
+          </Suspense>
+        }
+      />
       <Route
         path="/*"
         element={
@@ -73,6 +87,7 @@ export default function App() {
                 <Route path="topology" element={<TopologyValidation />} />
                 <Route path="underground" element={<UndergroundInfrastructure />} />
                 <Route path="identifier" element={<Property3DIdentifier />} />
+                <Route path="governance" element={<Governance />} />
                 <Route path="services" element={<Services />} />
                 <Route path="reports" element={<Reports />} />
                 <Route path="users" element={<UsersRoles />} />

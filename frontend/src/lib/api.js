@@ -49,6 +49,7 @@ export const api = {
   parcelProvenance: (ulpin) => get(`/parcels/${encodeURIComponent(ulpin)}/provenance`),
   verifyParcel: (ulpin) => post(`/parcels/${encodeURIComponent(ulpin)}/verify`),
   landSources: () => get('/land-sources'),
+  governanceOverview: () => get('/governance/overview'), // Phase 10
   ulpins: () => get('/ulpins'),
 
   // property hierarchy

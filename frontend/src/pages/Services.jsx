@@ -46,7 +46,7 @@ export default function Services() {
         <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
           {WORKFLOW.map((s, i, a) => (
             <span key={s} className="flex items-center gap-1.5">
-              <span className="rounded bg-white/5 px-2 py-1 text-slate-300">{s}</span>
+              <span className="rounded bg-slate-50 px-2 py-1 text-slate-600">{s}</span>
               {i < a.length - 1 && <span className="text-slate-600">↓</span>}
             </span>
           ))}
@@ -64,21 +64,21 @@ export default function Services() {
                 onClick={() => setSelected(s)}
                 className={clsx(
                   'w-full rounded-lg border p-3 text-left',
-                  selected?.requestId === s.requestId ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5 hover:bg-white/10',
+                  selected?.requestId === s.requestId ? 'border-primary bg-primary/10' : 'border-slate-200 bg-slate-50 hover:bg-slate-200',
                 )}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-white">{s.type}</span>
+                  <span className="text-sm font-semibold text-slate-900">{s.type}</span>
                   <Badge status={s.status}>{s.status}</Badge>
                 </div>
-                <p className="mt-0.5 text-xs text-slate-400">
+                <p className="mt-0.5 text-xs text-slate-500">
                   {s.requestId} · {s.ulpin}
                   {s.propertyId ? ` · ${s.propertyId}` : ''} · {dateShort(s.submittedOn)}
                 </p>
                 <p className="mt-1 text-[11px] text-slate-500">Stage: {s.stage}</p>
               </button>
             ))}
-            {data && data.length === 0 && <p className="text-sm text-slate-400">No service requests yet.</p>}
+            {data && data.length === 0 && <p className="text-sm text-slate-500">No service requests yet.</p>}
           </div>
 
           {selected && (
@@ -88,7 +88,7 @@ export default function Services() {
                   <li key={i} className="flex gap-2 text-xs">
                     <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-ok" />
                     <div>
-                      <p className="font-semibold text-slate-200">{h.stage}</p>
+                      <p className="font-semibold text-slate-700">{h.stage}</p>
                       <p className="text-slate-500">{dateShort(h.at)} · {h.by}{h.note ? ` — ${h.note}` : ''}</p>
                     </div>
                   </li>
