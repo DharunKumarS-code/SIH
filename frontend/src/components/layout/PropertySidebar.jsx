@@ -11,14 +11,27 @@ import { useApi } from '../../lib/useApi.js'
 import { api } from '../../lib/api.js'
 import { Badge, DemoTag, KeyValue, Spinner, ErrorNote } from '../ui/primitives.jsx'
 import { inr } from '../../lib/format.js'
-import { PROTOTYPE_ID_LABEL } from '../../lib/constants.js'
+import { PROTOTYPE_ID_LABEL, LOCALITIES_FALLBACK } from '../../lib/constants.js'
 import { verificationBadge, isOfficial } from '../../lib/provenance.js'
 import { volumeMetrics, volumeBoundsRows, geometryStatusTone } from '../../lib/volume.js'
+
+// Deep link into the standalone detailed 3D Building Explorer (opens in a new
+// tab). Short hierarchy segments per the documented contract; the explorer
+// re-fetches from the same backend, so no data is duplicated.
+function explorerUrl({ ulpin, buildingSeg, floorSeg, unitId }) {
+  const loc = LOCALITIES_FALLBACK.find((l) => l.ulpinPrimary === ulpin)
+  const q = new URLSearchParams({ ulpin })
+  if (loc) q.set('area', loc.id)
+  if (buildingSeg) q.set('buildingId', buildingSeg)
+  if (floorSeg) q.set('floorId', floorSeg)
+  if (unitId) q.set('unitId', unitId)
+  return `/3d-explorer?${q.toString()}`
+}
 
 function Section({ title, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div className="border-t border-white/10 py-2">
+    <div className="border-t border-slate-200 py-2">
       <button className="flex w-full items-center justify-between py-1 text-left" onClick={() => setOpen((v) => !v)}>
         <span className="section-title">{title}</span>
         <span className="text-slate-500">{open ? '−' : '+'}</span>
@@ -112,7 +125,7 @@ export function PropertySidebar() {
     return (
       <aside className="pointer-events-auto absolute right-3 top-3 z-30 w-80 rounded-xl panel p-4" data-testid="property-sidebar">
         <p className="section-title">Property / Unit Details</p>
-        <p className="mt-2 text-sm text-slate-400">
+        <p className="mt-2 text-sm text-slate-500">
           {selection.mode === 'building'
             ? 'Building selected. Pick a floor in the explorer, then a unit — or click a unit in the 3D scene.'
             : selection.mode === 'floor'
@@ -141,10 +154,10 @@ export function PropertySidebar() {
       className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
       data-testid="property-sidebar"
     >
-      <header className="flex items-start justify-between gap-2 border-b border-white/10 p-3">
+      <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-white">Unified Property Record</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-gold">
+          <p className="text-sm font-extrabold text-slate-900">Unified Property Record</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-amber-700">
             <DemoTag label="PROTOTYPE" /> {PROTOTYPE_ID_LABEL} — not an official ULPIN
           </p>
         </div>
@@ -160,7 +173,7 @@ export function PropertySidebar() {
         {u && (
           <>
             <div className="rounded-lg border border-primary/30 bg-primary/10 p-2.5" data-testid="proto-id">
-              <p className="font-mono text-[13px] font-bold text-white break-all">{u.propertyId}</p>
+              <p className="font-mono text-[13px] font-bold text-slate-900 break-all">{u.propertyId}</p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <Badge status={u.status}>{u.status}</Badge>
                 <Badge>{u.propertyType}</Badge>
@@ -170,42 +183,42 @@ export function PropertySidebar() {
 
             <Section title="Hierarchy">
               <ul className="space-y-1 text-[12px]">
-                <li className="flex items-center gap-2 text-slate-300">
+                <li className="flex items-center gap-2 text-slate-600">
                   <Layers size={12} className="text-primary" /> ULPIN (Parcel):{' '}
-                  <span className="font-mono text-white">{h.ulpin}</span>
+                  <span className="font-mono text-slate-900">{h.ulpin}</span>
                 </li>
-                <li className="flex items-center gap-2 text-slate-300">
+                <li className="flex items-center gap-2 text-slate-600">
                   <Building2 size={12} className="text-primary" /> Building:{' '}
-                  <button className="text-white underline decoration-dotted" onClick={() => selectBuilding(h.building.id, h.ulpin)}>
+                  <button className="text-slate-900 underline decoration-dotted" onClick={() => selectBuilding(h.building.id, h.ulpin)}>
                     {h.building?.name}
                   </button>
                 </li>
-                <li className="flex items-center gap-2 text-slate-300">
+                <li className="flex items-center gap-2 text-slate-600">
                   <Layers size={12} className="text-primary" /> Floor:{' '}
-                  <span className="text-white">{h.floor?.label} ({h.floor?.segment})</span>
+                  <span className="text-slate-900">{h.floor?.label} ({h.floor?.segment})</span>
                 </li>
-                <li className="flex items-center gap-2 text-slate-300">
+                <li className="flex items-center gap-2 text-slate-600">
                   <Home size={12} className="text-primary" /> Unit / Apartment:{' '}
-                  <span className="text-white">{h.unit?.id} · Apt {h.unit?.apartmentNumber}</span>
+                  <span className="text-slate-900">{h.unit?.id} · Apt {h.unit?.apartmentNumber}</span>
                 </li>
-                <li className="flex items-center gap-2 text-slate-300">
+                <li className="flex items-center gap-2 text-slate-600">
                   <Box size={12} className="text-primary" /> Volume ID:{' '}
-                  <span className="font-mono text-white">{h.unit?.volumeId || vol?.volumeId || '—'}</span>
+                  <span className="font-mono text-slate-900">{h.unit?.volumeId || vol?.volumeId || '—'}</span>
                 </li>
               </ul>
             </Section>
 
             {(idQ.data || []).length > 0 && (
               <Section title="Proposed 3D Property Identifier">
-                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] text-gold">
+                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] text-amber-700">
                   <DemoTag label="PROPOSED / RESEARCH" /> Not an Official ULPIN · not a government-approved 3D ULPIN standard.
                 </p>
                 <div data-testid="sidebar-identifier">
                   {idQ.data.map((r) => (
-                    <div key={r.identifierId} className="mb-1 rounded border border-gold/25 bg-gold/5 p-2 text-[11px]">
-                      <p className="font-mono text-white break-all">{r.canonicalIdentifier}</p>
-                      <p className="mt-0.5 text-slate-400">
-                        Official ULPIN: <span className="font-mono text-white">{r.officialULPIN || 'NOT AVAILABLE'}</span> · {r.geometryVersion} · {r.status}
+                    <div key={r.identifierId} className="mb-1 rounded border border-gold/25 bg-amber-50 p-2 text-[11px]">
+                      <p className="font-mono text-slate-900 break-all">{r.canonicalIdentifier}</p>
+                      <p className="mt-0.5 text-slate-500">
+                        Official ULPIN: <span className="font-mono text-slate-900">{r.officialULPIN || 'NOT AVAILABLE'}</span> · {r.geometryVersion} · {r.status}
                       </p>
                     </div>
                   ))}
@@ -216,7 +229,7 @@ export function PropertySidebar() {
 
             {vol && (
               <Section title="3D Geometry (Prototype)">
-                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] text-gold">
+                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] text-amber-700">
                   <DemoTag label="PROTOTYPE" /> Prototype 3D Geometry — synthetic, not an official cadastral volume.
                 </p>
                 <KeyValue
@@ -240,16 +253,16 @@ export function PropertySidebar() {
                   <Badge status={geometryStatusTone(vval.status).tone === 'ok' ? 'Verified' : geometryStatusTone(vval.status).tone === 'err' ? 'Disputed' : 'Under Review'}>
                     {geometryStatusTone(vval.status).label}
                   </Badge>
-                  <span className="text-[11px] text-slate-400">deterministic geometric validation</span>
+                  <span className="text-[11px] text-slate-500">deterministic geometric validation</span>
                 </div>
                 {(vval.issues || []).length === 0 ? (
                   <p className="mt-1.5 text-[11px] text-slate-500">All checks passed within tolerance.</p>
                 ) : (
                   <ul className="mt-1.5 space-y-1 text-[11px]">
                     {vval.issues.map((i, idx) => (
-                      <li key={`${i.rule}-${idx}`} className="text-slate-300">
-                        <span className={i.status === 'ERROR' ? 'text-danger' : 'text-gold'}>{i.status}</span>{' '}
-                        <span className="font-mono text-slate-400">{i.rule}</span> — {i.message}
+                      <li key={`${i.rule}-${idx}`} className="text-slate-600">
+                        <span className={i.status === 'ERROR' ? 'text-danger' : 'text-amber-700'}>{i.status}</span>{' '}
+                        <span className="font-mono text-slate-500">{i.rule}</span> — {i.message}
                       </li>
                     ))}
                   </ul>
@@ -302,7 +315,7 @@ export function PropertySidebar() {
               <ul className="space-y-1">
                 {(data.documents || []).map((d) => (
                   <li key={d.docId} className="flex items-center justify-between gap-2 text-[12px]">
-                    <span className="flex items-center gap-1.5 text-slate-300">
+                    <span className="flex items-center gap-1.5 text-slate-600">
                       <FileText size={12} className="text-slate-500" /> {d.category}
                     </span>
                     <a href={d.fileUrl} className="text-primary hover:underline" target="_blank" rel="noreferrer">
@@ -317,11 +330,11 @@ export function PropertySidebar() {
             {data.disputes?.length > 0 && (
               <Section title="Disputes">
                 {data.disputes.map((d) => (
-                  <div key={d.disputeId} className="rounded border border-danger/30 bg-danger/10 p-2 text-[12px]">
+                  <div key={d.disputeId} className="rounded border border-danger/30 bg-red-50 p-2 text-[12px]">
                     <p className="font-semibold text-danger">
                       {d.type} · {d.status}
                     </p>
-                    <p className="text-danger/80">{d.summary}</p>
+                    <p className="text-red-700">{d.summary}</p>
                   </div>
                 ))}
               </Section>
@@ -330,7 +343,7 @@ export function PropertySidebar() {
         )}
       </div>
 
-      <footer className="grid grid-cols-2 gap-1.5 border-t border-white/10 p-3">
+      <footer className="grid grid-cols-2 gap-1.5 border-t border-slate-200 p-3">
         <button className="btn-ghost justify-center" onClick={() => mapApi.current.flyToUnit?.(selection.propertyId)}>
           <Crosshair size={14} /> Zoom To
         </button>
@@ -346,6 +359,19 @@ export function PropertySidebar() {
             <ShieldCheck size={14} /> {u?.status === 'Verified' ? 'Verified' : 'Verify Unit'}
           </button>
         )}
+        <a
+          href={explorerUrl({
+            ulpin: h?.ulpin,
+            buildingSeg: h?.building?.segment,
+            floorSeg: h?.floor?.segment,
+            unitId: h?.unit?.id,
+          })}
+          target="_blank"
+          className="btn-ghost col-span-2 justify-center"
+          data-testid="open-3d-explorer"
+        >
+          <Box size={14} /> Open 3D Building Explorer
+        </a>
         <button className="btn-ghost justify-center" onClick={() => navigator.clipboard?.writeText(selection.propertyId)}>
           <Share2 size={14} /> Share ID
         </button>
@@ -379,11 +405,11 @@ function BuildingElevationPanel({ query }) {
 
   if (h.dataAvailability === 'UNAVAILABLE') {
     return (
-      <div className="mt-3 rounded-lg border border-white/10 p-2.5" data-testid="elevation-unavailable">
-        <p className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
+      <div className="mt-3 rounded-lg border border-slate-200 p-2.5" data-testid="elevation-unavailable">
+        <p className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
           <Mountain size={12} /> Building Height
         </p>
-        <p className="mt-1 text-[12px] text-slate-300">Unavailable</p>
+        <p className="mt-1 text-[12px] text-slate-600">Unavailable</p>
         <p className="mt-0.5 text-[11px] text-slate-500">Reason: {h.reason}</p>
       </div>
     )
@@ -391,8 +417,8 @@ function BuildingElevationPanel({ query }) {
 
   const qtone = h.qualityStatus === 'VALID' ? 'Verified' : h.qualityStatus === 'ERROR' ? 'Disputed' : 'Under Review'
   return (
-    <div className="mt-3 rounded-lg border border-gold/30 bg-gold/10 p-2.5" data-testid="elevation-height-panel">
-      <p className="flex items-center gap-1.5 text-[11px] font-bold text-gold">
+    <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-2.5" data-testid="elevation-height-panel">
+      <p className="flex items-center gap-1.5 text-[11px] font-bold text-amber-700">
         <Mountain size={12} /> Elevation-Derived Height <DemoTag label="ELEVATION_DEMO" />
       </p>
       <KeyValue
@@ -406,12 +432,12 @@ function BuildingElevationPanel({ query }) {
       />
       <div className="mt-1.5 flex items-center gap-2">
         <Badge status={qtone}>{h.qualityStatus}</Badge>
-        {h.appliedToBuilding && <span className="text-[10px] text-emerald-400">Applied to 3D extrusion</span>}
+        {h.appliedToBuilding && <span className="text-[10px] text-emerald-700">Applied to 3D extrusion</span>}
       </div>
       {(h.qualityIssues || []).length > 0 && (
-        <ul className="mt-1.5 space-y-1 text-[11px] text-slate-300">
+        <ul className="mt-1.5 space-y-1 text-[11px] text-slate-600">
           {h.qualityIssues.slice(0, 3).map((i, idx) => (
-            <li key={idx}><span className={i.status === 'ERROR' ? 'text-danger' : 'text-gold'}>{i.status}</span> {i.message}</li>
+            <li key={idx}><span className={i.status === 'ERROR' ? 'text-danger' : 'text-amber-700'}>{i.status}</span> {i.message}</li>
           ))}
         </ul>
       )}
@@ -442,13 +468,13 @@ function ParcelCard({ query, ulpin, mapApi, onClose, canVerify }) {
       className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
       data-testid="property-sidebar"
     >
-      <header className="flex items-start justify-between gap-2 border-b border-white/10 p-3">
+      <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-white">Land Parcel Record</p>
+          <p className="text-sm font-extrabold text-slate-900">Land Parcel Record</p>
           <p
             className={clsx(
               'mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold',
-              official ? 'text-emerald-400' : 'text-gold',
+              official ? 'text-emerald-700' : 'text-amber-700',
             )}
             data-testid="parcel-verification"
           >
@@ -470,13 +496,13 @@ function ParcelCard({ query, ulpin, mapApi, onClose, canVerify }) {
             <div
               className={clsx(
                 'rounded-lg border p-2.5',
-                official ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-gold/30 bg-gold/10',
+                official ? 'border-emerald-200 bg-emerald-50' : 'border-amber-300 bg-amber-50',
               )}
             >
-              <p className="text-[10px] uppercase tracking-wide text-slate-400">
+              <p className="text-[10px] uppercase tracking-wide text-slate-500">
                 {official ? 'ULPIN (Official — Government Source)' : 'Parcel ID (Demo — Not an Official ULPIN)'}
               </p>
-              <p className="mt-0.5 font-mono text-[13px] font-bold text-white break-all" data-testid="parcel-ulpin">
+              <p className="mt-0.5 font-mono text-[13px] font-bold text-slate-900 break-all" data-testid="parcel-ulpin">
                 {p.ulpin}
               </p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -540,14 +566,14 @@ function ParcelCard({ query, ulpin, mapApi, onClose, canVerify }) {
                 </p>
               )}
               {prov.disclaimer && (
-                <p className="mt-1 text-[10px] text-gold/90">{prov.disclaimer}</p>
+                <p className="mt-1 text-[10px] text-amber-700">{prov.disclaimer}</p>
               )}
             </Section>
           </>
         )}
       </div>
 
-      <footer className="grid grid-cols-2 gap-1.5 border-t border-white/10 p-3">
+      <footer className="grid grid-cols-2 gap-1.5 border-t border-slate-200 p-3">
         <button className="btn-ghost justify-center" onClick={() => mapApi.current.flyToParcel?.(ulpin)}>
           <MapPin size={14} /> Zoom To
         </button>
@@ -592,10 +618,10 @@ function AiBuildingCard({ query, id, onClose, canReview }) {
       className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
       data-testid="property-sidebar"
     >
-      <header className="flex items-start justify-between gap-2 border-b border-white/10 p-3">
+      <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-white">AI-Extracted Building</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-gold" data-testid="ai-building-source">
+          <p className="text-sm font-extrabold text-slate-900">AI-Extracted Building</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-amber-700" data-testid="ai-building-source">
             <DemoTag label="AI_DEMO" /> MODEL OUTPUT — not an official record
           </p>
         </div>
@@ -609,8 +635,8 @@ function AiBuildingCard({ query, id, onClose, canReview }) {
         <ErrorNote error={error} onRetry={reload} />
         {b && (
           <>
-            <div className="rounded-lg border border-gold/30 bg-gold/10 p-2.5">
-              <p className="font-mono text-[13px] font-bold text-white break-all">{b.aiBuildingId}</p>
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-2.5">
+              <p className="font-mono text-[13px] font-bold text-slate-900 break-all">{b.aiBuildingId}</p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <DemoTag label="AI / PROTOTYPE" />
                 <Badge>{level}</Badge>
@@ -642,13 +668,13 @@ function AiBuildingCard({ query, id, onClose, canReview }) {
                 }}
               />
               {(b.geometryIssues || []).length > 0 && (
-                <ul className="mt-1.5 space-y-1 text-[11px] text-slate-300">
+                <ul className="mt-1.5 space-y-1 text-[11px] text-slate-600">
                   {b.geometryIssues.map((m, i) => (
-                    <li key={i}><span className="text-gold">•</span> {m}</li>
+                    <li key={i}><span className="text-amber-700">•</span> {m}</li>
                   ))}
                 </ul>
               )}
-              <p className="mt-1 text-[10px] text-gold/90">Height shown in 3D is an ESTIMATED / DEMO value — not survey / LiDAR / GNSS-derived.</p>
+              <p className="mt-1 text-[10px] text-amber-700">Height shown in 3D is an ESTIMATED / DEMO value — not survey / LiDAR / GNSS-derived.</p>
             </Section>
 
             <Section title="Parcel Association">
@@ -661,7 +687,7 @@ function AiBuildingCard({ query, id, onClose, canReview }) {
                 }}
               />
               {(b.parcelCandidates || []).length > 0 && (
-                <ul className="mt-1.5 space-y-1 text-[11px] text-slate-300" data-testid="ai-parcel-candidates">
+                <ul className="mt-1.5 space-y-1 text-[11px] text-slate-600" data-testid="ai-parcel-candidates">
                   {b.parcelCandidates.map((c) => (
                     <li key={c.parcelId}>
                       <span className="font-mono">{c.parcelId}</span>
@@ -678,7 +704,7 @@ function AiBuildingCard({ query, id, onClose, canReview }) {
                 <Badge status={b.reviewStatus === 'ACCEPTED' ? 'Verified' : b.reviewStatus === 'REJECTED' ? 'Disputed' : 'Under Review'}>
                   {b.reviewStatus}
                 </Badge>
-                {b.reviewRequired && <span className="text-[11px] text-gold">Requires Review</span>}
+                {b.reviewRequired && <span className="text-[11px] text-amber-700">Requires Review</span>}
               </div>
               {canReview ? (
                 <div className="mt-2 grid grid-cols-3 gap-1.5">
@@ -689,7 +715,7 @@ function AiBuildingCard({ query, id, onClose, canReview }) {
               ) : (
                 <p className="mt-1.5 text-[10px] text-slate-500">Review requires the change-detection:review permission.</p>
               )}
-              <p className="mt-1.5 text-[10px] text-gold/90">
+              <p className="mt-1.5 text-[10px] text-amber-700">
                 An AI prediction is a decision-support candidate only. It creates no ownership, rights or official cadastral record.
               </p>
             </Section>
@@ -727,10 +753,10 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
       className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
       data-testid="property-sidebar"
     >
-      <header className="flex items-start justify-between gap-2 border-b border-white/10 p-3">
+      <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-white">AI Floor-Plan Unit</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-gold" data-testid="ai-floor-unit-source">
+          <p className="text-sm font-extrabold text-slate-900">AI Floor-Plan Unit</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-amber-700" data-testid="ai-floor-unit-source">
             <DemoTag label="AI_DEMO" /> MODEL OUTPUT · DEMO_RESEARCH_DATA — not an official record
           </p>
         </div>
@@ -744,14 +770,14 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
         <ErrorNote error={error} onRetry={reload} />
         {u && (
           <>
-            <div className="rounded-lg border border-gold/30 bg-gold/10 p-2.5">
-              <p className="font-mono text-[13px] font-bold text-white break-all">{u.localUnitId || u.aiFloorUnitId}</p>
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-2.5">
+              <p className="font-mono text-[13px] font-bold text-slate-900 break-all">{u.localUnitId || u.aiFloorUnitId}</p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <DemoTag label="AI / PROTOTYPE" />
                 <Badge>{level}</Badge>
                 <Badge status={gtone}>{u.geometryStatus}</Badge>
               </div>
-              <p className="mt-1 text-[10px] text-slate-400">
+              <p className="mt-1 text-[10px] text-slate-500">
                 Prototype unit identifier — <strong>not</strong> an official ULPIN.
               </p>
             </div>
@@ -781,11 +807,11 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
                 }}
               />
               {(u.roomDetails || []).length > 0 && (
-                <ul className="mt-1.5 space-y-0.5 text-[11px] text-slate-300">
+                <ul className="mt-1.5 space-y-0.5 text-[11px] text-slate-600">
                   {u.roomDetails.map((r) => (
                     <li key={r.roomId}>
-                      <span className="font-mono text-slate-400">{r.localRoomId}</span> · {r.roomType || r.class}
-                      {r.reviewRequired && <span className="text-gold"> · review</span>}
+                      <span className="font-mono text-slate-500">{r.localRoomId}</span> · {r.roomType || r.class}
+                      {r.reviewRequired && <span className="text-amber-700"> · review</span>}
                     </li>
                   ))}
                 </ul>
@@ -805,9 +831,9 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
                 }}
               />
               {(u.ambiguityReasons || []).length > 0 && (
-                <ul className="mt-1.5 space-y-1 text-[11px] text-slate-300">
+                <ul className="mt-1.5 space-y-1 text-[11px] text-slate-600">
                   {u.ambiguityReasons.map((m, i) => (
-                    <li key={i}><span className="text-gold">•</span> {m}</li>
+                    <li key={i}><span className="text-amber-700">•</span> {m}</li>
                   ))}
                 </ul>
               )}
@@ -815,7 +841,7 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
 
             {vol && (
               <Section title="3D Volume (Prototype, Phase 2 model)">
-                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] text-gold">
+                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] text-amber-700">
                   <DemoTag label="ESTIMATED / DEMO" /> Reuses the Phase-2 prototype volume model.
                 </p>
                 <KeyValue
@@ -836,9 +862,9 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
                       {u.volumeValidation.status}
                     </Badge>
                     {(u.volumeValidation.issues || []).map((it, i) => (
-                      <p key={i} className="mt-1 text-[11px] text-slate-300">
-                        <span className={it.status === 'ERROR' ? 'text-danger' : 'text-gold'}>{it.status}</span>{' '}
-                        <span className="font-mono text-slate-400">{it.rule}</span> — {it.message}
+                      <p key={i} className="mt-1 text-[11px] text-slate-600">
+                        <span className={it.status === 'ERROR' ? 'text-danger' : 'text-amber-700'}>{it.status}</span>{' '}
+                        <span className="font-mono text-slate-500">{it.rule}</span> — {it.message}
                       </p>
                     ))}
                   </div>
@@ -851,7 +877,7 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
                 <Badge status={u.reviewStatus === 'ACCEPTED' ? 'Verified' : u.reviewStatus === 'REJECTED' ? 'Disputed' : 'Under Review'}>
                   {u.reviewStatus}
                 </Badge>
-                {u.reviewRequired && <span className="text-[11px] text-gold">Requires Review</span>}
+                {u.reviewRequired && <span className="text-[11px] text-amber-700">Requires Review</span>}
               </div>
               {canReview ? (
                 <div className="mt-2 grid grid-cols-3 gap-1.5">
@@ -862,7 +888,7 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
               ) : (
                 <p className="mt-1.5 text-[10px] text-slate-500">Review requires the change-detection:review permission.</p>
               )}
-              <p className="mt-1.5 text-[10px] text-gold/90">
+              <p className="mt-1.5 text-[10px] text-amber-700">
                 AI-inferred apartment boundary. Human review is required for any authoritative use; it creates no ownership,
                 rights or official cadastral record, and never an official ULPIN.
               </p>
@@ -871,7 +897,7 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
         )}
       </div>
 
-      <footer className="grid grid-cols-2 gap-1.5 border-t border-white/10 p-3">
+      <footer className="grid grid-cols-2 gap-1.5 border-t border-slate-200 p-3">
         <button className="btn-ghost justify-center" onClick={() => mapApi.current.flyToAiFloorUnit?.(id)}>
           <Crosshair size={14} /> Zoom To
         </button>
@@ -914,10 +940,10 @@ function GnssPointCard({ query, elevQuery, id, onClose, mapApi, canReview }) {
       className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
       data-testid="property-sidebar"
     >
-      <header className="flex items-start justify-between gap-2 border-b border-white/10 p-3">
+      <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-white">GNSS/CORS Control Point</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-gold" data-testid="gnss-point-source">
+          <p className="text-sm font-extrabold text-slate-900">GNSS/CORS Control Point</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-amber-700" data-testid="gnss-point-source">
             <DemoTag label="GNSS/CORS DEMO" /> MODEL OUTPUT — not an official survey record
           </p>
         </div>
@@ -931,8 +957,8 @@ function GnssPointCard({ query, elevQuery, id, onClose, mapApi, canReview }) {
         <ErrorNote error={error} onRetry={reload} />
         {p && (
           <>
-            <div className="rounded-lg border border-gold/30 bg-gold/10 p-2.5">
-              <p className="font-mono text-[13px] font-bold text-white break-all">{p.controlPointId}</p>
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-2.5">
+              <p className="font-mono text-[13px] font-bold text-slate-900 break-all">{p.controlPointId}</p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <DemoTag label={p.source} />
                 <Badge status={vtone}>{p.validationStatus}</Badge>
@@ -963,7 +989,7 @@ function GnssPointCard({ query, elevQuery, id, onClose, mapApi, canReview }) {
                   Operator: p.operator || '—',
                 }}
               />
-              <p className="mt-1.5 text-[10px] text-gold/90">
+              <p className="mt-1.5 text-[10px] text-amber-700">
                 {p.accuracy != null
                   ? `Reported accuracy: ${p.accuracy} ${p.accuracyUnit || 'm'}. Validation status: UNVERIFIED unless independently confirmed.`
                   : 'Reported accuracy: Not available. Survey accuracy is not claimed for this point.'}
@@ -975,11 +1001,11 @@ function GnssPointCard({ query, elevQuery, id, onClose, mapApi, canReview }) {
                 <Badge status={vtone}>{p.validationStatus}</Badge>
               </div>
               {(p.validationIssues || []).length > 0 && (
-                <ul className="mt-1.5 space-y-1 text-[11px] text-slate-300">
+                <ul className="mt-1.5 space-y-1 text-[11px] text-slate-600">
                   {p.validationIssues.map((i, idx) => (
                     <li key={idx}>
-                      <span className={i.status === 'ERROR' ? 'text-danger' : 'text-gold'}>{i.status}</span>{' '}
-                      <span className="font-mono text-slate-400">{i.rule}</span> — {i.message}
+                      <span className={i.status === 'ERROR' ? 'text-danger' : 'text-amber-700'}>{i.status}</span>{' '}
+                      <span className="font-mono text-slate-500">{i.rule}</span> — {i.message}
                     </li>
                   ))}
                 </ul>
@@ -1013,7 +1039,7 @@ function GnssPointCard({ query, elevQuery, id, onClose, mapApi, canReview }) {
                       'Vertical Datum': elev.verticalDatumStatus,
                     }}
                   />
-                  <p className="mt-1.5 text-[10px] text-gold/90">
+                  <p className="mt-1.5 text-[10px] text-amber-700">
                     Observed difference only — this does not mean the GNSS reading or the DEM/DSM model is "correct".
                     {elev.verticalDatumStatus !== 'MATCHED' && ' Vertical datum is not confirmed matched, which limits comparability.'}
                   </p>
@@ -1039,7 +1065,7 @@ function GnssPointCard({ query, elevQuery, id, onClose, mapApi, canReview }) {
               ) : (
                 <p className="mt-1.5 text-[10px] text-slate-500">Review requires the change-detection:review permission.</p>
               )}
-              <p className="mt-1.5 text-[10px] text-gold/90">
+              <p className="mt-1.5 text-[10px] text-amber-700">
                 GNSS/CORS DEMO / MODEL OUTPUT — not automatically an official cadastral control point. Existing parcel
                 geometry is never overwritten without explicit authorized review.
               </p>
@@ -1048,7 +1074,7 @@ function GnssPointCard({ query, elevQuery, id, onClose, mapApi, canReview }) {
         )}
       </div>
 
-      <footer className="grid grid-cols-1 gap-1.5 border-t border-white/10 p-3">
+      <footer className="grid grid-cols-1 gap-1.5 border-t border-slate-200 p-3">
         <button className="btn-ghost justify-center" onClick={() => mapApi.current.flyToGnssPoint?.(id)}>
           <Satellite size={14} /> Zoom To
         </button>
@@ -1072,17 +1098,17 @@ function DepthDiagram({ p }) {
   const demo = p.verificationStatus === 'DEMO' || p.source === 'DEMO'
   if (top == null && depth == null) {
     return (
-      <div className="rounded-lg border border-white/10 bg-white/5 p-2.5 text-[11px]" data-testid="infra-depth-unknown">
-        <p className="font-bold text-slate-400">DEPTH UNKNOWN</p>
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-[11px]" data-testid="infra-depth-unknown">
+        <p className="font-bold text-slate-500">DEPTH UNKNOWN</p>
         <p className="mt-0.5 text-slate-500">This dataset did not supply a reliable depth or elevation. No value is shown or drawn as real.</p>
       </div>
     )
   }
   return (
-    <div className="rounded-lg border border-white/10 bg-white/5 p-2.5 font-mono text-[11px] text-slate-300" data-testid="infra-depth-diagram">
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 font-mono text-[11px] text-slate-600" data-testid="infra-depth-diagram">
       <div className="flex items-center justify-between"><span>Surface</span><span>{surf != null ? `${surf} m` : '—'}</span></div>
       <div className="my-1 border-t border-dashed border-slate-600" />
-      <div className="flex items-center justify-between text-white">
+      <div className="flex items-center justify-between text-slate-900">
         <span>{String(p.type || '').replace(/_/g, ' ')}</span>
         <span>{depth != null ? `−${depth} m` : (top != null && surf != null ? `−${(surf - top).toFixed(2)} m` : '—')}</span>
       </div>
@@ -1090,7 +1116,7 @@ function DepthDiagram({ p }) {
         <span>crown / invert</span>
         <span>{top != null ? `${top}` : '—'} / {bot != null ? `${bot}` : '—'} m</span>
       </div>
-      <p className="mt-1 text-[10px] text-gold/90">
+      <p className="mt-1 text-[10px] text-amber-700">
         {demo
           ? 'DEMO DEPTH — illustrative, relative to local ground surface; vertical datum UNKNOWN.'
           : `Reference: ${p.depthReference || 'UNKNOWN'} · Vertical datum: ${p.verticalDatum || 'UNKNOWN'}`}
@@ -1120,11 +1146,11 @@ function InfrastructureCard({ query, relQuery, elevQuery, id, onClose, mapApi, c
       className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
       data-testid="property-sidebar"
     >
-      <header className="flex items-start justify-between gap-2 border-b border-white/10 p-3">
+      <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-white">Underground Infrastructure</p>
+          <p className="text-sm font-extrabold text-slate-900">Underground Infrastructure</p>
           <p
-            className={clsx('mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold', official ? 'text-emerald-400' : 'text-gold')}
+            className={clsx('mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold', official ? 'text-emerald-700' : 'text-amber-700')}
             data-testid="infra-source"
           >
             {official ? <BadgeCheck size={12} /> : <TriangleAlert size={12} />}
@@ -1141,8 +1167,8 @@ function InfrastructureCard({ query, relQuery, elevQuery, id, onClose, mapApi, c
         <ErrorNote error={error} onRetry={reload} />
         {p && (
           <>
-            <div className={clsx('rounded-lg border p-2.5', official ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-gold/30 bg-gold/10')}>
-              <p className="font-mono text-[13px] font-bold text-white break-all" data-testid="infra-id">{p.infrastructureId}</p>
+            <div className={clsx('rounded-lg border p-2.5', official ? 'border-emerald-200 bg-emerald-50' : 'border-amber-300 bg-amber-50')}>
+              <p className="font-mono text-[13px] font-bold text-slate-900 break-all" data-testid="infra-id">{p.infrastructureId}</p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {!official && <DemoTag label={p.verificationStatus || 'DEMO'} />}
                 <Badge>{p.type}</Badge>
@@ -1216,7 +1242,7 @@ function InfrastructureCard({ query, relQuery, elevQuery, id, onClose, mapApi, c
             )}
 
             <Section title="Property Relationship">
-              <p className="mb-1.5 text-[10px] text-gold/90">
+              <p className="mb-1.5 text-[10px] text-amber-700">
                 Spatial and legal relationships are shown separately. A spatial intersection does <strong>not</strong> establish legal ownership.
               </p>
               <KeyValue
@@ -1228,10 +1254,10 @@ function InfrastructureCard({ query, relQuery, elevQuery, id, onClose, mapApi, c
                 }}
               />
               {(rel?.parcelRelations || []).length > 0 && (
-                <ul className="mt-1.5 space-y-0.5 text-[11px] text-slate-300" data-testid="infra-parcel-relations">
+                <ul className="mt-1.5 space-y-0.5 text-[11px] text-slate-600" data-testid="infra-parcel-relations">
                   {rel.parcelRelations.slice(0, 4).map((r) => (
                     <li key={r.parcelId}>
-                      <span className="font-mono text-slate-400">{r.ulpin || r.parcelId}</span> · {r.spatialRelation}
+                      <span className="font-mono text-slate-500">{r.ulpin || r.parcelId}</span> · {r.spatialRelation}
                       <span className="text-slate-500"> · {r.nearestBoundaryM} m</span>
                     </li>
                   ))}
@@ -1260,13 +1286,13 @@ function InfrastructureCard({ query, relQuery, elevQuery, id, onClose, mapApi, c
                   <button className="btn-ghost !py-1 justify-center text-[11px]" disabled={busy} onClick={() => review('ACCEPTED')}>Accept</button>
                   <button className="btn-ghost !py-1 justify-center text-[11px]" disabled={busy} onClick={() => review('NEEDS_CORRECTION')}>Correct</button>
                 </div>
-                <p className="mt-1.5 text-[10px] text-gold/90">
+                <p className="mt-1.5 text-[10px] text-amber-700">
                   A review records that a reviewer looked at this record. It never promotes the source to official and never changes geometry or depth.
                 </p>
               </Section>
             )}
 
-            <p className="mt-2 text-[10px] text-gold/90" data-testid="infra-disclaimer">
+            <p className="mt-2 text-[10px] text-amber-700" data-testid="infra-disclaimer">
               UNDERGROUND INFRASTRUCTURE DATA. Geometry, depth, elevation, ownership/authority and status are shown only from available
               official, authorized, uploaded, research or demonstration datasets. Spatial intersection does not establish legal ownership.
               Underground depth/elevation is only reported when supported by source data. Demonstration data is clearly labelled DEMO and
@@ -1276,7 +1302,7 @@ function InfrastructureCard({ query, relQuery, elevQuery, id, onClose, mapApi, c
         )}
       </div>
 
-      <footer className="grid grid-cols-1 gap-1.5 border-t border-white/10 p-3">
+      <footer className="grid grid-cols-1 gap-1.5 border-t border-slate-200 p-3">
         <button className="btn-ghost justify-center" data-testid="infra-focus" onClick={() => mapApi.current.flyToInfrastructure?.(id)}>
           <Waypoints size={14} /> Focus
         </button>

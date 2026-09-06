@@ -4,35 +4,44 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Government GIS palette (spec section 37)
+        // ------------------------------------------------------------------
+        // Government land-information portal palette (light mode, Phase 10).
+        // Restrained, document-like. No neon, no dark full-page backgrounds.
+        // `navy` is kept as a NAMED scale so existing class names keep working,
+        // but every step now maps to a light neutral / muted government blue.
+        // ------------------------------------------------------------------
         navy: {
-          950: '#070c16',
-          900: '#0b1220',
-          850: '#0f1829',
-          800: '#141f33',
-          700: '#1c2b45',
-          600: '#26395c',
+          950: '#f5f7fa', // app background
+          900: '#ffffff', // cards / panels
+          850: '#ffffff',
+          800: '#f1f4f8', // subtle inset
+          700: '#e6ebf2', // hover / rails
+          600: '#d5dde8', // borders on dark-ish spots
         },
+        // Muted government blue
         primary: {
-          DEFAULT: '#2f6feb',
-          hover: '#4784f5',
+          DEFAULT: '#1e5fa8',
+          hover: '#1a5495',
         },
-        gold: '#f2b807',
+        // Status / accent — muted, print-friendly
+        gold: '#b7791f', // amber-700-ish, used for PROTOTYPE / DEMO / warning text
         cyan: {
-          DEFAULT: '#38c9d6',
+          DEFAULT: '#0f766e', // muted teal
         },
-        ok: '#3fbf7f',
-        warn: '#f0a726',
-        danger: '#e4566e',
-        info: '#4784f5',
-        ink: '#e2e7ef',
+        ok: '#15803d', // muted green
+        warn: '#b45309', // muted amber
+        danger: '#b91c1c', // muted red
+        info: '#1e5fa8',
+        ink: '#1f2937', // dark charcoal text
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       boxShadow: {
-        panel: '0 14px 40px rgba(0, 0, 0, 0.45)',
+        // Subtle, not decorative
+        panel: '0 1px 2px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.08)',
+        card: '0 1px 2px rgba(15, 23, 42, 0.05)',
       },
     },
   },

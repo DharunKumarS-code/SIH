@@ -121,14 +121,14 @@ export default function AiFloorPlanSegmentation() {
         <DemoTag label="AI / DEMO_RESEARCH_DATA — MODEL OUTPUT" />
       </PageHeader>
 
-      <p className="mb-4 rounded-lg border border-gold/30 bg-gold/10 p-2.5 text-[12px] leading-relaxed text-gold">
+      <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[12px] leading-relaxed text-amber-700">
         <strong>AI_DEMO / MODEL OUTPUT / DEMO_RESEARCH_DATA (dataset: CubiCasa5K).</strong> Floor-plan geometry, room
         labels and apartment/unit boundaries are produced by an automated model. They are <strong>not</strong> official
         Tamil Nadu cadastral, Chennai building-approval, ULPIN, ownership or legally authoritative apartment-boundary
         data. A floor-plan image has <strong>no coordinates</strong> — geographic placement in the Chennai viewer needs a
         valid building/floor reference. Every result requires human review.
         {status && (
-          <span className="ml-1 text-slate-400">
+          <span className="ml-1 text-slate-500">
             AI service: {status.floorPlanSegmentation?.aiServiceConfigured ? 'configured' : 'not configured (results will be INFERENCE_UNAVAILABLE)'}.
           </span>
         )}
@@ -145,17 +145,17 @@ export default function AiFloorPlanSegmentation() {
             onChange={(e) => onPick(e.target.files?.[0])}
           />
           <button
-            className="flex w-full flex-col items-center gap-2 rounded-lg border border-dashed border-white/20 p-6 text-slate-300 hover:bg-white/5"
+            className="flex w-full flex-col items-center gap-2 rounded-lg border border-dashed border-slate-300 p-6 text-slate-600 hover:bg-slate-100"
             onClick={() => fileRef.current?.click()}
           >
             <UploadCloud size={22} className="text-primary" />
             <span className="text-sm">{file ? file.name : 'Choose a PNG / JPG / TIFF floor plan'}</span>
             <span className="text-[11px] text-slate-500">Raster floor plans. Add a building/floor to place units on the map.</span>
           </button>
-          {preview && <img src={preview} alt="floor plan preview" className="mt-3 max-h-56 rounded-lg border border-white/10" />}
+          {preview && <img src={preview} alt="floor plan preview" className="mt-3 max-h-56 rounded-lg border border-slate-200" />}
 
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <label className="text-[12px] text-slate-400">
+            <label className="text-[12px] text-slate-500">
               Building ID <span className="text-slate-600">(optional — enables map placement)</span>
               <input
                 value={buildingId}
@@ -165,7 +165,7 @@ export default function AiFloorPlanSegmentation() {
                 className="input mt-1 w-full"
               />
             </label>
-            <label className="text-[12px] text-slate-400">
+            <label className="text-[12px] text-slate-500">
               Floor ID <span className="text-slate-600">(optional — adds z / elevation)</span>
               <input
                 value={floorId}
@@ -175,7 +175,7 @@ export default function AiFloorPlanSegmentation() {
                 className="input mt-1 w-full"
               />
             </label>
-            <label className="text-[12px] text-slate-400 sm:col-span-2">
+            <label className="text-[12px] text-slate-500 sm:col-span-2">
               Scale (metres per pixel) <span className="text-slate-600">(optional — else areas are PIXEL_SQUARED)</span>
               <input
                 value={scale}
@@ -199,10 +199,10 @@ export default function AiFloorPlanSegmentation() {
         </Card>
 
         <Card title="Pipeline">
-          <ol className="space-y-1.5 text-[12px] text-slate-300">
+          <ol className="space-y-1.5 text-[12px] text-slate-600">
             {PIPELINE.map((step, i) => (
               <li key={step} className="flex items-center gap-2">
-                <span className="grid h-5 w-5 place-items-center rounded-full bg-white/10 text-[10px]">{i + 1}</span>
+                <span className="grid h-5 w-5 place-items-center rounded-full bg-slate-100 text-[10px]">{i + 1}</span>
                 {step}
               </li>
             ))}
@@ -222,7 +222,7 @@ export default function AiFloorPlanSegmentation() {
             right={<Badge status={unavailable ? 'Under Review' : 'Verified'}>{result.status}</Badge>}
           >
             {unavailable ? (
-              <p className="text-sm text-gold" data-testid="fp-unavailable">
+              <p className="text-sm text-amber-700" data-testid="fp-unavailable">
                 {result.status} — {result.reason || 'the AI service is not reachable. The rest of the app is unaffected.'}
               </p>
             ) : (
@@ -255,11 +255,11 @@ export default function AiFloorPlanSegmentation() {
                 {(v?.issues || []).length > 0 && (
                   <ul className="mt-1.5 max-h-40 space-y-1 overflow-y-auto text-[11px]">
                     {v.issues.map((it, idx) => (
-                      <li key={`${it.rule}-${idx}`} className="text-slate-300">
-                        <span className={it.status === 'ERROR' ? 'text-danger' : it.status === 'WARNING' ? 'text-gold' : 'text-slate-500'}>
+                      <li key={`${it.rule}-${idx}`} className="text-slate-600">
+                        <span className={it.status === 'ERROR' ? 'text-danger' : it.status === 'WARNING' ? 'text-amber-700' : 'text-slate-500'}>
                           {it.status}
                         </span>{' '}
-                        <span className="font-mono text-slate-400">{it.rule}</span> — {it.message}
+                        <span className="font-mono text-slate-500">{it.rule}</span> — {it.message}
                       </li>
                     ))}
                   </ul>
@@ -315,7 +315,7 @@ export default function AiFloorPlanSegmentation() {
                   )}
                   {can('change-detection:review') && (
                     <div className="flex items-center gap-1.5" data-testid="fp-review">
-                      <span className="text-[11px] text-slate-400">Review:</span>
+                      <span className="text-[11px] text-slate-500">Review:</span>
                       <button className="btn-ghost !py-1 text-[11px]" disabled={reviewing} onClick={() => review('ACCEPTED')}>
                         <CheckCircle2 size={13} /> Accept
                       </button>
@@ -325,7 +325,7 @@ export default function AiFloorPlanSegmentation() {
                     </div>
                   )}
                 </div>
-                <p className="mt-2 text-[10px] text-gold/90">{result.disclaimer}</p>
+                <p className="mt-2 text-[10px] text-amber-700">{result.disclaimer}</p>
               </>
             )}
           </Card>

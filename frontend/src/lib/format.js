@@ -32,7 +32,7 @@ export const STATUS_STYLES = {
   Encumbered: 'bg-danger/15 text-danger border-danger/30',
   Active: 'bg-danger/15 text-danger border-danger/30',
 }
-export const statusStyle = (s) => STATUS_STYLES[s] || 'bg-white/5 text-slate-300 border-white/15'
+export const statusStyle = (s) => STATUS_STYLES[s] || 'bg-slate-50 text-slate-600 border-slate-300'
 
 export const LAND_USE_COLORS = {
   'Primary Residential': '#3f7fd6',
@@ -42,4 +42,5 @@ export const LAND_USE_COLORS = {
   'Open Space': '#4fbf7f',
 }
 
-export const CHART_COLORS = ['#3f7fd6', '#38c9d6', '#f2b807', '#a86fd1', '#4fbf7f', '#e4566e', '#8a97ad']
+// Restrained, print-friendly chart palette for a government portal.
+export const CHART_COLORS = ['#1e5fa8', '#0f766e', '#b45309', '#6b21a8', '#15803d', '#b91c1c', '#64748b']

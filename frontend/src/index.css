@@ -2,8 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+   PROPERTY 3D ULPIN — Chennai 3D Cadastre
+   Government land-information portal — LIGHT design system (Phase 10).
+   Restrained, document-like. One consistent spacing + colour scale.
+   --------------------------------------------------------------------------- */
+
 :root {
-  color-scheme: dark;
+  color-scheme: light;
+  --gov-bg: #f5f7fa;
+  --gov-surface: #ffffff;
+  --gov-border: #e2e8f0;
+  --gov-border-strong: #cbd5e1;
+  --gov-text: #1f2937;
+  --gov-text-muted: #64748b;
+  --gov-primary: #1e5fa8;
 }
 
 html,
@@ -14,58 +27,60 @@ body,
 }
 
 body {
-  background: #070c16;
-  color: #e7ecf5;
+  background: var(--gov-bg);
+  color: var(--gov-text);
   font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
 
 @layer components {
+  /* Floating overlay over the map — light, thin border, minimal shadow */
   .panel {
-    @apply bg-navy-900/85 border border-white/10 backdrop-blur-md shadow-panel;
+    @apply bg-white/95 border border-slate-200 backdrop-blur-sm shadow-panel;
   }
+  /* Content card */
   .card {
-    @apply bg-navy-850 border border-white/10 rounded-lg;
+    @apply bg-white border border-slate-200 rounded-lg shadow-card;
   }
   .btn {
     @apply inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-semibold transition-colors
-      focus:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:cursor-not-allowed;
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary {
     @apply btn bg-primary hover:bg-primary-hover text-white;
   }
   .btn-ghost {
-    @apply btn bg-white/5 hover:bg-white/10 text-slate-200;
+    @apply btn bg-white hover:bg-slate-100 text-slate-700 border border-slate-300;
   }
   .btn-danger {
-    @apply btn bg-danger/90 hover:bg-danger text-white;
+    @apply btn bg-danger hover:bg-red-800 text-white;
   }
   .input {
-    @apply w-full rounded-md bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100
-      placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary;
+    @apply w-full rounded-md bg-white border border-slate-300 px-3 py-2 text-sm text-slate-900
+      placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary;
   }
   .nav-link {
-    @apply flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors;
+    @apply flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors;
   }
   .nav-link-active {
-    @apply bg-primary/15 text-white border-l-2 border-primary;
+    @apply bg-primary/10 text-primary font-semibold border-l-2 border-primary;
   }
   .kv-row {
-    @apply flex items-start justify-between gap-3 py-1.5 text-sm border-b border-white/5 last:border-0;
+    @apply flex items-start justify-between gap-3 py-1.5 text-sm border-b border-slate-100 last:border-0;
   }
   .kv-label {
-    @apply text-slate-400 shrink-0;
+    @apply text-slate-500 shrink-0;
   }
   .kv-value {
-    @apply text-slate-100 text-right break-words;
+    @apply text-slate-900 text-right break-words;
   }
   .section-title {
-    @apply text-xs font-bold uppercase tracking-wider text-slate-400;
+    @apply text-xs font-bold uppercase tracking-wider text-slate-500;
   }
 }
 
-/* Cesium widget tweaks so it blends into the dark shell */
+/* Cesium widget fills its host; hide the ion credit bar */
 .cesium-viewer,
 .cesium-widget,
 .cesium-widget canvas {
@@ -76,16 +91,19 @@ body {
   display: none;
 }
 
-/* Firefox / Chrome scrollbars inside panels */
+/* Thin, neutral scrollbars */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-color: #cbd5e1 transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.16);
+  background: #cbd5e1;
   border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }

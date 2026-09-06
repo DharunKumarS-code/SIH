@@ -6,7 +6,7 @@ export function AppShell({ children }) {
   const [navOpen, setNavOpen] = useState(false)
 
   return (
-    <div className="flex h-full w-full flex-col bg-navy-950">
+    <div className="flex h-full w-full flex-col bg-[#f5f7fa]">
       <TopBar onToggleNav={() => setNavOpen((v) => !v)} />
       <div className="flex min-h-0 flex-1">
         <SideNav open={navOpen} onClose={() => setNavOpen(false)} />

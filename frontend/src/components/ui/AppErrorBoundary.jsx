@@ -18,8 +18,8 @@ export class AppErrorBoundary extends Component {
     if (this.state.error) {
       return (
         <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-          <p className="text-lg font-bold text-white">Something went wrong</p>
-          <p className="max-w-md text-sm text-slate-400">{String(this.state.error?.message || this.state.error)}</p>
+          <p className="text-lg font-bold text-slate-900">Something went wrong</p>
+          <p className="max-w-md text-sm text-slate-500">{String(this.state.error?.message || this.state.error)}</p>
           <button className="btn-primary" onClick={() => window.location.reload()} type="button">
             Reload
           </button>

@@ -30,7 +30,7 @@ export default function Disputes() {
             {
               key: 'ref',
               header: 'Property / Parcel',
-              render: (r) => <span className="font-mono text-xs text-white">{r.propertyId || r.ulpin}</span>,
+              render: (r) => <span className="font-mono text-xs text-slate-900">{r.propertyId || r.ulpin}</span>,
             },
             { key: 'type', header: 'Type' },
             { key: 'filedOn', header: 'Filed', render: (r) => dateShort(r.filedOn) },

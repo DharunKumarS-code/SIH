@@ -61,13 +61,13 @@ export default function UlpinSearch() {
 
       {state.results && (
         <Card title={`Results (${state.results.length})`}>
-          {state.results.length === 0 && <p className="text-sm text-slate-400">No matches.</p>}
-          <ul className="divide-y divide-white/5">
+          {state.results.length === 0 && <p className="text-sm text-slate-500">No matches.</p>}
+          <ul className="divide-y divide-slate-200">
             {state.results.map((r, i) => (
               <li key={i} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-white">{r.title}</p>
-                  <p className="truncate text-xs text-slate-400">{r.subtitle}</p>
+                  <p className="truncate text-sm font-semibold text-slate-900">{r.title}</p>
+                  <p className="truncate text-xs text-slate-500">{r.subtitle}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge>{r.kind}</Badge>

@@ -53,6 +53,7 @@ test.describe('Route smoke — every main route renders', () => {
     ['/elevation', /Elevation \/ LiDAR/i],
     ['/underground', /Underground Infrastructure/i],
     ['/identifier', /3D Property Identifier/i],
+    ['/governance', /Governance/i],
   ]
 
   test('all routes open without a blank page or page error', async ({ page, diag }) => {

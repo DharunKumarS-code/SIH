@@ -55,8 +55,8 @@ export default function Dashboard() {
       </div>
 
       <Card className="mt-4" title="Demonstration Scenario">
-        <p className="text-sm text-slate-300">
-          Search <span className="font-mono text-white">{PARCEL_ULPIN}</span> → open the 3D map → select building
+        <p className="text-sm text-slate-600">
+          Search <span className="font-mono text-slate-900">{PARCEL_ULPIN}</span> → open the 3D map → select building
           <b> B01</b> → floor <b>F02</b> → unit <b>U201</b>. The unit resolves to the prototype identifier{' '}
           <span className="font-mono text-cyan">{PARCEL_ULPIN}-B01-F02-U201</span> with its own owner, documents and
           governance record, and can be isolated in 3D.
