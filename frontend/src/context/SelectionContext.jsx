@@ -134,6 +134,17 @@ export function SelectionProvider({ children }) {
     mapApi.current.flyToArea?.(id)
   }, [])
 
+  // Move the "current locality" marker without disturbing the active drill-down
+  // selection. Used by the 3D map when a selected entity (deep link, Buildings
+  // table, sidebar link) lives in a different locality than the camera.
+  const syncArea = useCallback((id) => {
+    setArea((a) => {
+      if (a?.id === id) return a
+      const loc = localitiesRef.current.find((l) => l.id === id)
+      return loc ? areaFromLocality(loc) : a
+    })
+  }, [])
+
   const cityView = useCallback(() => {
     setIsolated(false)
     setSelection((s) => ({ ...s, mode: 'overview', buildingId: null, floorNumber: null, propertyId: null }))
@@ -234,6 +245,7 @@ export function SelectionProvider({ children }) {
       localities,
       area,
       selectArea,
+      syncArea,
       cityView,
       cityViewTarget: CHENNAI_CITY_VIEW,
       selection,
@@ -259,6 +271,7 @@ export function SelectionProvider({ children }) {
       localities,
       area,
       selectArea,
+      syncArea,
       cityView,
       selection,
       isolated,

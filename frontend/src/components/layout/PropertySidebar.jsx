@@ -42,7 +42,7 @@ function Section({ title, children, defaultOpen = true }) {
 }
 
 export function PropertySidebar() {
-  const { selection, isolated, setIsolated, reset, mapApi, selectBuilding } = useSelection()
+  const { selection, isolated, setIsolated, reset, mapApi, selectBuilding, selectParcel } = useSelection()
   const { can } = useAuth()
   const [note, setNote] = useState('')
 
@@ -105,6 +105,12 @@ export function PropertySidebar() {
     () => (isBuildingLevel ? api.elevationBuildingHeight(selection.buildingId).catch(() => null) : Promise.resolve(null)),
     [isBuildingLevel, selection.buildingId],
   )
+  // Authoritative building record for the building/floor placeholder — id,
+  // ULPIN, locality, floor/unit counts, height and prototype volume.
+  const buildingQ = useApi(
+    () => (isBuildingLevel ? api.building(selection.buildingId).catch(() => null) : Promise.resolve(null)),
+    [isBuildingLevel, selection.buildingId],
+  )
 
   if (!isUnit) {
     if (isParcel) {
@@ -122,17 +128,25 @@ export function PropertySidebar() {
     if (isInfra) {
       return <InfrastructureCard query={infraQ} relQuery={infraRelQ} elevQuery={infraElevQ} id={selection.infrastructureId} onClose={reset} mapApi={mapApi} canReview={can('infrastructure:review')} />
     }
+    if (isBuildingLevel) {
+      return (
+        <BuildingCard
+          query={buildingQ}
+          elevQuery={elevQ}
+          mode={selection.mode}
+          buildingId={selection.buildingId}
+          mapApi={mapApi}
+          onClose={reset}
+          onSelectParcel={selectParcel}
+        />
+      )
+    }
     return (
       <aside className="pointer-events-auto absolute right-3 top-3 z-30 w-80 rounded-xl panel p-4" data-testid="property-sidebar">
         <p className="section-title">Property / Unit Details</p>
         <p className="mt-2 text-sm text-slate-500">
-          {selection.mode === 'building'
-            ? 'Building selected. Pick a floor in the explorer, then a unit — or click a unit in the 3D scene.'
-            : selection.mode === 'floor'
-              ? 'Floor selected. Choose a unit from the floor plan below or in the 3D scene.'
-              : 'Search a ULPIN, Survey Number, Subdivision or locality — or pick a parcel / building in the 3D scene.'}
+          Search a ULPIN, Survey Number, Subdivision or locality — or pick a parcel / building in the 3D scene.
         </p>
-        {isBuildingLevel && <BuildingElevationPanel query={elevQ} />}
       </aside>
     )
   }
@@ -388,6 +402,106 @@ export function PropertySidebar() {
           />
         )}
       </footer>
+    </aside>
+  )
+}
+
+// --------------------------------------------------------------------------
+// Building / floor selection card — the authoritative building record (id,
+// ULPIN, locality, floor & unit counts, height, prototype volume) plus the
+// Phase 5 elevation panel. Replaces the old bare placeholder so a building
+// picked in the 3D scene, the Buildings table or a deep link always shows
+// what was actually selected.
+// --------------------------------------------------------------------------
+function BuildingCard({ query, elevQuery, mode, buildingId, mapApi, onClose, onSelectParcel }) {
+  const { data, error, loading, reload } = query
+  const b = data?.building
+  const floors = Array.isArray(data?.floors) ? data.floors : []
+  const vm = b?.volume ? volumeMetrics(b.volume) : null
+  const stone = b?.constructionStatus === 'Completed' ? 'Verified'
+    : b?.constructionStatus === 'Stalled' ? 'Disputed' : 'Under Review'
+
+  return (
+    <aside
+      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
+      data-testid="property-sidebar"
+    >
+      <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
+        <div className="min-w-0">
+          <p className="text-sm font-extrabold text-slate-900">{mode === 'floor' ? 'Floor — Building' : 'Building'}</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-amber-700">
+            <DemoTag label="PROTOTYPE" /> Synthetic demo building — not an official record
+          </p>
+        </div>
+        <button className="btn-ghost !px-1.5 !py-1" onClick={onClose} aria-label="Close details">
+          <X size={15} />
+        </button>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-3" data-testid="building-card">
+        {loading && <Spinner />}
+        <ErrorNote error={error} onRetry={reload} />
+        {b && (
+          <>
+            <div className="rounded-lg border border-primary/30 bg-primary/10 p-2.5">
+              <p className="font-mono text-[13px] font-bold text-slate-900 break-all" data-testid="building-id">{b.buildingId}</p>
+              <p className="mt-0.5 text-[12px] font-semibold text-slate-700">{b.name}</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <Badge status={stone}>{b.constructionStatus || 'Unknown'}</Badge>
+                {b.constructionType && <Badge>{b.constructionType}</Badge>}
+                {b.approvalStatus && <Badge>{b.approvalStatus}</Badge>}
+              </div>
+            </div>
+
+            <Section title="Building">
+              <KeyValue
+                data={{
+                  'Building ID': b.buildingId,
+                  Locality: b.locality || 'Unavailable',
+                  Floors: b.totalFloors ?? b.floorsAboveGround ?? floors.length ?? 'Unavailable',
+                  Units: b.unitCount ?? data?.unitCount ?? 'Unavailable',
+                  Height: b.heightM != null ? `${b.heightM} m` : (vm?.heightM != null ? `${vm.heightM} m` : 'Unavailable'),
+                  Footprint: b.footprintSqm != null ? `${b.footprintSqm} m²` : (vm?.footprintM2 != null ? `${vm.footprintM2} m²` : 'Unavailable'),
+                  'Est. volume': vm?.volumeM3 != null ? `${vm.volumeM3} m³` : 'Unavailable',
+                  'Completion year': b.completionYear || 'Unavailable',
+                }}
+              />
+              <div className="mt-1.5 flex items-center gap-2 text-[12px] text-slate-600">
+                <Layers size={12} className="text-primary" /> ULPIN (Parcel):{' '}
+                {b.ulpin ? (
+                  <button className="font-mono text-slate-900 underline decoration-dotted" onClick={() => onSelectParcel(b.ulpin)}>
+                    {b.ulpin}
+                  </button>
+                ) : (
+                  <span className="text-slate-500">Unavailable</span>
+                )}
+              </div>
+            </Section>
+
+            <Section title="Volume ID">
+              <p className="font-mono text-[12px] text-slate-900 break-all">{b.volume?.volumeId || '—'}</p>
+            </Section>
+
+            <div className="mt-2 flex gap-2">
+              <button
+                className="btn-ghost flex-1 justify-center"
+                data-testid="building-focus"
+                onClick={() => mapApi.current?.flyToBuilding?.(buildingId)}
+              >
+                <Focus size={13} /> Focus
+              </button>
+            </div>
+
+            <BuildingElevationPanel query={elevQuery} />
+
+            <p className="mt-3 text-[11px] text-slate-500">
+              {mode === 'floor'
+                ? 'Floor selected. Choose a unit from the floor plan or the 3D scene.'
+                : 'Pick a floor in the explorer, then a unit — or click a unit in the 3D scene.'}
+            </p>
+          </>
+        )}
+      </div>
     </aside>
   )
 }

@@ -105,6 +105,7 @@ export function Cesium3DMap() {
   const gnssPointsRef = useRef(new Map()) // controlPointId -> Entity (Phase 6, GNSS/CORS DEMO)
   const infraEntitiesRef = useRef(new Map()) // infrastructureId -> Entity (Phase 8, underground infrastructure)
   const cityAreaRef = useRef(new Map()) // areaId -> { fill, line }
+  const localityCacheRef = useRef(new Map()) // 'building:<id>' | 'infra:<id>' | 'parcel:<ulpin>' -> locality id
   const activeAreaRef = useRef(DEFAULT_AREA_ID)
   const lodRef = useRef('area')
   const cityViewRef = useRef(false) // true while the camera is parked at the Chennai overview
@@ -191,7 +192,17 @@ export function Cesium3DMap() {
       await ensureAreaLayers(startArea)
       if (cancelled) return
 
-      flyToArea(startArea, 0)
+      // If a preset / deep-link selection is already pending, applySelection()
+      // owns the camera (it positions on the entity, switching locality first if
+      // needed). Only prime layer visibility here — firing flyToArea() too would
+      // race applySelection and snap the camera to the start-locality overview.
+      const presetMode = selRef.current.selection?.mode
+      if (['parcel', 'building', 'floor', 'unit', 'infrastructure'].includes(presetMode)) {
+        lodRef.current = 'area'
+        applyLayerVisibility()
+      } else {
+        flyToArea(startArea, 0)
+      }
       setReady(true)
       window.__map = { ready: true }
       applySelection() // reflect any preset selection
@@ -645,6 +656,9 @@ export function Cesium3DMap() {
     if (!buildingId || loadedBuildingsRef.current.has(buildingId)) return
     loadedBuildingsRef.current.add(buildingId)
     if (!liveViewer()) return
+    // Fallback area tag only — each entity is tagged with its own feature
+    // `locality` below so a cross-locality selection is never mis-tagged with
+    // whatever area happened to be active when this ran.
     const areaId = activeAreaRef.current
     try {
       const [units, commons] = await Promise.all([
@@ -669,7 +683,7 @@ export function Cesium3DMap() {
           },
           properties: { kind: 'unit', ...p },
         })
-        ent.__area = areaId
+        ent.__area = p.locality || areaId
         unitEntitiesRef.current.set(p.propertyId, ent)
         ;(groupsRef.current.units3d ||= []).push(ent)
       }
@@ -689,7 +703,7 @@ export function Cesium3DMap() {
           },
           properties: { kind: 'common-area', ...p },
         })
-        ent.__area = areaId
+        ent.__area = p.locality || areaId
         ;(groupsRef.current.commonAreas ||= []).push(ent)
       }
     } catch (e) {
@@ -858,6 +872,31 @@ export function Cesium3DMap() {
   /* ------------------------------------------------------------- camera api */
   function registerMapApi(viewer) {
     const api2 = selRef.current.mapApi
+    // Fly to an entity by computing its bounding sphere directly from geometry.
+    // `viewer.flyTo(entity)` depends on the DataSourceDisplay having a resolved
+    // bounding volume, which is often not ready in the same tick an entity (or a
+    // whole locality) was just added — the flight then silently rejects. Reading
+    // the positions ourselves avoids that race; `viewer.flyTo` is kept as a
+    // fallback for anything we can't measure.
+    const flyToEntity = (ent, offset, duration = 1.2) => {
+      if (!ent || !liveViewer()) return
+      const now = Cesium.JulianDate.now()
+      let positions = null
+      const hv = ent.polygon?.hierarchy?.getValue?.(now) ?? ent.polygon?.hierarchy
+      if (hv) positions = hv.positions || hv
+      else if (ent.polyline?.positions) positions = ent.polyline.positions.getValue?.(now) || ent.polyline.positions
+      else if (ent.position) { const p = ent.position.getValue?.(now) || ent.position; if (p) positions = [p] }
+      if (Array.isArray(positions) && positions.length) {
+        try {
+          const sphere = Cesium.BoundingSphere.fromPoints(positions)
+          viewer.camera.flyToBoundingSphere(sphere, { duration, offset })
+          viewer.scene.requestRender()
+          return
+        } catch { /* fall through to viewer.flyTo */ }
+      }
+      viewer.flyTo(ent, { duration, offset }).catch(() => {})
+    }
+
     api2.current = {
       ...api2.current,
       resetView: () => flyToArea(activeAreaRef.current, 1.4),
@@ -874,34 +913,13 @@ export function Cesium3DMap() {
       zoomBy: (factor) => viewer.camera.zoomIn(viewer.camera.positionCartographic.height * factor),
       rotateBy: (deg) => viewer.camera.rotateRight(Cesium.Math.toRadians(deg)),
       tiltBy: (deg) => viewer.camera.lookUp(Cesium.Math.toRadians(deg)),
-      flyToParcel: (ulpin) => {
-        const ent = parcelEntityRef.current.get(ulpin)
-        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-40), 600) }).catch(() => {})
-      },
-      flyToBuilding: (buildingId) => {
-        const ent = buildingShellRef.current.get(buildingId)
-        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(35), Cesium.Math.toRadians(-30), 260) }).catch(() => {})
-      },
-      flyToUnit: (propertyId) => {
-        const ent = unitEntitiesRef.current.get(propertyId)
-        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(40), Cesium.Math.toRadians(-22), 90) }).catch(() => {})
-      },
-      flyToAiBuilding: (aiBuildingId) => {
-        const ent = aiBuildingsRef.current.get(aiBuildingId)
-        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(35), Cesium.Math.toRadians(-28), 220) }).catch(() => {})
-      },
-      flyToAiFloorUnit: (aiFloorUnitId) => {
-        const ent = aiFloorUnitsRef.current.get(aiFloorUnitId)
-        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(40), Cesium.Math.toRadians(-24), 120) }).catch(() => {})
-      },
-      flyToGnssPoint: (controlPointId) => {
-        const ent = gnssPointsRef.current.get(controlPointId)
-        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(30), Cesium.Math.toRadians(-35), 80) }).catch(() => {})
-      },
-      flyToInfrastructure: (infrastructureId) => {
-        const ent = infraEntitiesRef.current.get(infrastructureId)
-        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(30), Cesium.Math.toRadians(-32), 160) }).catch(() => {})
-      },
+      flyToParcel: (ulpin) => flyToEntity(parcelEntityRef.current.get(ulpin), new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-40), 600)),
+      flyToBuilding: (buildingId) => flyToEntity(buildingShellRef.current.get(buildingId), new Cesium.HeadingPitchRange(Cesium.Math.toRadians(35), Cesium.Math.toRadians(-30), 260)),
+      flyToUnit: (propertyId) => flyToEntity(unitEntitiesRef.current.get(propertyId), new Cesium.HeadingPitchRange(Cesium.Math.toRadians(40), Cesium.Math.toRadians(-22), 90)),
+      flyToAiBuilding: (aiBuildingId) => flyToEntity(aiBuildingsRef.current.get(aiBuildingId), new Cesium.HeadingPitchRange(Cesium.Math.toRadians(35), Cesium.Math.toRadians(-28), 220)),
+      flyToAiFloorUnit: (aiFloorUnitId) => flyToEntity(aiFloorUnitsRef.current.get(aiFloorUnitId), new Cesium.HeadingPitchRange(Cesium.Math.toRadians(40), Cesium.Math.toRadians(-24), 120)),
+      flyToGnssPoint: (controlPointId) => flyToEntity(gnssPointsRef.current.get(controlPointId), new Cesium.HeadingPitchRange(Cesium.Math.toRadians(30), Cesium.Math.toRadians(-35), 80)),
+      flyToInfrastructure: (infrastructureId) => flyToEntity(infraEntitiesRef.current.get(infrastructureId), new Cesium.HeadingPitchRange(Cesium.Math.toRadians(30), Cesium.Math.toRadians(-32), 160)),
       // Pull freshly-extracted AI buildings into the running viewer (called by
       // the AI Building Extraction page after an inference completes).
       refreshAiBuildings: (areaId) => ensureAiBuildings(areaId || activeAreaRef.current),
@@ -914,8 +932,10 @@ export function Cesium3DMap() {
     }
   }
 
-  // Same viewer, same scene — just move the camera to a locality and load it.
-  async function flyToArea(areaId, duration = 1.6) {
+  // Load a locality's data into the shared scene and make it the active area —
+  // WITHOUT moving the camera. Used when a selected entity lives in another
+  // locality: the entity's own flyTo* then does the camera work.
+  async function loadArea(areaId) {
     if (!liveViewer()) return
     const loc = localityOf(areaId)
     if (!loc) return
@@ -926,16 +946,24 @@ export function Cesium3DMap() {
     await ensureAiFloorUnits(areaId) // idempotent — picks up any newly-segmented AI floor-plan units
     await ensureGnssControlPoints(areaId) // idempotent — picks up any newly-imported GNSS/CORS control points
     await ensureUndergroundInfrastructure(areaId) // idempotent — picks up any newly-imported underground infrastructure
+    if (!liveViewer()) return
+    lodRef.current = 'area'
+    applyLayerVisibility()
+  }
+
+  // Same viewer, same scene — load a locality and move the camera to its overview.
+  async function flyToArea(areaId, duration = 1.6) {
+    await loadArea(areaId)
     const viewer = liveViewer()
     if (!viewer) return
+    const loc = localityOf(areaId)
+    if (!loc) return
     const h = loc.cameraHeightM || 1500
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(loc.base.lon, loc.base.lat - h * 6e-6, h),
       orientation: { heading: Cesium.Math.toRadians(15), pitch: Cesium.Math.toRadians(-34), roll: 0 },
       duration,
     })
-    lodRef.current = 'area'
-    applyLayerVisibility()
     viewer.scene.requestRender()
   }
 
@@ -976,19 +1004,90 @@ export function Cesium3DMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel.selection, sel.isolated])
 
-  // Area changes coming from the TopBar / AreaSelector drive the same camera.
+  // Area changes coming from the TopBar / AreaSelector drive the same camera —
+  // but only when the user is at the area overview. When an entity is selected,
+  // applySelection() owns the camera (it switches locality itself and then
+  // focuses the entity); flying to the area overview here would fight it.
   useEffect(() => {
     if (!ready) return
-    if (sel.area?.id && sel.area.id !== activeAreaRef.current) {
+    if (sel.area?.id && sel.area.id !== activeAreaRef.current && sel.selection?.mode === 'overview') {
       flyToArea(sel.area.id, 1.8)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel.area?.id, ready])
 
-  async function applySelection() {
+  // Resolve which locality a selected entity lives in (cached). Deep links,
+  // the Buildings table and the sidebar can all select an entity that belongs
+  // to a locality other than the one the camera is currently over — without
+  // this the entity is filtered out by `areaOk()` and never focused.
+  async function localityForSelection(selection) {
+    const { mode, buildingId, infrastructureId, ulpin, propertyId } = selection
+    const cache = localityCacheRef.current
+    try {
+      if ((mode === 'building' || mode === 'floor' || mode === 'unit') && buildingId) {
+        const key = `building:${buildingId}`
+        if (!cache.has(key)) {
+          const res = await api.building(buildingId)
+          cache.set(key, res?.building?.locality || null)
+        }
+        return cache.get(key)
+      }
+      if (mode === 'unit' && !buildingId && propertyId) {
+        const key = `unit:${propertyId}`
+        if (!cache.has(key)) {
+          const res = await api.unit(propertyId)
+          cache.set(key, res?.building?.locality || res?.hierarchy?.building?.locality || null)
+        }
+        return cache.get(key)
+      }
+      if (mode === 'infrastructure' && infrastructureId) {
+        const key = `infra:${infrastructureId}`
+        if (!cache.has(key)) {
+          const res = await api.infrastructure(infrastructureId)
+          cache.set(key, res?.locality || null)
+        }
+        return cache.get(key)
+      }
+      if (mode === 'parcel' && ulpin) {
+        const key = `parcel:${ulpin}`
+        if (!cache.has(key)) {
+          const res = await api.parcel(ulpin)
+          cache.set(key, res?.locality || null)
+        }
+        return cache.get(key)
+      }
+    } catch {
+      /* fall through — a failed lookup just means no area switch */
+    }
+    return null
+  }
+
+  // Serialise selection passes. init() and the [sel.selection] effect can both
+  // trigger one, and each pass now awaits network round-trips (locality lookup,
+  // loadArea) — letting two interleave leaves activeAreaRef and entity
+  // visibility in a torn state (both localities visible, camera stuck).
+  const applyLockRef = useRef(Promise.resolve())
+  function applySelection() {
+    const run = applyLockRef.current.then(applySelectionPass).catch(() => {})
+    applyLockRef.current = run
+    return run
+  }
+
+  async function applySelectionPass() {
     if (!liveViewer()) return
     const { selection } = selRef.current
     const { mode, buildingId, propertyId } = selection
+
+    // Switch the camera/data to the selected entity's locality first, so the
+    // rest of this pass loads, shows and focuses it in the right place.
+    if (['building', 'floor', 'unit', 'infrastructure', 'parcel'].includes(mode)) {
+      const targetArea = await localityForSelection(selection)
+      if (targetArea && targetArea !== activeAreaRef.current && localityOf(targetArea)) {
+        await loadArea(targetArea) // data + activeArea only — the entity flyTo below moves the camera
+        if (!liveViewer()) return
+        selRef.current.syncArea?.(targetArea) // keep the top-bar locality in step (no extra camera move: activeAreaRef already matches)
+      }
+    }
 
     if ((mode === 'building' || mode === 'floor' || mode === 'unit') && buildingId) {
       await ensureUnits(buildingId)

@@ -708,12 +708,14 @@ test.describe('Phase 7 — intelligent 2D/3D topology validation engine (additiv
 
     expect(await page.evaluate(() => Boolean(window.viewer && !window.viewer.isDestroyed()))).toBe(true)
     expect(await page.locator('canvas').count()).toBe(1)
-    // A bare building-level selection has no dedicated "BuildingCard" in this
-    // app (only Parcel/AiBuilding/AiFloorUnit/Gnss selections do) — it shows
-    // the existing generic "Building selected" panel plus the Phase 5
-    // elevation-height panel, never the literal building id as text.
+    // A building-level selection shows the BuildingCard — the authoritative
+    // building record (id, ULPIN, locality, floor/unit counts, height, volume)
+    // that a focused finding must resolve to — plus the Phase 5 elevation-height
+    // panel.
     await expect(page.getByTestId('property-sidebar')).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByTestId('property-sidebar')).toContainText('Building selected')
+    await expect(page.getByTestId('building-card')).toBeVisible()
+    await expect(page.getByTestId('building-id')).toContainText('TN-CHN-123456789-B05')
+    await expect(page.getByTestId('property-sidebar')).toContainText('Elevation-Derived Height')
 
     const { pageErrors } = diag.fatal()
     expect(pageErrors, pageErrors.join('\n')).toEqual([])
