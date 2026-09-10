@@ -23,6 +23,7 @@
     "@playwright/test": "^1.62.1"
   },
   "dependencies": {
-    "multer": "^2.3.0"
+    "multer": "^2.3.0",
+    "three": "^0.185.1"
   }
 }
