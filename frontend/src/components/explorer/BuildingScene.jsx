@@ -59,12 +59,22 @@ function boxFor(v, origin, fallback) {
   return { cx, cy: (y0 + y1) / 2, cz, w, h, d, y0, y1 }
 }
 
+// Explorer view modes (spec sections 16-19). EXTERIOR is the default and is NOT
+// transparent — walls/roof/slabs are shown as solid massing.
+export const BUILDING_VIEW_MODES = [
+  { key: 'EXTERIOR', label: 'Exterior' },
+  { key: 'INTERIOR', label: 'Interior' },
+  { key: 'CUTAWAY', label: 'Cutaway' },
+  { key: 'FLOOR_PLAN', label: 'Floor Plan' },
+]
+
 export function BuildingScene({
   building,
   floors = [],
   units = [],
   activeFloorId,
   activeUnitId,
+  viewMode = 'EXTERIOR',
   onSelectFloor,
   onSelectUnit,
 }) {
@@ -88,6 +98,7 @@ export function BuildingScene({
 
     const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.localClippingEnabled = true // Cutaway mode
     mount.appendChild(renderer.domElement)
     renderer.domElement.style.display = 'block'
     renderer.domElement.style.width = '100%'
@@ -168,7 +179,7 @@ export function BuildingScene({
     }
     tick()
 
-    stateRef.current = { scene, camera, renderer, controls, content, framedFor: null }
+    stateRef.current = { scene, camera, renderer, controls, content, framedFor: null, clip: new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e6) }
 
     return () => {
       cancelAnimationFrame(raf)
@@ -211,16 +222,32 @@ export function BuildingScene({
     const fpW = shellBox?.w ?? 20
     const fpD = shellBox?.d ?? 20
 
-    // Translucent building shell.
+    // Building shell — EXTERIOR renders it as a solid wall; the view-mode pass
+    // below adjusts opacity / clipping / visibility per mode.
     if (shellBox) {
       const shell = new THREE.Mesh(
         new THREE.BoxGeometry(shellBox.w, shellBox.h, shellBox.d),
         new THREE.MeshStandardMaterial({
-          color: COLORS.shell, transparent: true, opacity: 0.08, depthWrite: false, roughness: 1,
+          color: COLORS.shell, transparent: true, opacity: 0.9, roughness: 0.95, metalness: 0.02,
         }),
       )
       shell.position.set(shellBox.cx, shellBox.h / 2, shellBox.cz)
+      shell.userData = { role: 'shell' }
+      const shellEdges = new THREE.LineSegments(
+        new THREE.EdgesGeometry(shell.geometry),
+        new THREE.LineBasicMaterial({ color: COLORS.outline, transparent: true, opacity: 0.5 }),
+      )
+      shell.add(shellEdges)
       content.add(shell)
+
+      // Roof cap (a thin slab on top) so EXTERIOR reads as a closed structure.
+      const roof = new THREE.Mesh(
+        new THREE.BoxGeometry(shellBox.w * 1.02, Math.max(shellBox.h * 0.03, 0.4), shellBox.d * 1.02),
+        new THREE.MeshStandardMaterial({ color: COLORS.floor, roughness: 1 }),
+      )
+      roof.position.set(shellBox.cx, shellBox.h + 0.2, shellBox.cz)
+      roof.userData = { role: 'roof' }
+      content.add(roof)
     }
 
     // Floor slabs, stacked bottom→top.
@@ -245,7 +272,7 @@ export function BuildingScene({
         }),
       )
       mesh.position.set(fb.cx, fb.y0 + slabH / 2, fb.cz)
-      mesh.userData = { pickable: true, type: 'floor', id: f.floorId }
+      mesh.userData = { pickable: true, type: 'floor', role: 'floor', id: f.floorId, topY: fb.y1, floorNumber: f.floorNumber ?? i }
       const edges = new THREE.LineSegments(
         new THREE.EdgesGeometry(mesh.geometry),
         new THREE.LineBasicMaterial({ color: isActive ? COLORS.floorActive : COLORS.outline, transparent: true, opacity: isActive ? 0.8 : 0.3 }),
@@ -294,7 +321,7 @@ export function BuildingScene({
         }),
       )
       mesh.position.set(ub.cx, (ub.y0 ?? baseY) + h / 2 + 0.05, ub.cz)
-      mesh.userData = { pickable: true, type: 'unit', id: u.propertyId || u.unitId }
+      mesh.userData = { pickable: true, type: 'unit', role: 'unit', id: u.propertyId || u.unitId }
       const edges = new THREE.LineSegments(
         new THREE.EdgesGeometry(mesh.geometry),
         new THREE.LineBasicMaterial({ color: COLORS.outline, transparent: true, opacity: 0.45 }),
@@ -303,19 +330,64 @@ export function BuildingScene({
       content.add(mesh)
     })
 
-    // Frame the camera on the building once (not on every selection change).
-    const frameKey = building.buildingId || building.volume?.volumeId || 'b'
-    if (st.framedFor !== frameKey && shellBox) {
+    // ---- apply the view mode (spec sections 16-19) ----
+    const activeFloorMesh = content.children.find((o) => o.userData?.role === 'floor' && o.userData.id === activeFloorId)
+    const cutY = activeFloorMesh ? activeFloorMesh.userData.topY + 0.2 : (shellBox ? shellBox.h * 0.5 : 6)
+    st.clip.set(new THREE.Vector3(0, -1, 0), cutY) // keep geometry BELOW cutY
+
+    content.traverse((o) => {
+      if (!o.isMesh) return
+      const role = o.userData?.role
+      const mat = o.material
+      if (!mat) return
+      mat.clippingPlanes = null
+      if (role === 'shell') {
+        if (viewMode === 'EXTERIOR') { o.visible = true; mat.opacity = 0.92; mat.transparent = true; mat.depthWrite = true }
+        else if (viewMode === 'CUTAWAY') { o.visible = true; mat.opacity = 0.95; mat.transparent = true; mat.depthWrite = true; mat.clippingPlanes = [st.clip] }
+        else { o.visible = false } // INTERIOR / FLOOR_PLAN
+      } else if (role === 'roof') {
+        o.visible = viewMode === 'EXTERIOR'
+        if (viewMode === 'CUTAWAY') { o.visible = true; mat.clippingPlanes = [st.clip] }
+      } else if (role === 'floor') {
+        const isActive = o.userData.id === activeFloorId
+        if (viewMode === 'EXTERIOR') { o.visible = true; mat.opacity = isActive ? 0.4 : 0.12 }
+        else if (viewMode === 'FLOOR_PLAN') { o.visible = isActive; mat.opacity = 0.25 }
+        else { o.visible = true; mat.opacity = isActive ? 0.45 : 0.14 } // INTERIOR / CUTAWAY
+        mat.transparent = true
+      } else if (role === 'unit') {
+        if (viewMode === 'EXTERIOR') { o.visible = false }
+        else { o.visible = true } // INTERIOR / CUTAWAY / FLOOR_PLAN show units on the active floor
+      }
+    })
+
+    // ---- camera per mode ----
+    const frameKey = `${building.buildingId || 'b'}::${viewMode}::${activeFloorId || ''}`
+    if (shellBox && st.framedFor !== frameKey) {
       st.framedFor = frameKey
       const span = Math.max(shellBox.w, shellBox.d, shellBox.h, 12)
-      st.controls.target.set(shellBox.cx, shellBox.h / 2, shellBox.cz)
-      st.camera.position.set(shellBox.cx + span * 1.1, shellBox.h + span * 0.9, shellBox.cz + span * 1.3)
+      const cx = shellBox.cx
+      const cz = shellBox.cz
+      const floorY = activeFloorMesh ? activeFloorMesh.position.y : shellBox.h / 2
       st.camera.near = 0.1
       st.camera.far = span * 40
+      if (viewMode === 'FLOOR_PLAN') {
+        st.controls.target.set(cx, floorY, cz)
+        st.camera.position.set(cx + 0.01, floorY + span * 1.9, cz + 0.01)
+        st.controls.maxPolarAngle = Math.PI
+      } else if (viewMode === 'INTERIOR') {
+        st.controls.target.set(cx, floorY + 1, cz)
+        st.camera.position.set(cx + span * 0.9, floorY + span * 0.5, cz + span * 0.9)
+        st.controls.maxPolarAngle = Math.PI / 2.02
+      } else {
+        // EXTERIOR / CUTAWAY
+        st.controls.target.set(cx, shellBox.h / 2, cz)
+        st.camera.position.set(cx + span * 1.15, shellBox.h + span * 0.9, cz + span * 1.35)
+        st.controls.maxPolarAngle = Math.PI / 2.02
+      }
       st.camera.updateProjectionMatrix()
       st.controls.update()
     }
-  }, [building, floors, units, activeFloorId, activeUnitId])
+  }, [building, floors, units, activeFloorId, activeUnitId, viewMode])
 
   return <div ref={mountRef} className="h-full w-full" data-testid="building-scene" />
 }

@@ -10,7 +10,8 @@ export const DEFAULT_LAYERS = {
   // base
   parcels: true,
   ulpinBoundaries: true,
-  buildings: true,
+  buildings: true, // city-wide 3D building massing in the one Cesium viewer
+  buildingLabels: true, // building id labels — LOD-gated to close zoom
   roads: true,
   imagery: true,
   terrain: true,
@@ -61,6 +62,10 @@ export const DEFAULT_LAYERS = {
   // never affects the existing map / LOD until a user turns it on. Rendered in
   // the SAME Chennai-wide Cesium viewer; loaded per-locality.
   undergroundInfrastructure: false,
+  // TNGIS / Tamil Nilam public-source parcels — additive, OFF by default. Only
+  // parcels the user has explicitly fetched (District→Taluk→Village→Survey) are
+  // ever rendered; nothing is bulk-loaded. Rendered in the SAME Cesium viewer.
+  tngisParcels: false,
 }
 
 const areaFromLocality = (loc) => ({
@@ -220,9 +225,17 @@ export function SelectionProvider({ children }) {
     mapApi.current.flyToInfrastructure?.(infrastructureId)
   }, [])
 
+  // TNGIS / Tamil Nilam — a public-source parcel (by sourceRecordId). Additive
+  // selection mode; reuses the same viewer, camera and sidebar.
+  const selectTngisParcel = useCallback((sourceRecordId) => {
+    setIsolated(false)
+    setSelection({ mode: 'tngis-parcel', sourceRecordId, ulpin: null, buildingId: null, floorNumber: null, propertyId: null })
+    mapApi.current.flyToTngisParcel?.(sourceRecordId)
+  }, [])
+
   const reset = useCallback(() => {
     setIsolated(false)
-    setSelection((s) => ({ mode: 'overview', ulpin: s.ulpin, buildingId: null, floorNumber: null, propertyId: null, aiBuildingId: null, aiFloorUnitId: null, infrastructureId: null }))
+    setSelection((s) => ({ mode: 'overview', ulpin: s.ulpin, buildingId: null, floorNumber: null, propertyId: null, aiBuildingId: null, aiFloorUnitId: null, infrastructureId: null, sourceRecordId: null }))
     mapApi.current.resetView?.()
   }, [])
 
@@ -265,6 +278,7 @@ export function SelectionProvider({ children }) {
       selectAiFloorUnit,
       selectGnssPoint,
       selectInfrastructure,
+      selectTngisParcel,
       reset,
     }),
     [
@@ -287,6 +301,7 @@ export function SelectionProvider({ children }) {
       selectAiFloorUnit,
       selectGnssPoint,
       selectInfrastructure,
+      selectTngisParcel,
       reset,
     ],
   )

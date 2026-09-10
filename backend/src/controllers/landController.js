@@ -239,30 +239,73 @@ export const gisParcels = asyncHandler(async (req, res) => {
   })))
 })
 
+// Resolve a building's rendered height + its honest provenance, following the
+// project height-priority hierarchy (spec section 5). Never invents a value.
+//   1 authoritative/source-supplied  2 accepted LiDAR/elevation-derived
+//   3 survey-derived  4 existing validated  5 DEMO / procedural fallback
+export const buildingHeightProvenance = (b) => {
+  const lidarAccepted =
+    b.elevationOverrideActive === true &&
+    b.elevationSource &&
+    (b.elevationQualityStatus == null || b.elevationQualityStatus === 'VALID' || b.elevationQualityStatus === 'WARNING')
+  if (lidarAccepted) {
+    return {
+      heightM: b.heightM ?? null,
+      heightSource: 'LIDAR_DERIVED',
+      heightProvenance: 'LIDAR_DERIVED',
+      heightVerification: b.elevationConfidenceLevel ? `LIDAR ${b.elevationConfidenceLevel}` : 'ACCEPTED',
+    }
+  }
+  if (b.heightSource === 'SURVEY' || b.heightSource === 'OFFICIAL') {
+    return { heightM: b.heightM ?? null, heightSource: b.heightSource, heightProvenance: 'SOURCE_VERIFIED', heightVerification: 'SOURCE' }
+  }
+  if (b.heightM != null) {
+    // The seeded heights are synthetic building-config values — procedural DEMO.
+    return { heightM: b.heightM, heightSource: 'DEMO_PROCEDURAL', heightProvenance: 'DEMO', heightVerification: 'UNVERIFIED' }
+  }
+  return { heightM: null, heightSource: 'UNAVAILABLE', heightProvenance: 'UNAVAILABLE', heightVerification: 'UNAVAILABLE' }
+}
+
 export const gisBuildings = asyncHandler(async (req, res) => {
   const filter = req.query.locality ? { locality: req.query.locality } : {}
   const rows = await db.collection('buildings').find(filter)
-  ok(res, asFC(rows.map((b) => asFeature(b.geometry, {
-    buildingId: b.buildingId,
-    name: b.name,
-    ulpin: b.ulpin,
-    heightM: b.heightM,
-    baseElevationM: b.baseElevationM,
-    totalFloors: b.totalFloors,
-    unitCount: b.unitCount,
-    constructionStatus: b.constructionStatus,
-    locality: b.locality,
-    isDemo: b.isDemo,
-    // Phase 5 — present only once a reviewer has explicitly ACCEPTed an
-    // elevation-derived height (see PATCH /elevation/buildings/:id/review).
-    // heightM/baseElevationM above already reflect it when active — these
-    // are metadata for display/coloring, not a second source of truth.
-    elevationOverrideActive: b.elevationOverrideActive || false,
-    elevationSource: b.elevationSource || null,
-    elevationConfidenceLevel: b.elevationConfidenceLevel || null,
-    elevationQualityStatus: b.elevationQualityStatus || null,
-    layer: 'buildings',
-  }))))
+  ok(res, asFC(rows.map((b) => {
+    const hp = buildingHeightProvenance(b)
+    return asFeature(b.geometry, {
+      buildingId: b.buildingId,
+      name: b.name,
+      shortName: b.shortName,
+      buildingSegment: b.buildingSegment,
+      ulpin: b.ulpin,
+      parcelId: b.parcelId,
+      heightM: hp.heightM ?? b.heightM,
+      baseElevationM: b.baseElevationM,
+      floorHeightM: b.floorHeightM,
+      totalFloors: b.totalFloors,
+      floorsAboveGround: b.floorsAboveGround,
+      unitCount: b.unitCount,
+      footprintSqm: b.footprintSqm,
+      constructionType: b.constructionType,
+      completionYear: b.completionYear,
+      constructionStatus: b.constructionStatus,
+      locality: b.locality,
+      isDemo: b.isDemo,
+      // ---- height provenance (spec section 5) — honest, never fabricated ----
+      heightSource: hp.heightSource,
+      heightProvenance: hp.heightProvenance,
+      heightVerification: hp.heightVerification,
+      // official ULPIN belongs to the parcel; this project's demo parcels have
+      // no official ULPIN, so this stays null and is NEVER the prototype 3DPR.
+      officialUlpin: b.officialUlpin || null,
+      // Phase 5 — present only once a reviewer has explicitly ACCEPTed an
+      // elevation-derived height (see PATCH /elevation/buildings/:id/review).
+      elevationOverrideActive: b.elevationOverrideActive || false,
+      elevationSource: b.elevationSource || null,
+      elevationConfidenceLevel: b.elevationConfidenceLevel || null,
+      elevationQualityStatus: b.elevationQualityStatus || null,
+      layer: 'buildings',
+    })
+  })))
 })
 
 export const gisUnits = asyncHandler(async (req, res) => {

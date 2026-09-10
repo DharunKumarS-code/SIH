@@ -16,6 +16,7 @@ import * as gnss from '../controllers/gnssController.js'
 import * as topo from '../controllers/topologyController.js'
 import * as infra from '../controllers/undergroundController.js'
 import * as id3d from '../controllers/identifierController.js'
+import * as tngis from '../controllers/tngisController.js'
 
 const r = Router()
 const ulpinParam = { params: z.object({ ulpin: z.string().min(3) }) }
@@ -81,6 +82,7 @@ r.get('/gis/ai-buildings', optionalAuth, aiBld.gisAiBuildings) // Phase 3 — AI
 r.get('/gis/ai-floor-units', optionalAuth, aiFp.gisAiFloorUnits) // Phase 4 — AI floor-plan units (AI_DEMO)
 r.get('/gis/gnss-control-points', optionalAuth, gnss.gisGnssControlPoints) // Phase 6 — GNSS/CORS control points
 r.get('/gis/underground-infrastructure', optionalAuth, infra.gisUndergroundInfrastructure) // Phase 8 — underground infrastructure
+r.get('/gis/tngis-parcels', optionalAuth, tngis.gisTngisParcels) // TNGIS / Tamil Nilam — public-source parcel geometry
 
 /* -------------------------------------------------- dashboard / analytics */
 r.get('/dashboard/stats', optionalAuth, misc.getDashboard)
@@ -206,6 +208,24 @@ r.get('/3d-identifiers/:identifierId/versions', optionalAuth, id3d.getVersions)
 r.post('/3d-identifiers/:identifierId/versions', requireAuth, requirePermission('3didentifier:create'), id3d.addVersion)
 r.patch('/3d-identifiers/:identifierId/versions/review', requireAuth, requirePermission('3didentifier:review'), id3d.reviewVersion)
 r.post('/3d-identifiers/:identifierId/revalidate', requireAuth, requirePermission('3didentifier:validate'), id3d.revalidate)
+
+/* --------------- TNGIS / Tamil Nilam — PUBLIC parcel-geometry integration.
+   Reads ONLY the public, unauthenticated TNGIS endpoints (admin hierarchy +
+   LGD codes, generic_api/v1/get_geom, GeoServer WFS). The authenticated /
+   encrypted gi_mvc API (ULPIN, Patta, EC, Property Tax, ownership) is NEVER
+   called. officialULPIN is always null. Own `tngisParcels` collection — never
+   touches parcels/buildings/floors/propertyUnits. Rendered inside the EXISTING
+   Chennai-wide Cesium viewer (additive layer, OFF by default). */
+r.get('/tngis/config', optionalAuth, tngis.getConfig)
+r.get('/tngis/districts', optionalAuth, tngis.getDistricts)
+r.get('/tngis/taluks', optionalAuth, tngis.getTaluks)
+r.get('/tngis/villages', optionalAuth, tngis.getVillages)
+r.get('/tngis/survey-numbers', optionalAuth, tngis.getSurveyNumbers)
+r.get('/tngis/parcels', optionalAuth, tngis.listParcels)
+r.post('/tngis/parcels/fetch', requireAuth, requirePermission('parcel:search'), validate(tngis.fetchParcelSchema), tngis.fetchOneParcel)
+r.get('/tngis/parcels/:id', optionalAuth, tngis.getParcel)
+r.get('/tngis/parcels/:id/relations', optionalAuth, tngis.getRelations)
+r.post('/tngis/parcels/:id/validate-topology', requireAuth, requirePermission('topology:validate'), tngis.validateTopology)
 
 r.post('/ai/:feature', requireAuth, requirePermission('ai:run'), misc.runAi)
 

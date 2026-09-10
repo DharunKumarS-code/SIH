@@ -18,6 +18,18 @@ export default defineConfig({
   define: {
     CESIUM_BASE_URL: JSON.stringify('/cesium'),
   },
+  // The two standalone Three.js "explorer" routes (/3d-explorer,
+  // /underground-explorer) pull `three` + OrbitControls, but only behind a
+  // React.lazy() dynamic import. Vite's dep optimizer does not always see those
+  // at cold start, so the FIRST visit to an explorer route on a long-running
+  // dev server can trigger a mid-session re-optimize + full reload that rejects
+  // the in-flight import() with "Failed to fetch dynamically imported module".
+  // Pre-declaring the deps here makes Vite bundle them in the initial optimize
+  // pass, so the lazy chunk always resolves. (This does not change the
+  // lazy-loading architecture — the routes stay lazy(() => import(...)).)
+  optimizeDeps: {
+    include: ['three', 'three/examples/jsm/controls/OrbitControls.js'],
+  },
   server: {
     port: 5173,
     strictPort: true,
