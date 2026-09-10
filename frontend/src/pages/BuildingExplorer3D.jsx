@@ -12,6 +12,13 @@ const BuildingScene = lazy(() =>
   import('../components/explorer/BuildingScene.jsx').then((m) => ({ default: m.BuildingScene })),
 )
 
+const VIEW_MODES = [
+  { key: 'EXTERIOR', label: 'Exterior' },
+  { key: 'INTERIOR', label: 'Interior' },
+  { key: 'CUTAWAY', label: 'Cutaway' },
+  { key: 'FLOOR_PLAN', label: 'Floor Plan' },
+]
+
 // ---------------------------------------------------------------------------
 // Detailed 3D Building Explorer — standalone, opens in a NEW BROWSER TAB from a
 // property / building / unit record via a deep link, e.g.
@@ -83,6 +90,7 @@ function ExplorerBody({ params }) {
   const [activeUnitId, setActiveUnitId] = useState(
     unitParam ? qualify(ulpin, params.get('buildingId') || 'B01', floorParam || 'F01', unitParam) : null,
   )
+  const [viewMode, setViewMode] = useState('EXTERIOR')
   const setActiveFloorId = (id) => setPickedFloorId(id)
 
   const buildingQ = useApi(() => api.building(buildingId), [buildingId])
@@ -252,6 +260,23 @@ function ExplorerBody({ params }) {
 
         {/* CENTER — focused Three.js massing view */}
         <main className="relative min-w-0 flex-1 bg-[#f5f7fa]">
+          {/* view-mode toolbar (spec sections 16-19) */}
+          <div className="absolute left-3 top-3 z-10 flex gap-1 rounded-md border border-slate-200 bg-white/95 p-1 shadow-sm" data-testid="explorer-view-modes">
+            {VIEW_MODES.map((m) => (
+              <button
+                key={m.key}
+                onClick={() => setViewMode(m.key)}
+                data-testid={`explorer-mode-${m.key}`}
+                className={
+                  viewMode === m.key
+                    ? 'rounded px-2.5 py-1 text-[12px] font-semibold bg-primary text-white'
+                    : 'rounded px-2.5 py-1 text-[12px] font-semibold text-slate-600 hover:bg-slate-100'
+                }
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
           {buildingQ.loading && (
             <div className="absolute inset-0 grid place-items-center text-[13px] text-slate-500">Loading building…</div>
           )}
@@ -268,6 +293,7 @@ function ExplorerBody({ params }) {
                 units={units}
                 activeFloorId={activeFloorId}
                 activeUnitId={activeUnitId}
+                viewMode={viewMode}
                 onSelectFloor={(id) => { setActiveFloorId(id); setActiveUnitId(null) }}
                 onSelectUnit={(id) => setActiveUnitId(id)}
               />

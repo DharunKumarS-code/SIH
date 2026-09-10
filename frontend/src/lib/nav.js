@@ -72,6 +72,7 @@ export const NAV_GROUPS = [
     group: 'Infrastructure',
     items: [
       { to: '/underground', label: 'Underground Infrastructure', icon: Waypoints, perm: 'infrastructure:read' },
+      { to: '/tngis', label: 'TNGIS / Tamil Nilam', icon: Landmark },
     ],
   },
   {

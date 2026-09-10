@@ -3,6 +3,7 @@ import { asyncHandler, ok, list, notFoundError } from '../utils/http.js'
 import { parseProtoPropertyId, PROTOTYPE_ID_LABEL } from '../services/idService.js'
 import { recordAudit } from '../services/auditService.js'
 import { unitVolume, floorVolume, buildingVolume, validateUnitVolume } from '../services/geometry3d/index.js'
+import { buildingHeightProvenance } from './landController.js'
 
 /* ---------------------------------------------------------------- buildings */
 
@@ -21,12 +22,36 @@ export const getBuilding = asyncHandler(async (req, res) => {
     db.collection('commonAreas').find({ buildingId }),
     db.collection('propertyUnits').count({ buildingId }),
   ])
+  const hp = buildingHeightProvenance(building)
+  // Latest deterministic topology finding for this building, if any (spec §23).
+  const topoResult = await db.collection('topologyValidationResults')
+    .find({}, { sort: { createdAt: -1 }, limit: 1 })
+    .then((rows) => rows[0])
+    .catch(() => null)
+  const topologyFindings = (topoResult?.findings || []).filter(
+    (f) => f.entityType === 'BUILDING' && (f.entityId === buildingId || String(f.entityId || '').includes(buildingId)),
+  )
+
   ok(res, {
-    building: { ...building, volume: buildingVolume(building) },
+    building: {
+      ...building,
+      volume: buildingVolume(building),
+      // ---- height provenance (spec section 5) — honest, never fabricated ----
+      heightSource: hp.heightSource,
+      heightProvenance: hp.heightProvenance,
+      heightVerification: hp.heightVerification,
+      officialUlpin: building.officialUlpin || null,
+    },
     approval,
     commonAreas,
     floors: floors.map((f) => ({ ...f, volume: floorVolume(f, building) })),
     unitCount,
+    topology: {
+      status: topologyFindings.some((f) => f.status === 'ERROR') ? 'ERROR'
+        : topologyFindings.some((f) => f.status === 'WARNING') ? 'WARNING'
+          : topoResult ? 'VALID' : 'NOT_RUN',
+      findings: topologyFindings.slice(0, 10),
+    },
   })
 })
 

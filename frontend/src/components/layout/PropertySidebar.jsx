@@ -28,6 +28,17 @@ function explorerUrl({ ulpin, buildingSeg, floorSeg, unitId }) {
   return `/3d-explorer?${q.toString()}`
 }
 
+// Deep link into the standalone Underground Infrastructure 3D Explorer (opens
+// in a new tab). Re-reads the same Phase 8 backend — no data is duplicated.
+function undergroundUrl({ area, ulpin, infrastructureId }) {
+  const loc = area || LOCALITIES_FALLBACK.find((l) => l.ulpinPrimary === ulpin)?.id
+  const q = new URLSearchParams()
+  if (loc) q.set('area', loc)
+  if (ulpin) q.set('ulpin', ulpin)
+  if (infrastructureId) q.set('infrastructureId', infrastructureId)
+  return `/underground-explorer?${q.toString()}`
+}
+
 function Section({ title, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
@@ -42,7 +53,7 @@ function Section({ title, children, defaultOpen = true }) {
 }
 
 export function PropertySidebar() {
-  const { selection, isolated, setIsolated, reset, mapApi, selectBuilding } = useSelection()
+  const { selection, isolated, setIsolated, reset, mapApi, selectBuilding, selectParcel } = useSelection()
   const { can } = useAuth()
   const [note, setNote] = useState('')
 
@@ -52,6 +63,7 @@ export function PropertySidebar() {
   const isAiFp = selection.mode === 'ai-floor-unit' && !!selection.aiFloorUnitId
   const isGnss = selection.mode === 'gnss-point' && !!selection.controlPointId
   const isInfra = selection.mode === 'infrastructure' && !!selection.infrastructureId
+  const isTngis = selection.mode === 'tngis-parcel' && !!selection.sourceRecordId
   const isBuildingLevel = (selection.mode === 'building' || selection.mode === 'floor') && !!selection.buildingId
   const { data, error, loading, reload } = useApi(
     () => (isUnit ? api.unit(selection.propertyId) : Promise.resolve(null)),
@@ -90,6 +102,16 @@ export function PropertySidebar() {
     () => (isInfra ? api.infrastructureElevation(selection.infrastructureId).catch(() => null) : Promise.resolve(null)),
     [isInfra, selection.infrastructureId],
   )
+  // TNGIS / Tamil Nilam — the selected PUBLIC-source parcel, its building
+  // spatial relationships and a Phase 7 topology run over its geometry.
+  const tngisQ = useApi(
+    () => (isTngis ? api.tngisParcel(selection.sourceRecordId) : Promise.resolve(null)),
+    [isTngis, selection.sourceRecordId],
+  )
+  const tngisRelQ = useApi(
+    () => (isTngis ? api.tngisParcelRelations(selection.sourceRecordId).catch(() => null) : Promise.resolve(null)),
+    [isTngis, selection.sourceRecordId],
+  )
   // Phase 6 — DEM/DSM elevation residual for the selected control point, when
   // one is available (spec section 15). Never fabricated: a point with no
   // supplied height, or no DEM/DSM-derived building height nearby, comes back
@@ -103,6 +125,12 @@ export function PropertySidebar() {
   // back to "Unavailable" if no elevation dataset has been processed yet.
   const elevQ = useApi(
     () => (isBuildingLevel ? api.elevationBuildingHeight(selection.buildingId).catch(() => null) : Promise.resolve(null)),
+    [isBuildingLevel, selection.buildingId],
+  )
+  // Authoritative building record for the building/floor placeholder — id,
+  // ULPIN, locality, floor/unit counts, height and prototype volume.
+  const buildingQ = useApi(
+    () => (isBuildingLevel ? api.building(selection.buildingId).catch(() => null) : Promise.resolve(null)),
     [isBuildingLevel, selection.buildingId],
   )
 
@@ -122,17 +150,28 @@ export function PropertySidebar() {
     if (isInfra) {
       return <InfrastructureCard query={infraQ} relQuery={infraRelQ} elevQuery={infraElevQ} id={selection.infrastructureId} onClose={reset} mapApi={mapApi} canReview={can('infrastructure:review')} />
     }
+    if (isTngis) {
+      return <TngisParcelCard query={tngisQ} relQuery={tngisRelQ} id={selection.sourceRecordId} onClose={reset} mapApi={mapApi} canValidate={can('topology:validate')} />
+    }
+    if (isBuildingLevel) {
+      return (
+        <BuildingCard
+          query={buildingQ}
+          elevQuery={elevQ}
+          mode={selection.mode}
+          buildingId={selection.buildingId}
+          mapApi={mapApi}
+          onClose={reset}
+          onSelectParcel={selectParcel}
+        />
+      )
+    }
     return (
       <aside className="pointer-events-auto absolute right-3 top-3 z-30 w-80 rounded-xl panel p-4" data-testid="property-sidebar">
         <p className="section-title">Property / Unit Details</p>
         <p className="mt-2 text-sm text-slate-500">
-          {selection.mode === 'building'
-            ? 'Building selected. Pick a floor in the explorer, then a unit — or click a unit in the 3D scene.'
-            : selection.mode === 'floor'
-              ? 'Floor selected. Choose a unit from the floor plan below or in the 3D scene.'
-              : 'Search a ULPIN, Survey Number, Subdivision or locality — or pick a parcel / building in the 3D scene.'}
+          Search a ULPIN, Survey Number, Subdivision or locality — or pick a parcel / building in the 3D scene.
         </p>
-        {isBuildingLevel && <BuildingElevationPanel query={elevQ} />}
       </aside>
     )
   }
@@ -372,6 +411,15 @@ export function PropertySidebar() {
         >
           <Box size={14} /> Open 3D Building Explorer
         </a>
+        <a
+          href={undergroundUrl({ ulpin: h?.ulpin })}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-ghost col-span-2 justify-center"
+          data-testid="open-underground-explorer"
+        >
+          <Waypoints size={14} /> View Underground Infrastructure
+        </a>
         <button className="btn-ghost justify-center" onClick={() => navigator.clipboard?.writeText(selection.propertyId)}>
           <Share2 size={14} /> Share ID
         </button>
@@ -388,6 +436,208 @@ export function PropertySidebar() {
           />
         )}
       </footer>
+    </aside>
+  )
+}
+
+// --------------------------------------------------------------------------
+// Building / floor selection card — the authoritative building record (id,
+// ULPIN, locality, floor & unit counts, height, prototype volume) plus the
+// Phase 5 elevation panel. Replaces the old bare placeholder so a building
+// picked in the 3D scene, the Buildings table or a deep link always shows
+// what was actually selected.
+// --------------------------------------------------------------------------
+// Lazy floor → apartment list (spec section 14). Uses ACTUAL floor/unit records;
+// shows "Apartment data unavailable." when a floor has none.
+function FloorApartments({ floor }) {
+  const [open, setOpen] = useState(false)
+  const q = useApi(
+    () => (open && floor?.floorId ? api.floor(floor.floorId).catch(() => null) : Promise.resolve(null)),
+    [open, floor?.floorId],
+  )
+  const units = Array.isArray(q.data?.units) ? q.data.units : []
+  return (
+    <li className="rounded border border-slate-200">
+      <button
+        className="flex w-full items-center justify-between gap-2 px-2 py-1 text-left text-[11px] font-semibold text-slate-700"
+        onClick={() => setOpen((v) => !v)}
+        data-testid={`building-floor-${floor.floorSegment || floor.floorNumber}`}
+      >
+        <span>{floor.label || `Floor ${floor.floorNumber}`}</span>
+        <span className="text-slate-400">{(floor.unitCount ?? units.length ?? 0)}u {open ? '−' : '+'}</span>
+      </button>
+      {open && (
+        <div className="border-t border-slate-100 px-2 py-1">
+          {q.loading && <Spinner label="…" />}
+          {!q.loading && units.length === 0 && <p className="text-[11px] text-slate-500">Apartment data unavailable.</p>}
+          {units.length > 0 && (
+            <ul className="grid grid-cols-3 gap-1">
+              {units.map((u) => (
+                <li key={u.propertyId}>
+                  <span className="block rounded bg-slate-100 px-1 py-0.5 text-center font-mono text-[10px] text-slate-700" data-testid={`building-unit-${u.unitId}`}>
+                    {u.unitId}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </li>
+  )
+}
+
+function BuildingCard({ query, elevQuery, mode, buildingId, mapApi, onClose, onSelectParcel }) {
+  const { data, error, loading, reload } = query
+  const b = data?.building
+  const floors = Array.isArray(data?.floors) ? data.floors : []
+  const topo = data?.topology
+  const vm = b?.volume ? volumeMetrics(b.volume) : null
+  const stone = b?.constructionStatus === 'Completed' ? 'Verified'
+    : b?.constructionStatus === 'Stalled' ? 'Disputed' : 'Under Review'
+  const locId = b ? (LOCALITIES_FALLBACK.find((l) => l.ulpinPrimary === b.ulpin)?.id || b.locality) : null
+  const heightLabel = {
+    LIDAR_DERIVED: 'LIDAR-DERIVED', DEMO_PROCEDURAL: 'DEMO / PROCEDURAL',
+    SURVEY: 'SURVEY', OFFICIAL: 'SOURCE-VERIFIED', UNAVAILABLE: 'UNAVAILABLE',
+  }[b?.heightSource] || (b?.heightSource || 'DEMO / PROCEDURAL')
+
+  return (
+    <aside
+      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
+      data-testid="property-sidebar"
+    >
+      <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
+        <div className="min-w-0">
+          <p className="text-sm font-extrabold text-slate-900">{mode === 'floor' ? 'Floor — Building' : 'Building'}</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-amber-700">
+            <DemoTag label="PROTOTYPE" /> Synthetic demo building — not an official record
+          </p>
+        </div>
+        <button className="btn-ghost !px-1.5 !py-1" onClick={onClose} aria-label="Close details">
+          <X size={15} />
+        </button>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-3" data-testid="building-card">
+        {loading && <Spinner />}
+        <ErrorNote error={error} onRetry={reload} />
+        {b && (
+          <>
+            <div className="rounded-lg border border-primary/30 bg-primary/10 p-2.5">
+              <p className="font-mono text-[13px] font-bold text-slate-900 break-all" data-testid="building-id">{b.buildingId}</p>
+              <p className="mt-0.5 text-[12px] font-semibold text-slate-700">{b.name}</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <Badge status={stone}>{b.constructionStatus || 'Unknown'}</Badge>
+                {b.constructionType && <Badge>{b.constructionType}</Badge>}
+                {b.approvalStatus && <Badge>{b.approvalStatus}</Badge>}
+              </div>
+            </div>
+
+            <Section title="Building">
+              <KeyValue
+                data={{
+                  'Building ID': b.buildingId,
+                  'Official ULPIN': b.officialUlpin || 'Unavailable',
+                  Locality: b.locality || 'Unavailable',
+                  Floors: b.totalFloors ?? b.floorsAboveGround ?? floors.length ?? 'Unavailable',
+                  Units: b.unitCount ?? data?.unitCount ?? 'Unavailable',
+                  Height: b.heightM != null ? `${b.heightM} m` : (vm?.heightM != null ? `${vm.heightM} m` : 'Unavailable'),
+                  Footprint: b.footprintSqm != null ? `${b.footprintSqm} m²` : (vm?.footprintM2 != null ? `${vm.footprintM2} m²` : 'Unavailable'),
+                  'Est. volume': vm?.volumeM3 != null ? `${vm.volumeM3} m³` : 'Unavailable',
+                  'Completion year': b.completionYear || 'Unavailable',
+                }}
+              />
+              <div className="mt-1.5 flex items-center gap-2 text-[12px] text-slate-600">
+                <Layers size={12} className="text-primary" /> ULPIN (Parcel):{' '}
+                {b.ulpin ? (
+                  <button className="font-mono text-slate-900 underline decoration-dotted" onClick={() => onSelectParcel(b.ulpin)}>
+                    {b.ulpin}
+                  </button>
+                ) : (
+                  <span className="text-slate-500">Unavailable</span>
+                )}
+              </div>
+            </Section>
+
+            <Section title="Geometry & Provenance">
+              <KeyValue
+                data={{
+                  'Height source': heightLabel,
+                  'Height provenance': b.heightProvenance || 'DEMO',
+                  'Height verification': b.heightVerification || 'UNVERIFIED',
+                  Source: b.isDemo === false ? (b.heightProvenance || 'SOURCE') : 'DEMO / PROTOTYPE',
+                  'Geometry status': topo?.status || 'NOT_RUN',
+                  'Volume ID': b.volume?.volumeId || 'Unavailable',
+                  'Geometry status (volume)': b.volume?.geometryStatus || 'Unavailable',
+                }}
+              />
+              {(topo?.findings || []).length > 0 && (
+                <ul className="mt-1.5 space-y-0.5 text-[11px]" data-testid="building-topology-findings">
+                  {topo.findings.map((f) => (
+                    <li key={f.validationId || f.ruleId}>
+                      <span className={f.status === 'ERROR' ? 'text-danger' : 'text-amber-700'}>{f.status}</span>{' '}
+                      <span className="font-mono text-slate-500">{f.ruleId}</span> — {f.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {b.isDemo !== false && (
+                <p className="mt-1 text-[10px] text-amber-700">
+                  Synthetic prototype geometry — the height is DEMO / PROCEDURAL, not a surveyed value.
+                </p>
+              )}
+            </Section>
+
+            <Section title="Apartments">
+              {floors.length === 0 ? (
+                <p className="text-[11px] text-slate-500">Apartment data unavailable.</p>
+              ) : (
+                <ul className="space-y-1" data-testid="building-apartments">
+                  {[...floors].sort((a, c) => (a.floorNumber ?? 0) - (c.floorNumber ?? 0)).map((f) => (
+                    <FloorApartments key={f.floorId} floor={f} />
+                  ))}
+                </ul>
+              )}
+            </Section>
+
+            <div className="mt-2 grid grid-cols-1 gap-1.5">
+              <button
+                className="btn-ghost justify-center"
+                data-testid="building-focus"
+                onClick={() => mapApi.current?.flyToBuilding?.(buildingId)}
+              >
+                <Focus size={13} /> Focus
+              </button>
+              <a
+                href={explorerUrl({ ulpin: b.ulpin, buildingSeg: b.buildingSegment })}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-ghost justify-center"
+                data-testid="building-open-explorer"
+              >
+                <Box size={14} /> Open 3D Building Explorer
+              </a>
+              <a
+                href={undergroundUrl({ area: locId, ulpin: b.ulpin })}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-ghost justify-center"
+                data-testid="building-open-underground"
+              >
+                <Waypoints size={14} /> View Underground Infrastructure
+              </a>
+            </div>
+
+            <BuildingElevationPanel query={elevQuery} />
+
+            <p className="mt-3 text-[11px] text-slate-500">
+              {mode === 'floor'
+                ? 'Floor selected. Choose a unit from the floor plan or the 3D scene.'
+                : 'Pick a floor above to see its apartments, or open the detailed 3D Building Explorer.'}
+            </p>
+          </>
+        )}
+      </div>
     </aside>
   )
 }
@@ -589,6 +839,15 @@ function ParcelCard({ query, ulpin, mapApi, onClose, canVerify }) {
             <ShieldCheck size={14} /> {p?.status === 'Verified' ? 'Verified (demo)' : 'Verify Parcel (demo)'}
           </button>
         )}
+        <a
+          href={undergroundUrl({ area: p?.locality, ulpin })}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-ghost col-span-2 justify-center"
+          data-testid="open-underground-explorer"
+        >
+          <Waypoints size={14} /> View Underground Infrastructure
+        </a>
       </footer>
     </aside>
   )
@@ -1306,6 +1565,196 @@ function InfrastructureCard({ query, relQuery, elevQuery, id, onClose, mapApi, c
         <button className="btn-ghost justify-center" data-testid="infra-focus" onClick={() => mapApi.current.flyToInfrastructure?.(id)}>
           <Waypoints size={14} /> Focus
         </button>
+        <a
+          href={undergroundUrl({ area: p?.locality, ulpin: p?.parentParcelULPIN || p?.parentParcel, infrastructureId: id })}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-ghost justify-center"
+          data-testid="open-underground-explorer"
+        >
+          <Box size={14} /> Open 3D Underground Explorer
+        </a>
+      </footer>
+    </aside>
+  )
+}
+
+// --------------------------------------------------------------------------
+// TNGIS / Tamil Nilam — a PUBLIC-source (OFFICIAL_SOURCE) parcel. Geometry +
+// administrative hierarchy + LGD codes come verbatim from the public Tamil
+// Nadu GIS endpoints. The official ULPIN / Patta / EC / Property Tax / ownership
+// are served ONLY by the authenticated, encrypted TNGIS API and are NOT
+// integrated — they are shown as "Unavailable from current public source",
+// never fabricated. A spatial building overlap is not an ownership claim.
+// --------------------------------------------------------------------------
+function TngisParcelCard({ query, relQuery, id, onClose, mapApi, canValidate }) {
+  const { data: p, error, loading, reload } = query
+  const { data: rel } = relQuery || {}
+  const [topo, setTopo] = useState(null)
+  const [topoBusy, setTopoBusy] = useState(false)
+
+  const runTopology = async () => {
+    setTopoBusy(true)
+    try { setTopo(await api.tngisValidateTopology(id)) } catch (e) { setTopo({ error: String(e.message || e) }) }
+    setTopoBusy(false)
+  }
+
+  const buildingRel = (rel?.buildingRelations || [])[0] || null
+  const polyCount = p?.geometry?.type === 'MultiPolygon'
+    ? p.geometry.coordinates.length
+    : p?.geometry?.type === 'Polygon' ? 1 : 0
+
+  return (
+    <aside
+      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
+      data-testid="property-sidebar"
+    >
+      <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
+        <div className="min-w-0">
+          <p className="text-sm font-extrabold text-slate-900">TNGIS / Tamil Nilam Parcel</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700" data-testid="tngis-source">
+            <BadgeCheck size={12} /> {p?.source || 'TNGIS_TAMIL_NILAM'} · OFFICIAL SOURCE · SOURCE-VERIFIED GEOMETRY
+          </p>
+        </div>
+        <button className="btn-ghost !px-1.5 !py-1" onClick={onClose} aria-label="Close details">
+          <X size={15} />
+        </button>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-3" data-testid="tngis-card">
+        {loading && <Spinner />}
+        <ErrorNote error={error} onRetry={reload} />
+        {p && (
+          <>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
+              <p className="font-mono text-[12px] font-bold text-slate-900 break-all" data-testid="tngis-record-id">{p.sourceRecordId}</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <Badge status="Verified">{p.verificationStatus}</Badge>
+                <Badge>{p.geometryType || 'no geometry'}</Badge>
+              </div>
+            </div>
+
+            <Section title="Administrative">
+              <KeyValue
+                data={{
+                  District: `${p.districtName || '—'} (${p.districtCode})`,
+                  Taluk: `${p.talukName || '—'} (${p.talukCode})`,
+                  Village: `${p.villageName || '—'} (${p.villageCode})`,
+                  'District LGD': p.lgdDistrictCode || '—',
+                  'Taluk LGD': p.lgdTalukCode || '—',
+                  'Village LGD': p.lgdVillageCode || '—',
+                  'Survey Number': p.surveyNumber || '—',
+                  'Sub Division': p.subDivision || 'Unavailable from public TNGIS source',
+                }}
+              />
+            </Section>
+
+            <Section title="Geometry">
+              <KeyValue
+                data={{
+                  'Geometry source': `TNGIS public source · ${polyCount} polygon(s)`,
+                  Type: p.geometryType || 'Unavailable',
+                  CRS: p.sourceCRS || 'EPSG:4326',
+                  Centroid: p.centroid
+                    ? `${p.centroid.latitude.toFixed(6)}, ${p.centroid.longitude.toFixed(6)}`
+                    : 'Unavailable',
+                  'Source record ID': p.sourceRecordId,
+                  'Source updated': p.sourceUpdatedAt ? String(p.sourceUpdatedAt).slice(0, 10) : 'Unavailable',
+                  Retrieved: p.retrievedAt ? String(p.retrievedAt).slice(0, 19).replace('T', ' ') : '—',
+                }}
+              />
+            </Section>
+
+            <Section title="Provenance">
+              <KeyValue
+                data={{
+                  Source: p.source,
+                  'Source Type': p.sourceType,
+                  Provenance: p.provenance,
+                  'Verification Status': p.verificationStatus,
+                  'Source Geometry': p.sourceGeometry ? 'Yes' : 'No',
+                }}
+              />
+              <div className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-[11px]" data-testid="tngis-ulpin">
+                <p className="font-bold text-amber-800">Official ULPIN</p>
+                <p className="text-amber-700">Unavailable from current public source
+                  ({p.officialULPINStatus || 'UNAVAILABLE_FROM_PUBLIC_TNGIS_SOURCE'}).
+                  The public TNGIS endpoints do not expose ULPIN as structured data; it is not fabricated here.
+                  Prototype / DEMO ULPIN records are kept entirely separate.</p>
+              </div>
+            </Section>
+
+            <Section title="Building Relationship">
+              <p className="mb-1.5 text-[10px] text-amber-700">
+                A building footprint overlapping this parcel is a <strong>spatial fact only</strong> — not an ownership claim.
+              </p>
+              {(rel?.buildingRelations || []).length > 0 ? (
+                <ul className="space-y-0.5 text-[11px] text-slate-600" data-testid="tngis-building-relations">
+                  {rel.buildingRelations.slice(0, 6).map((r) => (
+                    <li key={r.buildingId} className="flex items-center gap-1.5">
+                      <Building2 size={11} className="text-primary" />
+                      <span className="font-mono">{r.buildingId}</span>
+                      <span className="text-slate-400">· {r.relationship} · {r.nearestBoundaryM} m</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-[11px] text-slate-500">No existing building geometry overlaps this parcel.</p>
+              )}
+              <p className="mt-1 text-[10px] text-slate-500">{rel?.ownershipNote || 'Ownership is only shown from authoritative legal records.'}</p>
+            </Section>
+
+            <Section title="Topology (Phase 7)" defaultOpen={false}>
+              {canValidate ? (
+                <button className="btn-ghost !py-1 justify-center text-[11px]" data-testid="tngis-run-topology" disabled={topoBusy} onClick={runTopology}>
+                  {topoBusy ? <Spinner label="Validating…" /> : 'Validate geometry topology'}
+                </button>
+              ) : (
+                <p className="text-[11px] text-slate-500">Requires the <code>topology:validate</code> permission.</p>
+              )}
+              {topo?.error && <p className="mt-1 text-[11px] text-danger">{topo.error}</p>}
+              {topo?.summary && (
+                <div className="mt-1.5" data-testid="tngis-topology-results">
+                  <div className="grid grid-cols-4 gap-1.5 text-center text-[11px]">
+                    <div><b>{topo.summary.valid ?? 0}</b><br />valid</div>
+                    <div><b>{topo.summary.warning ?? 0}</b><br />warn</div>
+                    <div><b>{topo.summary.error ?? 0}</b><br />error</div>
+                    <div><b>{topo.summary.reviewRequired ?? 0}</b><br />review</div>
+                  </div>
+                  <ul className="mt-1 space-y-0.5 text-[11px] text-slate-600">
+                    {(topo.findings || []).slice(0, 10).map((f, i) => (
+                      <li key={i}>
+                        <span className={f.status === 'ERROR' ? 'text-danger' : f.status === 'VALID' ? 'text-emerald-700' : 'text-amber-700'}>{f.status}</span>{' '}
+                        <span className="font-mono text-slate-500">{f.ruleId || f.rule}</span> — {f.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </Section>
+
+            <p className="mt-2 text-[10px] text-amber-700" data-testid="tngis-disclaimer">
+              {p.disclaimer}
+            </p>
+          </>
+        )}
+      </div>
+
+      <footer className="grid grid-cols-1 gap-1.5 border-t border-slate-200 p-3">
+        <button className="btn-ghost justify-center" data-testid="tngis-focus" onClick={() => mapApi.current.flyToTngisParcel?.(id)}>
+          <Waypoints size={14} /> Focus
+        </button>
+        {buildingRel && (
+          <a
+            href={explorerUrl({ ulpin: buildingRel.ulpin || undefined, buildingSeg: buildingRel.buildingId })}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-ghost justify-center"
+            data-testid="tngis-open-building-explorer"
+          >
+            <Box size={14} /> Open 3D Building Explorer ({buildingRel.buildingId})
+          </a>
+        )}
       </footer>
     </aside>
   )

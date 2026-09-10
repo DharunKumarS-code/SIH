@@ -1,12 +1,19 @@
-import { Suspense, lazy } from 'react'
+import { Suspense } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext.jsx'
 import { AppShell } from './components/layout/AppShell.jsx'
 import { Spinner } from './components/ui/primitives.jsx'
+import { lazyWithRetry } from './lib/lazyWithRetry.js'
 
 // Detailed 3D Building Explorer — standalone tab, lazy-loaded so its Three.js
-// bundle never touches the main Chennai CesiumJS viewer.
-const BuildingExplorer3D = lazy(() => import('./pages/BuildingExplorer3D.jsx'))
+// bundle never touches the main Chennai CesiumJS viewer. lazyWithRetry survives
+// a transient dev-server dep re-optimize / stale-chunk 404 instead of blanking
+// the app.
+const BuildingExplorer3D = lazyWithRetry(() => import('./pages/BuildingExplorer3D.jsx'), 'BuildingExplorer3D')
+
+// Underground Infrastructure 3D Explorer — standalone tab, lazy-loaded for the
+// same reason. ONE Three.js scene, NOT a second Chennai geographic viewer.
+const UndergroundExplorer3D = lazyWithRetry(() => import('./pages/UndergroundExplorer3D.jsx'), 'UndergroundExplorer3D')
 
 import Login from './pages/Login.jsx'
 import Dashboard from './pages/Dashboard.jsx'
@@ -25,6 +32,7 @@ import ElevationLiDAR from './pages/ElevationLiDAR.jsx'
 import GNSSControlPoints from './pages/GNSSControlPoints.jsx'
 import TopologyValidation from './pages/TopologyValidation.jsx'
 import UndergroundInfrastructure from './pages/UndergroundInfrastructure.jsx'
+import TngisParcels from './pages/TngisParcels.jsx'
 import Property3DIdentifier from './pages/Property3DIdentifier.jsx'
 import Governance from './pages/Governance.jsx'
 import Services from './pages/Services.jsx'
@@ -60,6 +68,14 @@ export default function App() {
         }
       />
       <Route
+        path="/underground-explorer"
+        element={
+          <Suspense fallback={<div className="grid h-full place-items-center"><Spinner label="Loading Underground Infrastructure Explorer…" /></div>}>
+            <UndergroundExplorer3D />
+          </Suspense>
+        }
+      />
+      <Route
         path="/*"
         element={
           <RequireAuth>
@@ -86,6 +102,7 @@ export default function App() {
                 <Route path="gnss" element={<GNSSControlPoints />} />
                 <Route path="topology" element={<TopologyValidation />} />
                 <Route path="underground" element={<UndergroundInfrastructure />} />
+                <Route path="tngis" element={<TngisParcels />} />
                 <Route path="identifier" element={<Property3DIdentifier />} />
                 <Route path="governance" element={<Governance />} />
                 <Route path="services" element={<Services />} />

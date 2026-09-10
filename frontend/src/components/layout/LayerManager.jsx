@@ -10,7 +10,8 @@ const GROUPS = [
     rows: [
       ['parcels', 'Cadastral Parcels'],
       ['ulpinBoundaries', 'ULPIN Boundaries'],
-      ['buildings', 'Buildings 3D'],
+      ['buildings', '3D Buildings'],
+      ['buildingLabels', 'Building Labels'],
       ['roads', 'Roads'],
       ['imagery', 'Satellite / Imagery'],
       ['terrain', 'Terrain'],
@@ -98,7 +99,22 @@ const GROUPS = [
       ['undergroundInfrastructure', 'Underground Infrastructure'],
     ],
   },
+  {
+    title: 'TNGIS / Tamil Nilam',
+    official: true,
+    rows: [
+      ['tngisParcels', 'Public-source Parcels (OFFICIAL SOURCE)'],
+    ],
+  },
 ]
+
+function OfficialTag() {
+  return (
+    <span className="inline-flex items-center rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-emerald-700">
+      OFFICIAL SOURCE
+    </span>
+  )
+}
 
 export function LayerManager() {
   const { layers, toggleLayer } = useSelection()
@@ -127,7 +143,7 @@ export function LayerManager() {
           {GROUPS.map((g) => (
             <div key={g.title}>
               <p className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                {g.title} {g.demo && <DemoTag label="DEMO" />}
+                {g.title} {g.demo && <DemoTag label="DEMO" />} {g.official && <OfficialTag />}
               </p>
               <div className="space-y-0.5">
                 {g.rows.map(([key, label]) => (

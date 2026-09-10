@@ -54,6 +54,11 @@ const COL = {
   gnssWarning: Cesium.Color.fromCssColorString('#a855f7'),
   gnssError: Cesium.Color.fromCssColorString('#7e22ce'),
   gnssSelected: Cesium.Color.fromCssColorString('#f2b807'),
+  // TNGIS / Tamil Nilam — public-source (OFFICIAL_SOURCE) parcel geometry. A
+  // distinct government teal-green so it never reads as a DEMO parcel.
+  tngisParcel: Cesium.Color.fromCssColorString('#0f766e').withAlpha(0.20),
+  tngisParcelSel: Cesium.Color.fromCssColorString('#f2b807').withAlpha(0.28),
+  tngisParcelLine: Cesium.Color.fromCssColorString('#0f766e').withAlpha(0.95),
   // Phase 8 — underground infrastructure, coloured by utility type. An
   // earthy / amber family so it never reads as a parcel, building, AI overlay,
   // DEM/DSM or GNSS layer. Selected = the same gold used everywhere else.
@@ -98,19 +103,41 @@ export function Cesium3DMap() {
   const floorRangesRef = useRef(new Map()) // buildingId -> [{ floorNumber, baseHeight, topHeight, floorId }]
   const loadedBuildingsRef = useRef(new Set())
   const loadedAreasRef = useRef(new Set()) // areaId that has parcels+shells loaded
+  const loadedBuildingAreasRef = useRef(new Set()) // areaId whose city-wide 3D buildings are loaded
   const buildingShellRef = useRef(new Map()) // buildingId -> Entity
   const parcelEntityRef = useRef(new Map()) // ulpin -> Entity
   const aiBuildingsRef = useRef(new Map()) // aiBuildingId -> Entity (Phase 3, AI_DEMO)
   const aiFloorUnitsRef = useRef(new Map()) // aiFloorUnitId -> Entity (Phase 4, AI_DEMO)
   const gnssPointsRef = useRef(new Map()) // controlPointId -> Entity (Phase 6, GNSS/CORS DEMO)
   const infraEntitiesRef = useRef(new Map()) // infrastructureId -> Entity (Phase 8, underground infrastructure)
+  const tngisParcelRef = useRef(new Map()) // sourceRecordId -> Entity (TNGIS / Tamil Nilam public-source parcels)
   const cityAreaRef = useRef(new Map()) // areaId -> { fill, line }
+  const localityCacheRef = useRef(new Map()) // 'building:<id>' | 'infra:<id>' | 'parcel:<ulpin>' -> locality id
   const activeAreaRef = useRef(DEFAULT_AREA_ID)
   const lodRef = useRef('area')
   const cityViewRef = useRef(false) // true while the camera is parked at the Chennai overview
 
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
+  // City-wide 3D building coverage counters — computed from ACTUAL entity state,
+  // never a fabricated number (spec section 26).
+  const [buildingStats, setBuildingStats] = useState({ available: 0, loaded: 0, visible: 0 })
+
+  function recomputeBuildingStats() {
+    const loaded = buildingShellRef.current.size
+    let visible = 0
+    for (const ent of buildingShellRef.current.values()) if (ent.show) visible += 1
+    const available = (selRef.current.localities || []).reduce(
+      (s, l) => s + (Number(l.counts?.buildings) || 0),
+      0,
+    )
+    setBuildingStats((prev) => {
+      const next = { available: Math.max(available, loaded), loaded, visible }
+      return prev.available === next.available && prev.loaded === next.loaded && prev.visible === next.visible
+        ? prev
+        : next
+    })
+  }
 
   const sel = useSelection()
   const selRef = useRef(sel)
@@ -190,8 +217,21 @@ export function Cesium3DMap() {
       activeAreaRef.current = startArea
       await ensureAreaLayers(startArea)
       if (cancelled) return
+      // City-wide: every available building in every locality becomes a 3D
+      // structure in THIS viewer (lightweight massing). Non-blocking.
+      ensureAllBuildings().catch(() => {})
 
-      flyToArea(startArea, 0)
+      // If a preset / deep-link selection is already pending, applySelection()
+      // owns the camera (it positions on the entity, switching locality first if
+      // needed). Only prime layer visibility here — firing flyToArea() too would
+      // race applySelection and snap the camera to the start-locality overview.
+      const presetMode = selRef.current.selection?.mode
+      if (['parcel', 'building', 'floor', 'unit', 'infrastructure'].includes(presetMode)) {
+        lodRef.current = 'area'
+        applyLayerVisibility()
+      } else {
+        flyToArea(startArea, 0)
+      }
       setReady(true)
       window.__map = { ready: true }
       applySelection() // reflect any preset selection
@@ -267,6 +307,89 @@ export function Cesium3DMap() {
     viewer.scene.requestRender()
   }
 
+  /* ---------------------------------------------------- 3D building massing */
+  // ONE reusable path for turning a gisBuildings feature into a lightweight 3D
+  // extruded structure inside the SAME Cesium viewer. Guarded per buildingId so
+  // the per-area load and the city-wide load never double-add. The extrusion
+  // uses the feature's OWN footprint polygon + base/top elevation — never a
+  // global box or a single shared height.
+  function addBuildingEntity(f, areaId) {
+    const viewer = viewerRef.current
+    if (!viewer || viewer.isDestroyed()) return null
+    const p = f.properties || {}
+    const id = p.buildingId
+    if (!id || buildingShellRef.current.has(id)) return buildingShellRef.current.get(id) || null
+    const positions = ring(f.geometry)
+    if (positions.length < 6) return null
+
+    const base = finite(p.baseElevationM) ? p.baseElevationM : 0
+    // Height priority: source-supplied heightM (already provenance-resolved by
+    // the backend) → floors × floorHeight → a visible procedural fallback.
+    const byFloors = finite(p.totalFloors) && finite(p.floorHeightM) ? p.totalFloors * p.floorHeightM : null
+    const h = finite(p.heightM) ? p.heightM : byFloors != null ? byFloors : 30
+    const top = base + Math.max(h, 3)
+
+    const ent = viewer.entities.add({
+      polygon: {
+        hierarchy: Cesium.Cartesian3.fromDegreesArray(positions),
+        material: COL.buildingShell,
+        outline: true,
+        outlineColor: COL.outline,
+        height: base,
+        extrudedHeight: top,
+      },
+      // A roof-height label point — shown only at close zoom via LOD + the
+      // Building Labels layer toggle, and scaled down with distance.
+      position: (() => {
+        let sx = 0
+        let sy = 0
+        let n = 0
+        for (let i = 0; i < positions.length; i += 2) { sx += positions[i]; sy += positions[i + 1]; n += 1 }
+        return n ? Cesium.Cartesian3.fromDegrees(sx / n, sy / n, top + 4) : undefined
+      })(),
+      label: {
+        text: p.shortName || p.buildingSegment || id,
+        font: '600 12px "Inter", system-ui, sans-serif',
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.fromCssColorString('#0b1220'),
+        outlineWidth: 3,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        show: false,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        scaleByDistance: new Cesium.NearFarScalar(150, 1.0, 2200, 0.35),
+        translucencyByDistance: new Cesium.NearFarScalar(1500, 1.0, 3000, 0.0),
+      },
+      properties: { kind: 'building', ...p },
+    })
+    ent.__area = areaId
+    buildingShellRef.current.set(id, ent)
+    ;(groupsRef.current.buildings ||= []).push(ent)
+    return ent
+  }
+
+  // City-wide: make EVERY available building in EVERY locality a 3D structure in
+  // the one viewer. Lightweight massing only (no Three.js, no interior). Cheap +
+  // idempotent; the existing per-area + LOD machinery governs what is drawn.
+  async function ensureAllBuildings() {
+    if (!liveViewer()) return 0
+    const locs = selRef.current.localities || []
+    let added = 0
+    for (const l of locs) {
+      try {
+        const fc = await api.gisBuildings({ locality: l.id })
+        for (const f of fc.features || []) if (addBuildingEntity(f, l.id)) added += 1
+        loadedBuildingAreasRef.current.add(l.id)
+      } catch { /* a locality's buildings are optional — never block the map */ }
+    }
+    if (added && liveViewer()) {
+      applyLayerVisibility()
+      liveViewer().scene.requestRender()
+    }
+    recomputeBuildingStats()
+    return added
+  }
+
   /* ------------------------------------------------------------ area data */
   async function ensureAreaLayers(areaId) {
     const viewer = viewerRef.current
@@ -335,18 +458,8 @@ export function Cesium3DMap() {
 
     try {
       const buildings = await api.gisBuildings(P)
-      for (const f of buildings.features || []) {
-        const base = finite(f.properties.baseElevationM) ? f.properties.baseElevationM : 0
-        const top = finite(f.properties.heightM) ? base + f.properties.heightM : base + 30
-        const ent = addPolygon('buildings', f.geometry, {
-          material: COL.buildingShell,
-          outline: true,
-          height: base,
-          extrudedHeight: top,
-          properties: { kind: 'building', ...f.properties },
-        })
-        if (ent) buildingShellRef.current.set(f.properties.buildingId, ent)
-      }
+      for (const f of buildings.features || []) addBuildingEntity(f, areaId)
+      loadedBuildingAreasRef.current.add(areaId)
     } catch (e) {
       console.warn('buildings load failed', e)
     }
@@ -408,6 +521,7 @@ export function Cesium3DMap() {
     await ensureAiFloorUnits(areaId)
     await ensureGnssControlPoints(areaId)
     await ensureUndergroundInfrastructure(areaId)
+    await ensureTngisParcels(areaId)
     if (!liveViewer()) return
     applyLayerVisibility()
     liveViewer().scene.requestRender()
@@ -641,10 +755,60 @@ export function Cesium3DMap() {
     return added
   }
 
+  // TNGIS / Tamil Nilam — PUBLIC-source parcel polygons the user has explicitly
+  // fetched (District → Taluk → Village → Survey). Own layer, OFF by default.
+  // Rendered INSIDE THIS SAME viewer as terrain-clamped polygons. Idempotent
+  // (guarded per sourceRecordId). Nothing is bulk-loaded — the backend only
+  // serves parcels already cached by an explicit fetch.
+  async function ensureTngisParcels(areaId) {
+    if (!liveViewer()) return 0
+    let added = 0
+    try {
+      const fc = await api.gisTngisParcels({})
+      const viewer = liveViewer()
+      if (!viewer) return 0
+      for (const f of fc.features || []) {
+        const p = f.properties || {}
+        const id = p.sourceRecordId
+        if (!id || tngisParcelRef.current.has(id)) continue
+        const g = f.geometry
+        if (!g) continue
+        const polys = g.type === 'MultiPolygon' ? g.coordinates : g.type === 'Polygon' ? [g.coordinates] : []
+        for (let pi = 0; pi < polys.length; pi += 1) {
+          const flat = []
+          for (const c of polys[pi][0] || []) flat.push(c[0], c[1])
+          if (flat.length < 6) continue
+          const ent = viewer.entities.add({
+            show: false,
+            polygon: {
+              hierarchy: Cesium.Cartesian3.fromDegreesArray(flat),
+              material: COL.tngisParcel,
+              outline: false,
+              classificationType: Cesium.ClassificationType.TERRAIN,
+            },
+            properties: { kind: 'tngis-parcel', ...p },
+          })
+          ent.__area = p.locality || areaId
+          if (pi === 0) tngisParcelRef.current.set(id, ent)
+          ;(groupsRef.current.tngisParcels ||= []).push(ent)
+          added += 1
+        }
+      }
+    } catch { /* TNGIS layer is optional — never block the map */ }
+    if (added && liveViewer()) {
+      applyLayerVisibility()
+      liveViewer().scene.requestRender()
+    }
+    return added
+  }
+
   async function ensureUnits(buildingId) {
     if (!buildingId || loadedBuildingsRef.current.has(buildingId)) return
     loadedBuildingsRef.current.add(buildingId)
     if (!liveViewer()) return
+    // Fallback area tag only — each entity is tagged with its own feature
+    // `locality` below so a cross-locality selection is never mis-tagged with
+    // whatever area happened to be active when this ran.
     const areaId = activeAreaRef.current
     try {
       const [units, commons] = await Promise.all([
@@ -669,7 +833,7 @@ export function Cesium3DMap() {
           },
           properties: { kind: 'unit', ...p },
         })
-        ent.__area = areaId
+        ent.__area = p.locality || areaId
         unitEntitiesRef.current.set(p.propertyId, ent)
         ;(groupsRef.current.units3d ||= []).push(ent)
       }
@@ -689,7 +853,7 @@ export function Cesium3DMap() {
           },
           properties: { kind: 'common-area', ...p },
         })
-        ent.__area = areaId
+        ent.__area = p.locality || areaId
         ;(groupsRef.current.commonAreas ||= []).push(ent)
       }
     } catch (e) {
@@ -826,6 +990,8 @@ export function Cesium3DMap() {
         s.selectGnssPoint(valueOf(props.controlPointId))
       } else if (kind === 'infra') {
         s.selectInfrastructure(valueOf(props.infrastructureId))
+      } else if (kind === 'tngis-parcel') {
+        s.selectTngisParcel(valueOf(props.sourceRecordId))
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
   }
@@ -858,6 +1024,31 @@ export function Cesium3DMap() {
   /* ------------------------------------------------------------- camera api */
   function registerMapApi(viewer) {
     const api2 = selRef.current.mapApi
+    // Fly to an entity by computing its bounding sphere directly from geometry.
+    // `viewer.flyTo(entity)` depends on the DataSourceDisplay having a resolved
+    // bounding volume, which is often not ready in the same tick an entity (or a
+    // whole locality) was just added — the flight then silently rejects. Reading
+    // the positions ourselves avoids that race; `viewer.flyTo` is kept as a
+    // fallback for anything we can't measure.
+    const flyToEntity = (ent, offset, duration = 1.2) => {
+      if (!ent || !liveViewer()) return
+      const now = Cesium.JulianDate.now()
+      let positions = null
+      const hv = ent.polygon?.hierarchy?.getValue?.(now) ?? ent.polygon?.hierarchy
+      if (hv) positions = hv.positions || hv
+      else if (ent.polyline?.positions) positions = ent.polyline.positions.getValue?.(now) || ent.polyline.positions
+      else if (ent.position) { const p = ent.position.getValue?.(now) || ent.position; if (p) positions = [p] }
+      if (Array.isArray(positions) && positions.length) {
+        try {
+          const sphere = Cesium.BoundingSphere.fromPoints(positions)
+          viewer.camera.flyToBoundingSphere(sphere, { duration, offset })
+          viewer.scene.requestRender()
+          return
+        } catch { /* fall through to viewer.flyTo */ }
+      }
+      viewer.flyTo(ent, { duration, offset }).catch(() => {})
+    }
+
     api2.current = {
       ...api2.current,
       resetView: () => flyToArea(activeAreaRef.current, 1.4),
@@ -874,48 +1065,41 @@ export function Cesium3DMap() {
       zoomBy: (factor) => viewer.camera.zoomIn(viewer.camera.positionCartographic.height * factor),
       rotateBy: (deg) => viewer.camera.rotateRight(Cesium.Math.toRadians(deg)),
       tiltBy: (deg) => viewer.camera.lookUp(Cesium.Math.toRadians(deg)),
-      flyToParcel: (ulpin) => {
-        const ent = parcelEntityRef.current.get(ulpin)
-        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-40), 600) }).catch(() => {})
-      },
-      flyToBuilding: (buildingId) => {
-        const ent = buildingShellRef.current.get(buildingId)
-        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(35), Cesium.Math.toRadians(-30), 260) }).catch(() => {})
-      },
-      flyToUnit: (propertyId) => {
-        const ent = unitEntitiesRef.current.get(propertyId)
-        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(40), Cesium.Math.toRadians(-22), 90) }).catch(() => {})
-      },
-      flyToAiBuilding: (aiBuildingId) => {
-        const ent = aiBuildingsRef.current.get(aiBuildingId)
-        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(35), Cesium.Math.toRadians(-28), 220) }).catch(() => {})
-      },
-      flyToAiFloorUnit: (aiFloorUnitId) => {
-        const ent = aiFloorUnitsRef.current.get(aiFloorUnitId)
-        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(40), Cesium.Math.toRadians(-24), 120) }).catch(() => {})
-      },
-      flyToGnssPoint: (controlPointId) => {
-        const ent = gnssPointsRef.current.get(controlPointId)
-        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(30), Cesium.Math.toRadians(-35), 80) }).catch(() => {})
-      },
-      flyToInfrastructure: (infrastructureId) => {
-        const ent = infraEntitiesRef.current.get(infrastructureId)
-        if (ent) viewer.flyTo(ent, { duration: 1.2, offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(30), Cesium.Math.toRadians(-32), 160) }).catch(() => {})
-      },
+      flyToParcel: (ulpin) => flyToEntity(parcelEntityRef.current.get(ulpin), new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-40), 600)),
+      flyToBuilding: (buildingId) => flyToEntity(buildingShellRef.current.get(buildingId), new Cesium.HeadingPitchRange(Cesium.Math.toRadians(35), Cesium.Math.toRadians(-30), 260)),
+      flyToUnit: (propertyId) => flyToEntity(unitEntitiesRef.current.get(propertyId), new Cesium.HeadingPitchRange(Cesium.Math.toRadians(40), Cesium.Math.toRadians(-22), 90)),
+      flyToAiBuilding: (aiBuildingId) => flyToEntity(aiBuildingsRef.current.get(aiBuildingId), new Cesium.HeadingPitchRange(Cesium.Math.toRadians(35), Cesium.Math.toRadians(-28), 220)),
+      flyToAiFloorUnit: (aiFloorUnitId) => flyToEntity(aiFloorUnitsRef.current.get(aiFloorUnitId), new Cesium.HeadingPitchRange(Cesium.Math.toRadians(40), Cesium.Math.toRadians(-24), 120)),
+      flyToGnssPoint: (controlPointId) => flyToEntity(gnssPointsRef.current.get(controlPointId), new Cesium.HeadingPitchRange(Cesium.Math.toRadians(30), Cesium.Math.toRadians(-35), 80)),
+      flyToInfrastructure: (infrastructureId) => flyToEntity(infraEntitiesRef.current.get(infrastructureId), new Cesium.HeadingPitchRange(Cesium.Math.toRadians(30), Cesium.Math.toRadians(-32), 160)),
+      flyToTngisParcel: (sourceRecordId) => flyToEntity(tngisParcelRef.current.get(sourceRecordId), new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-45), 500)),
       // Pull freshly-extracted AI buildings into the running viewer (called by
       // the AI Building Extraction page after an inference completes).
       refreshAiBuildings: (areaId) => ensureAiBuildings(areaId || activeAreaRef.current),
+      // Re-scan every locality for 3D building coverage (idempotent).
+      refreshBuildings: () => ensureAllBuildings(),
+      buildingStats: () => {
+        let visible = 0
+        for (const e of buildingShellRef.current.values()) if (e.show) visible += 1
+        const available = (selRef.current.localities || []).reduce((s, l) => s + (Number(l.counts?.buildings) || 0), 0)
+        return { available: Math.max(available, buildingShellRef.current.size), loaded: buildingShellRef.current.size, visible }
+      },
       // Same for Phase 4 AI floor-plan units.
       refreshAiFloorUnits: (areaId) => ensureAiFloorUnits(areaId || activeAreaRef.current),
       // Same for Phase 6 GNSS/CORS control points.
       refreshGnssControlPoints: (areaId) => ensureGnssControlPoints(areaId || activeAreaRef.current),
       // Same for Phase 8 underground infrastructure.
       refreshUndergroundInfrastructure: (areaId) => ensureUndergroundInfrastructure(areaId || activeAreaRef.current),
+      // Pull freshly-fetched TNGIS public-source parcels into the running viewer
+      // (called by the TNGIS Parcels page after a fetch completes).
+      refreshTngisParcels: (areaId) => ensureTngisParcels(areaId || activeAreaRef.current),
     }
   }
 
-  // Same viewer, same scene — just move the camera to a locality and load it.
-  async function flyToArea(areaId, duration = 1.6) {
+  // Load a locality's data into the shared scene and make it the active area —
+  // WITHOUT moving the camera. Used when a selected entity lives in another
+  // locality: the entity's own flyTo* then does the camera work.
+  async function loadArea(areaId) {
     if (!liveViewer()) return
     const loc = localityOf(areaId)
     if (!loc) return
@@ -926,16 +1110,25 @@ export function Cesium3DMap() {
     await ensureAiFloorUnits(areaId) // idempotent — picks up any newly-segmented AI floor-plan units
     await ensureGnssControlPoints(areaId) // idempotent — picks up any newly-imported GNSS/CORS control points
     await ensureUndergroundInfrastructure(areaId) // idempotent — picks up any newly-imported underground infrastructure
+    await ensureTngisParcels(areaId) // idempotent — picks up any newly-fetched TNGIS parcels
+    if (!liveViewer()) return
+    lodRef.current = 'area'
+    applyLayerVisibility()
+  }
+
+  // Same viewer, same scene — load a locality and move the camera to its overview.
+  async function flyToArea(areaId, duration = 1.6) {
+    await loadArea(areaId)
     const viewer = liveViewer()
     if (!viewer) return
+    const loc = localityOf(areaId)
+    if (!loc) return
     const h = loc.cameraHeightM || 1500
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(loc.base.lon, loc.base.lat - h * 6e-6, h),
       orientation: { heading: Cesium.Math.toRadians(15), pitch: Cesium.Math.toRadians(-34), roll: 0 },
       duration,
     })
-    lodRef.current = 'area'
-    applyLayerVisibility()
     viewer.scene.requestRender()
   }
 
@@ -976,19 +1169,90 @@ export function Cesium3DMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel.selection, sel.isolated])
 
-  // Area changes coming from the TopBar / AreaSelector drive the same camera.
+  // Area changes coming from the TopBar / AreaSelector drive the same camera —
+  // but only when the user is at the area overview. When an entity is selected,
+  // applySelection() owns the camera (it switches locality itself and then
+  // focuses the entity); flying to the area overview here would fight it.
   useEffect(() => {
     if (!ready) return
-    if (sel.area?.id && sel.area.id !== activeAreaRef.current) {
+    if (sel.area?.id && sel.area.id !== activeAreaRef.current && sel.selection?.mode === 'overview') {
       flyToArea(sel.area.id, 1.8)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel.area?.id, ready])
 
-  async function applySelection() {
+  // Resolve which locality a selected entity lives in (cached). Deep links,
+  // the Buildings table and the sidebar can all select an entity that belongs
+  // to a locality other than the one the camera is currently over — without
+  // this the entity is filtered out by `areaOk()` and never focused.
+  async function localityForSelection(selection) {
+    const { mode, buildingId, infrastructureId, ulpin, propertyId } = selection
+    const cache = localityCacheRef.current
+    try {
+      if ((mode === 'building' || mode === 'floor' || mode === 'unit') && buildingId) {
+        const key = `building:${buildingId}`
+        if (!cache.has(key)) {
+          const res = await api.building(buildingId)
+          cache.set(key, res?.building?.locality || null)
+        }
+        return cache.get(key)
+      }
+      if (mode === 'unit' && !buildingId && propertyId) {
+        const key = `unit:${propertyId}`
+        if (!cache.has(key)) {
+          const res = await api.unit(propertyId)
+          cache.set(key, res?.building?.locality || res?.hierarchy?.building?.locality || null)
+        }
+        return cache.get(key)
+      }
+      if (mode === 'infrastructure' && infrastructureId) {
+        const key = `infra:${infrastructureId}`
+        if (!cache.has(key)) {
+          const res = await api.infrastructure(infrastructureId)
+          cache.set(key, res?.locality || null)
+        }
+        return cache.get(key)
+      }
+      if (mode === 'parcel' && ulpin) {
+        const key = `parcel:${ulpin}`
+        if (!cache.has(key)) {
+          const res = await api.parcel(ulpin)
+          cache.set(key, res?.locality || null)
+        }
+        return cache.get(key)
+      }
+    } catch {
+      /* fall through — a failed lookup just means no area switch */
+    }
+    return null
+  }
+
+  // Serialise selection passes. init() and the [sel.selection] effect can both
+  // trigger one, and each pass now awaits network round-trips (locality lookup,
+  // loadArea) — letting two interleave leaves activeAreaRef and entity
+  // visibility in a torn state (both localities visible, camera stuck).
+  const applyLockRef = useRef(Promise.resolve())
+  function applySelection() {
+    const run = applyLockRef.current.then(applySelectionPass).catch(() => {})
+    applyLockRef.current = run
+    return run
+  }
+
+  async function applySelectionPass() {
     if (!liveViewer()) return
     const { selection } = selRef.current
     const { mode, buildingId, propertyId } = selection
+
+    // Switch the camera/data to the selected entity's locality first, so the
+    // rest of this pass loads, shows and focuses it in the right place.
+    if (['building', 'floor', 'unit', 'infrastructure', 'parcel'].includes(mode)) {
+      const targetArea = await localityForSelection(selection)
+      if (targetArea && targetArea !== activeAreaRef.current && localityOf(targetArea)) {
+        await loadArea(targetArea) // data + activeArea only — the entity flyTo below moves the camera
+        if (!liveViewer()) return
+        selRef.current.syncArea?.(targetArea) // keep the top-bar locality in step (no extra camera move: activeAreaRef already matches)
+      }
+    }
 
     if ((mode === 'building' || mode === 'floor' || mode === 'unit') && buildingId) {
       await ensureUnits(buildingId)
@@ -1008,6 +1272,9 @@ export function Cesium3DMap() {
     if (mode === 'infrastructure' && selection.infrastructureId) {
       await ensureUndergroundInfrastructure(activeAreaRef.current)
     }
+    if (mode === 'tngis-parcel' && selection.sourceRecordId) {
+      await ensureTngisParcels(activeAreaRef.current)
+    }
     const viewer = liveViewer()
     if (!viewer) return
 
@@ -1022,6 +1289,7 @@ export function Cesium3DMap() {
     else if (mode === 'ai-floor-unit' && selection.aiFloorUnitId) mapApi.flyToAiFloorUnit?.(selection.aiFloorUnitId)
     else if (mode === 'gnss-point' && selection.controlPointId) mapApi.flyToGnssPoint?.(selection.controlPointId)
     else if (mode === 'infrastructure' && selection.infrastructureId) mapApi.flyToInfrastructure?.(selection.infrastructureId)
+    else if (mode === 'tngis-parcel' && selection.sourceRecordId) mapApi.flyToTngisParcel?.(selection.sourceRecordId)
     else if (mode === 'overview') flyToOverview(1.4)
 
     viewer.scene.requestRender()
@@ -1049,7 +1317,7 @@ export function Cesium3DMap() {
 
     // Generic overlay/base groups: gated by layer switch + active area + LOD.
     for (const [key, ents] of Object.entries(groupsRef.current)) {
-      if (key === 'units3d' || key === 'commonAreas' || key === 'buildings' || key === 'floorVolumes' || key === 'aiFloorUnits' || key === 'gnssControlPoints' || key === 'undergroundInfrastructure') continue
+      if (key === 'units3d' || key === 'commonAreas' || key === 'buildings' || key === 'floorVolumes' || key === 'aiFloorUnits' || key === 'gnssControlPoints' || key === 'undergroundInfrastructure' || key === 'tngisParcels') continue
       const layerOn = L[key] ?? true
       for (const ent of ents || []) {
         ent.show = layerOn && areaOk(ent) && lod !== 'city'
@@ -1070,11 +1338,18 @@ export function Cesium3DMap() {
         Number(fNum) === floorNumber
     }
 
-    // building shells: hide the active building's shell so its units are visible
+    // 3D building shells. City-wide: EVERY loaded building is a 3D structure in
+    // THIS viewer. At the city overview LOD it is lightweight massing for every
+    // locality; at area/building LOD only the active locality's buildings show,
+    // as before. The selected building is emphasised (gold shell + raised
+    // outline), never the whole city hidden.
+    const cityLod = lod === 'city'
     for (const [id, ent] of buildingShellRef.current) {
-      const active = id === buildingId && mode !== 'overview' && mode !== 'parcel'
-      ent.show =
-        L.buildings && detailOk && areaOk(ent) && !(isolated && id !== buildingId)
+      const isActive = id === buildingId && mode !== 'overview' && mode !== 'parcel'
+      const areaVisible = cityLod ? true : areaOk(ent)
+      ent.show = (L.buildings ?? true) && areaVisible && !(isolated && id !== buildingId)
+      // Building Labels layer — only at close (building) zoom, own toggle.
+      if (ent.label) ent.label.show = Boolean(ent.show) && (L.buildingLabels ?? true) && lod === 'building'
       // Phase 5 — optional height-quality overlay: only buildings with an
       // ACCEPTED elevation-derived height are recoloured; everything else
       // keeps its normal shell colour.
@@ -1083,9 +1358,11 @@ export function Cesium3DMap() {
         const level = valueOf(ent.properties?.elevationConfidenceLevel)
         ent.polygon.material = level === 'HIGH' ? COL.elevationHigh : level === 'MEDIUM' ? COL.elevationMedium : COL.elevationLow
       } else {
-        ent.polygon.material = active ? COL.buildingShellSel : COL.buildingShell
+        ent.polygon.material = isActive ? COL.buildingShellSel : COL.buildingShell
       }
+      ent.polygon.outlineColor = isActive ? Cesium.Color.fromCssColorString('#f2b807') : COL.outline
     }
+    recomputeBuildingStats()
 
     // parcels highlight
     for (const [ulpin, ent] of parcelEntityRef.current) {
@@ -1199,6 +1476,19 @@ export function Cesium3DMap() {
         ent.point.pixelSize = isSel ? 14 : 10
       }
     }
+
+    // TNGIS / Tamil Nilam — public-source parcels: own layer, OFF by default.
+    // Visible at area + building zoom (never at the city overview). The selected
+    // parcel is highlighted gold. Every polygon of a MultiPolygon shares the
+    // sourceRecordId, so all of a parcel's rings highlight together.
+    for (const ent of groupsRef.current.tngisParcels || []) {
+      const id = valueOf(ent.properties?.sourceRecordId)
+      const isSel = mode === 'tngis-parcel' && id === selection.sourceRecordId
+      ent.show = (L.tngisParcels ?? false) && detailOk && areaOk(ent)
+      // Terrain-clamped polygons can't draw outlines (Cesium) — selection is
+      // shown by the gold fill, exactly like the base `parcels` layer.
+      if (ent.polygon) ent.polygon.material = isSel ? COL.tngisParcelSel : COL.tngisParcel
+    }
   }
 
   /* ----------------------------------------------------- layer visibility */
@@ -1207,6 +1497,15 @@ export function Cesium3DMap() {
     viewerRef.current?.scene.requestRender()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel.layers])
+
+  // When the authoritative locality registry (with per-locality building counts)
+  // arrives, load any newly-known locality's buildings + refresh the coverage
+  // counters. Idempotent — already-loaded buildings are skipped.
+  useEffect(() => {
+    if (!ready) return
+    ensureAllBuildings().catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, sel.localities])
 
   function applyLayerVisibility() {
     const viewer = viewerRef.current
@@ -1222,6 +1521,21 @@ export function Cesium3DMap() {
   return (
     <div className="relative h-full w-full" data-testid="cesium-map">
       <div ref={hostRef} className="h-full w-full" />
+
+      {ready && buildingStats.loaded > 0 && (
+        <div
+          className="pointer-events-none absolute bottom-3 left-3 z-10 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-[11px] shadow-sm"
+          data-testid="building-coverage"
+        >
+          <p className="font-bold uppercase tracking-wider text-slate-500">Chennai 3D Buildings</p>
+          <div className="mt-1 flex gap-3 font-mono text-slate-700">
+            <span data-testid="buildings-available">Available: {buildingStats.available.toLocaleString('en-IN')}</span>
+            <span data-testid="buildings-loaded">Loaded: {buildingStats.loaded.toLocaleString('en-IN')}</span>
+            <span data-testid="buildings-visible">Visible: {buildingStats.visible.toLocaleString('en-IN')}</span>
+          </div>
+        </div>
+      )}
+
       {!ready && !error && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center bg-white/85 text-sm text-slate-600">
           Loading Chennai 3D scene…

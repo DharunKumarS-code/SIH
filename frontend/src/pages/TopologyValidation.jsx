@@ -103,6 +103,7 @@ export default function TopologyValidation() {
   const navigate = useNavigate()
   const { area, selection, selectArea, selectParcel, selectBuilding, selectFloor, selectUnit } = useSelection()
   const { can } = useAuth()
+  const canValidate = can('topology:validate')
   const [busy, setBusy] = useState(null)
   const [error, setError] = useState(null)
   const [run, setRun] = useState(null)
@@ -114,6 +115,25 @@ export default function TopologyValidation() {
   useEffect(() => {
     api.topologyConfig().then(setConfig).catch(() => setConfig(null))
   }, [])
+
+  // Read-only roles (topology:read but not topology:validate) can still review
+  // the most recent stored run — load it so the page is not a dead end.
+  useEffect(() => {
+    if (canValidate) return
+    let alive = true
+    ;(async () => {
+      try {
+        const list = await api.topologyResults({ limit: 1 })
+        const latest = Array.isArray(list) ? list[0] : list?.[0]
+        if (!latest || !alive) return
+        const full = await api.topologyResult(latest.validationRunId)
+        if (alive) setRun(full)
+      } catch {
+        /* no stored run to show, or no topology:read — leave the page empty */
+      }
+    })()
+    return () => { alive = false }
+  }, [canValidate])
 
   const canValidateSelection = SELECTABLE_MODES.includes(selection.mode)
 
@@ -189,19 +209,30 @@ export default function TopologyValidation() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card title="Run validation">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <button className="btn-primary justify-center" data-testid="topology-validate-all" disabled={!!busy} onClick={() => runValidation('all')}>
-              {busy === 'all' ? <Spinner label="Validating…" /> : 'Validate All'}
-            </button>
-            <button className="btn-ghost justify-center" data-testid="topology-validate-area" disabled={!!busy} onClick={() => runValidation('area')}>
-              {busy === 'area' ? <Spinner label="Validating…" /> : `Validate ${area.name || 'Current Area'}`}
-            </button>
-            <button className="btn-ghost justify-center" data-testid="topology-validate-selected" disabled={!!busy || !canValidateSelection} onClick={() => runValidation('entity')}>
-              {busy === 'entity' ? <Spinner label="Validating…" /> : 'Validate Selected Entity'}
-            </button>
-          </div>
-          {!canValidateSelection && (
-            <p className="mt-2 text-[11px] text-slate-500">Select a parcel, building, floor or unit in the 3D map to enable "Validate Selected Entity".</p>
+          {canValidate ? (
+            <>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <button className="btn-primary justify-center" data-testid="topology-validate-all" disabled={!!busy} onClick={() => runValidation('all')}>
+                  {busy === 'all' ? <Spinner label="Validating…" /> : 'Validate All'}
+                </button>
+                <button className="btn-ghost justify-center" data-testid="topology-validate-area" disabled={!!busy} onClick={() => runValidation('area')}>
+                  {busy === 'area' ? <Spinner label="Validating…" /> : `Validate ${area.name || 'Current Area'}`}
+                </button>
+                <button className="btn-ghost justify-center" data-testid="topology-validate-selected" disabled={!!busy || !canValidateSelection} onClick={() => runValidation('entity')}>
+                  {busy === 'entity' ? <Spinner label="Validating…" /> : 'Validate Selected Entity'}
+                </button>
+              </div>
+              {!canValidateSelection && (
+                <p className="mt-2 text-[11px] text-slate-500">Select a parcel, building, floor or unit in the 3D map to enable "Validate Selected Entity".</p>
+              )}
+            </>
+          ) : (
+            <p className="text-[12px] leading-relaxed text-slate-500" data-testid="topology-readonly-note">
+              You have read-only access to topology validation. Running a validation requires the
+              <span className="font-medium text-slate-700"> Survey Officer</span> or
+              <span className="font-medium text-slate-700"> Administrator</span> role. The most recent
+              stored run is shown below.
+            </p>
           )}
           <ErrorNote error={error} onRetry={() => setError(null)} />
         </Card>

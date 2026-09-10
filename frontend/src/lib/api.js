@@ -82,6 +82,7 @@ export const api = {
   gisAiBuildings: (params) => get('/gis/ai-buildings', params),
   gisAiFloorUnits: (params) => get('/gis/ai-floor-units', params),
   gisUndergroundInfrastructure: (params) => get('/gis/underground-infrastructure', params),
+  gisTngisParcels: (params) => get('/gis/tngis-parcels', params),
 
   // dashboards
   dashboard: () => get('/dashboard/stats'),
@@ -196,6 +197,18 @@ export const api = {
   identifierReviewVersion: (id, payload) => unwrap(http.patch(`/3d-identifiers/${encodeURIComponent(id)}/versions/review`, payload)),
   identifierRevalidate: (id) => post(`/3d-identifiers/${encodeURIComponent(id)}/revalidate`),
   ulpinIdentifiers: (ulpin) => get(`/ulpins/${encodeURIComponent(ulpin)}/3d-identifiers`),
+
+  // TNGIS / Tamil Nilam — PUBLIC-source parcel geometry (no authenticated / ULPIN endpoint)
+  tngisConfig: () => get('/tngis/config'),
+  tngisDistricts: () => get('/tngis/districts'),
+  tngisTaluks: (districtCode) => get('/tngis/taluks', { districtCode }),
+  tngisVillages: (districtCode, talukCode) => get('/tngis/villages', { districtCode, talukCode }),
+  tngisSurveyNumbers: (districtCode, talukCode, villageCode) => get('/tngis/survey-numbers', { districtCode, talukCode, villageCode }),
+  tngisParcels: (params) => get('/tngis/parcels', params),
+  tngisParcel: (id) => get(`/tngis/parcels/${encodeURIComponent(id)}`),
+  tngisParcelRelations: (id) => get(`/tngis/parcels/${encodeURIComponent(id)}/relations`),
+  tngisFetchParcel: (payload) => post('/tngis/parcels/fetch', payload),
+  tngisValidateTopology: (id) => post(`/tngis/parcels/${encodeURIComponent(id)}/validate-topology`),
 
   // services / workflow
   services: (params) => get('/services', params),

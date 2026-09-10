@@ -305,6 +305,28 @@ export const search = asyncHandler(async (req, res) => {
     })
   }
 
+  // TNGIS / Tamil Nilam — cached public-source parcels (by district / taluk /
+  // village name, LGD code, survey number, or source record id). Selecting a
+  // result focuses the parcel in the SAME Chennai Cesium viewer. Protected
+  // ULPIN search is deliberately NOT offered (public source has no ULPIN).
+  const tngisRows = await db.collection('tngisParcels').find({
+    $or: [
+      { sourceRecordId: rx }, { surveyNumber: rx },
+      { districtName: rx }, { talukName: rx }, { villageName: rx },
+      { lgdDistrictCode: rx }, { lgdTalukCode: rx }, { lgdVillageCode: rx },
+    ],
+  }, { limit: 6 })
+  for (const t of tngisRows) {
+    results.push({
+      kind: 'tngis-parcel',
+      title: `Survey ${t.surveyNumber}${t.subDivision ? `/${t.subDivision}` : ''} · ${t.villageName || t.villageCode}`,
+      subtitle: `TNGIS OFFICIAL SOURCE · ${t.talukName || t.talukCode}, ${t.districtName || t.districtCode} · LGD ${t.lgdVillageCode || '—'} · ULPIN unavailable`,
+      verification: t.verificationStatus,
+      ref: { sourceRecordId: t.sourceRecordId, locality: t.locality },
+      centroid: t.centroid ? { type: 'Point', coordinates: [t.centroid.longitude, t.centroid.latitude] } : null,
+    })
+  }
+
   const [parcels, buildings, floors, units, owners] = await Promise.all([
     db.collection('parcels').find({
       $or: [

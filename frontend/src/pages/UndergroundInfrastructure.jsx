@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { UploadCloud, Waypoints, ShieldAlert, Layers3 } from 'lucide-react'
+import { UploadCloud, Waypoints, ShieldAlert, Layers3, Boxes } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { useApi } from '../lib/useApi.js'
 import { useSelection } from '../context/SelectionContext.jsx'
@@ -158,6 +158,15 @@ export default function UndergroundInfrastructure() {
   return (
     <PageScroll>
       <PageHeader title="Underground Infrastructure" subtitle="Water · sewer · stormwater · electrical · telecom · gas · tunnels · metro · ducts · manholes · chambers — inside the one Chennai Cesium viewer">
+        <a
+          href={`/underground-explorer?area=${encodeURIComponent(locality)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-ghost !py-1.5"
+          data-testid="open-underground-explorer"
+        >
+          <Boxes size={14} /> Open 3D Underground Explorer
+        </a>
         <DemoTag label="DEMO / MODEL OUTPUT" />
       </PageHeader>
 
@@ -229,6 +238,22 @@ export default function UndergroundInfrastructure() {
                 { key: 'spatialRelation', header: 'Spatial relation', render: (r) => <span className="text-[11px]">{r.spatialRelation || '—'}</span> },
                 { key: 'legalOwnership', header: 'Legal ownership', render: (r) => <span className="text-[11px] text-slate-500">{r.legalOwnership || 'NOT_PROVIDED'}</span> },
                 { key: 'verificationStatus', header: 'Verification', render: (r) => (r.isOfficial ? <Badge status="Verified">{r.verificationStatus}</Badge> : <DemoTag label={r.verificationStatus} />) },
+                {
+                  key: 'explorer',
+                  header: '3D',
+                  render: (r) => (
+                    <a
+                      href={`/underground-explorer?area=${encodeURIComponent(r.locality || locality)}&infrastructureId=${encodeURIComponent(r.infrastructureId)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-primary hover:underline"
+                      data-testid={`infra-explorer-${r.infrastructureId}`}
+                    >
+                      Explore
+                    </a>
+                  ),
+                },
               ]}
               rows={rows}
               empty="No underground infrastructure for this filter."

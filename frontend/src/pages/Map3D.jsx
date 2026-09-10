@@ -29,9 +29,25 @@ export default function Map3D() {
     const unit = params.get('unit')
     const building = params.get('building')
     const ulpin = params.get('ulpin')
+    // The parcel ULPIN, building id and floor number are all encoded in a
+    // property id (e.g. TN-CHN-323456789-B03-F02-U201). Derive them so a deep
+    // link resolves to the exact entity — and never falls back to a hard-coded
+    // (Sholinganallur) parcel for an entity in another locality.
+    const ulpinFrom = (id) => (id && /^(TN-CHN-\d+)/.exec(id)?.[1]) || null
+    const buildingFrom = (id) => (id && /^(TN-CHN-\d+-B\d+)/.exec(id)?.[1]) || null
+    const floorFrom = (id) => {
+      const m = id && /-F(\d+)/.exec(id)
+      return m ? Number(m[1]) : null
+    }
     if (areaId) selectArea(areaId)
-    if (unit) selectUnit({ propertyId: unit, ulpin: ulpin || PARCEL_ULPIN })
-    else if (building) selectBuilding(building, ulpin || PARCEL_ULPIN)
+    if (unit) {
+      selectUnit({
+        propertyId: unit,
+        ulpin: ulpin || ulpinFrom(unit) || PARCEL_ULPIN,
+        buildingId: buildingFrom(unit),
+        floorNumber: floorFrom(unit),
+      })
+    } else if (building) selectBuilding(building, ulpin || ulpinFrom(building) || PARCEL_ULPIN)
     else if (ulpin) selectParcel(ulpin)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

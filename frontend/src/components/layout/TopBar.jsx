@@ -7,11 +7,11 @@ import { useSelection } from '../../context/SelectionContext.jsx'
 import { api } from '../../lib/api.js'
 import { NotificationBell } from './NotificationBell.jsx'
 
-const KIND_ICON = { unit: Home, building: Building, floor: Layers3, parcel: Layers, owner: User2, infrastructure: Waypoints, identifier: Boxes }
+const KIND_ICON = { unit: Home, building: Building, floor: Layers3, parcel: Layers, owner: User2, infrastructure: Waypoints, identifier: Boxes, 'tngis-parcel': Landmark }
 
 export function TopBar({ onToggleNav }) {
   const { user, logout } = useAuth()
-  const { selectParcel, selectBuilding, selectFloor, selectUnit, selectInfrastructure, setLayerGroup, localities, area, selectArea } = useSelection()
+  const { selectParcel, selectBuilding, selectFloor, selectUnit, selectInfrastructure, selectTngisParcel, setLayerGroup, localities, area, selectArea } = useSelection()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
   const [results, setResults] = useState([])
@@ -59,6 +59,11 @@ export function TopBar({ onToggleNav }) {
     else if (r.kind === 'identifier') {
       if (r.ref.locality && r.ref.locality !== area?.id) selectArea(r.ref.locality)
       if (r.ref.propertyId) selectUnit(r.ref) // reuse existing unit selection -> volume focus + sidebar
+    }
+    else if (r.kind === 'tngis-parcel') {
+      if (r.ref.locality && r.ref.locality !== area?.id) selectArea(r.ref.locality)
+      setLayerGroup(['tngisParcels'], true)
+      selectTngisParcel(r.ref.sourceRecordId)
     }
     else selectParcel(r.ref.ulpin)
   }
