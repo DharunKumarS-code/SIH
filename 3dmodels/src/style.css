@@ -1,0 +1,217 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #e4e6ea;
+  background: #14171c;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+html, body, #app { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+
+body {
+  background: #14171c;
+}
+
+button, input { font: inherit; }
+button { cursor: pointer; }
+
+.shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+#scene {
+  position: absolute;
+  inset: 0;
+}
+
+.topbar {
+  position: absolute;
+  z-index: 10;
+  left: 16px;
+  right: 16px;
+  top: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+}
+
+.brand {
+  pointer-events: auto;
+  padding: 10px 14px;
+  border: 1px solid #262b33;
+  border-radius: 6px;
+  background: #1a1d23;
+}
+
+.brand strong { display: block; font-size: 14px; font-weight: 600; }
+.brand span { display: block; color: #7d8390; font-size: 11px; margin-top: 2px; }
+
+.toolbar {
+  pointer-events: auto;
+  display: flex;
+  gap: 1px;
+  padding: 1px;
+  border-radius: 6px;
+  background: #262b33;
+  border: 1px solid #262b33;
+  overflow: hidden;
+}
+
+.btn {
+  border: none;
+  background: #1a1d23;
+  color: #c3c8d1;
+  padding: 9px 12px;
+  font-size: 12px;
+  transition: background-color .12s ease;
+}
+.btn:hover { background: #21252d; }
+.btn.active { background: #2f6fed; color: #fff; }
+
+.panel {
+  position: absolute;
+  z-index: 10;
+  top: 82px;
+  bottom: 16px;
+  width: 260px;
+  padding: 14px;
+  border-radius: 6px;
+  background: #1a1d23;
+  border: 1px solid #262b33;
+  overflow-y: auto;
+}
+
+.left { left: 16px; }
+.right { right: 16px; }
+
+.panel h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.muted { color: #6f7684; font-size: 11px; line-height: 1.5; }
+
+.floor-list {
+  display: grid;
+  gap: 1px;
+  margin-top: 14px;
+  border: 1px solid #262b33;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #262b33;
+}
+
+.floor-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 9px 11px;
+  border: none;
+  background: #1a1d23;
+  color: #c3c8d1;
+  transition: background-color .12s ease;
+}
+.floor-btn:hover { background: #21252d; }
+.floor-btn.active { background: #1e2a42; color: #fff; }
+.floor-btn small { color: #6f7684; }
+
+.search {
+  width: 100%;
+  margin-top: 14px;
+  padding: 9px 11px;
+  border-radius: 6px;
+  outline: none;
+  border: 1px solid #262b33;
+  background: #14171c;
+  color: #e4e6ea;
+}
+.search:focus { border-color: #2f6fed; }
+.search::placeholder { color: #565c68; }
+
+.info-card {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 6px;
+  background: #14171c;
+  border: 1px solid #262b33;
+}
+
+.unit-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.kv {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 11px;
+}
+.kv span:first-child { color: #6f7684; }
+.kv span:last-child { color: #d6dae1; }
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 9px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  background: #14171c;
+  border: 1px solid #262b33;
+}
+.dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+.legend {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  gap: 14px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: #1a1d23;
+  border: 1px solid #262b33;
+  font-size: 10px;
+  color: #8b91a0;
+}
+.legend-item { display: flex; align-items: center; gap: 5px; }
+.legend-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+.reference {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  width: 100px;
+  height: 78px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #262b33;
+  opacity: .7;
+  z-index: 9;
+}
+
+.hint {
+  position: absolute;
+  z-index: 8;
+  top: 88px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #6f7684;
+  font-size: 10px;
+  pointer-events: none;
+}
+
+@media (max-width: 900px) {
+  .panel { width: 220px; }
+  .right { display: none; }
+  .reference { display: none; }
+}
