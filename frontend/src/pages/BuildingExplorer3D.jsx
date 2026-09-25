@@ -56,10 +56,10 @@ function Labelled({ label, children }) {
 
 function StatusPill({ tone = 'muted', children }) {
   const map = {
-    ok: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    warn: 'bg-amber-50 text-amber-700 border-amber-200',
-    err: 'bg-red-50 text-red-700 border-red-200',
-    info: 'bg-sky-50 text-sky-700 border-sky-200',
+    ok: 'bg-teal/10 text-teal border-teal/30',
+    warn: 'bg-warn/10 text-warn border-warn/30',
+    err: 'bg-danger/5 text-danger border-danger/30',
+    info: 'bg-primary/10 text-primary border-primary/25',
     muted: 'bg-slate-100 text-slate-600 border-slate-200',
   }
   return (
@@ -122,6 +122,21 @@ function ExplorerBody({ params }) {
   const unitValidation = unitQ.data?.validation || null
   const governance = unitQ.data?.governance || {}
 
+  // Phase 9 — Proposed 3D Property Identifier(s) linked to this building.
+  // Reuses the existing identifier3d service (same GET /api/3d-identifiers
+  // endpoint and useApi/idQ pattern as the unit-level panel in
+  // PropertySidebar.jsx) — no second identifier system, no fabrication. An
+  // empty result is an honest "none proposed yet", not a placeholder id.
+  const idQ = useApi(
+    () => (buildingId ? api.identifierList({ buildingId }).catch(() => []) : Promise.resolve([])),
+    [buildingId],
+  )
+  const identifiers = idQ.data || []
+
+  // Floors resolve as: loading (request in flight) -> available (>=1 floor)
+  // -> unavailable (request settled, zero floors). Never a perpetual spinner.
+  const floorsUnavailable = !buildingQ.loading && !buildingQ.error && !!building && floors.length === 0
+
   const buildingVol = building?.volume || null
   const activeFloorVol = activeFloor?.volume || null
   const shownVol = unitVol || activeFloorVol || buildingVol
@@ -138,18 +153,18 @@ function ExplorerBody({ params }) {
   }
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#f5f7fa] text-slate-800">
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-paper text-slate-800">
       {/* Masthead */}
-      <header className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-200 bg-white px-4 py-2.5">
+      <header className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-200 bg-surface px-4 py-2.5">
         <div className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded bg-primary/10 text-primary">
+          <span className="grid h-8 w-8 place-items-center rounded-md border border-primary/25 bg-primary/10 text-primary">
             <Box size={17} />
           </span>
           <div className="leading-tight">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
               Chennai 3D Cadastre · Prototype
             </p>
-            <h1 className="text-[15px] font-bold text-slate-900">3D Building Explorer</h1>
+            <h1 className="font-display text-[15px] font-semibold text-slate-900">3D Building Explorer</h1>
           </div>
         </div>
 
@@ -158,7 +173,7 @@ function ExplorerBody({ params }) {
           <span>›</span>
           <span>{AREA_LABELS[area] || 'Area'}</span>
           <span>›</span>
-          <span className="font-mono">{ulpin}</span>
+          <span className="data-mono">{ulpin}</span>
           <span>›</span>
           <span className="font-semibold text-slate-700">{building?.shortName || buildingId}</span>
           {activeFloor && <><span>›</span><span>{activeFloor.label}</span></>}
@@ -166,19 +181,19 @@ function ExplorerBody({ params }) {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-amber-700">
+          <span className="inline-flex items-center gap-1 rounded border border-warn/30 bg-warn/10 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-warn">
             <ShieldAlert size={12} /> Prototype · Not an Official ULPIN
           </span>
           <button
             onClick={returnToMap}
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-100"
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-surface px-2.5 py-1.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-100"
           >
             <ArrowLeft size={13} /> Return to 3D map
           </button>
           {canClose && (
             <button
               onClick={() => window.close()}
-              className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-100"
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-surface px-2.5 py-1.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-100"
               data-testid="explorer-close"
             >
               <X size={13} /> Close explorer
@@ -189,14 +204,14 @@ function ExplorerBody({ params }) {
 
       <div className="flex min-h-0 flex-1">
         {/* LEFT — hierarchy / floor + unit navigation */}
-        <aside className="flex w-64 shrink-0 flex-col gap-3 overflow-y-auto border-r border-slate-200 bg-white p-3">
+        <aside className="flex w-64 shrink-0 flex-col gap-3 overflow-y-auto border-r border-slate-200 bg-surface p-3">
           <section>
-            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">Building</p>
+            <p className="mb-1.5 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Building</p>
             <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-[12px]">
               <p className="flex items-center gap-1.5 font-semibold text-slate-900">
                 <Building2 size={13} className="text-primary" /> {building?.shortName || '—'}
               </p>
-              <p className="mt-0.5 font-mono text-[11px] text-slate-500 break-all">{buildingId}</p>
+              <p className="mt-0.5 data-mono text-[11px] text-slate-500 break-all">{buildingId}</p>
               <p className="mt-1 text-slate-500">
                 {building ? `${building.totalFloors} floors · ${buildingQ.data?.unitCount ?? '—'} units` : 'Loading…'}
               </p>
@@ -204,7 +219,7 @@ function ExplorerBody({ params }) {
           </section>
 
           <section>
-            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">Floors</p>
+            <p className="mb-1.5 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Floors</p>
             <ul className="space-y-1" data-testid="explorer-floor-list">
               {[...floors].sort((a, b) => (b.floorNumber ?? 0) - (a.floorNumber ?? 0)).map((f) => (
                 <li key={f.floorId}>
@@ -223,12 +238,19 @@ function ExplorerBody({ params }) {
                   </button>
                 </li>
               ))}
-              {!floors.length && <li className="text-[12px] text-slate-400">Loading floors…</li>}
+              {!floors.length && buildingQ.loading && (
+                <li className="text-[12px] text-slate-400">Loading floors…</li>
+              )}
+              {floorsUnavailable && (
+                <li className="text-[12px] font-medium text-warn" data-testid="explorer-floors-unavailable">
+                  Floor data unavailable.
+                </li>
+              )}
             </ul>
           </section>
 
           <section>
-            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <p className="mb-1.5 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">
               Units on {activeFloor?.label || 'floor'}
             </p>
             <ul className="grid grid-cols-2 gap-1" data-testid="explorer-unit-list">
@@ -241,13 +263,13 @@ function ExplorerBody({ params }) {
                       data-testid={`explorer-unit-${u.unitId}`}
                       className={
                         on
-                          ? 'flex w-full items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-1 text-left text-[11px] font-semibold text-amber-800'
+                          ? 'flex w-full items-center gap-1 rounded border border-warn/40 bg-warn/10 px-1.5 py-1 text-left text-[11px] font-semibold text-warn'
                           : 'flex w-full items-center gap-1 rounded border border-slate-200 px-1.5 py-1 text-left text-[11px] text-slate-600 hover:bg-slate-100'
                       }
                       title={u.propertyId}
                     >
                       <Home size={10} className="text-primary" />
-                      <span className="font-mono">{u.unitId}</span>
+                      <span className="data-mono">{u.unitId}</span>
                       <span className="ml-auto text-slate-400">{u.bedrooms || u.usage?.[0]}</span>
                     </button>
                   </li>
@@ -259,9 +281,9 @@ function ExplorerBody({ params }) {
         </aside>
 
         {/* CENTER — focused Three.js massing view */}
-        <main className="relative min-w-0 flex-1 bg-[#f5f7fa]">
+        <main className="relative min-w-0 flex-1 bg-paper">
           {/* view-mode toolbar (spec sections 16-19) */}
-          <div className="absolute left-3 top-3 z-10 flex gap-1 rounded-md border border-slate-200 bg-white/95 p-1 shadow-sm" data-testid="explorer-view-modes">
+          <div className="absolute left-3 top-3 z-10 flex gap-1 rounded-md border border-slate-200 bg-surface/95 p-1 shadow-sm" data-testid="explorer-view-modes">
             {VIEW_MODES.map((m) => (
               <button
                 key={m.key}
@@ -281,8 +303,18 @@ function ExplorerBody({ params }) {
             <div className="absolute inset-0 grid place-items-center text-[13px] text-slate-500">Loading building…</div>
           )}
           {buildingQ.error && (
-            <div className="absolute inset-0 grid place-items-center text-[13px] text-red-600">
+            <div className="absolute inset-0 grid place-items-center text-[13px] text-danger">
               Could not load {buildingId}: {String(buildingQ.error.message || buildingQ.error)}
+            </div>
+          )}
+          {floorsUnavailable && viewMode !== 'EXTERIOR' && (
+            <div
+              className="pointer-events-none absolute left-1/2 top-14 z-10 -translate-x-1/2 rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-[12px] font-semibold text-warn"
+              data-testid="explorer-interior-unavailable"
+            >
+              {viewMode === 'INTERIOR' && 'INTERIOR DATA UNAVAILABLE'}
+              {viewMode === 'CUTAWAY' && 'INTERIOR DATA UNAVAILABLE — no floor data to cut away'}
+              {viewMode === 'FLOOR_PLAN' && 'INTERIOR DATA UNAVAILABLE — no floor plan on record'}
             </div>
           )}
           {building && (
@@ -301,7 +333,7 @@ function ExplorerBody({ params }) {
           )}
 
           {/* BOTTOM — legend + provenance line */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-200 bg-white/95 px-4 py-2 text-[11px] text-slate-500">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-200 bg-surface/95 px-4 py-2 text-[11px] text-slate-500">
             <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-primary/50" /> Active floor</span>
             <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-slate-400/40" /> Other floors</span>
             <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm" style={{ background: '#b7791f' }} /> Selected unit</span>
@@ -312,12 +344,12 @@ function ExplorerBody({ params }) {
         </main>
 
         {/* RIGHT — selected property / volume / provenance / governance */}
-        <aside className="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto border-l border-slate-200 bg-white p-3">
+        <aside className="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto border-l border-slate-200 bg-surface p-3">
           <section className="rounded-md border border-primary/25 bg-primary/[0.06] p-2.5">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <p className="font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">
               {unit ? 'Apartment / Unit' : activeFloor ? 'Floor' : 'Building'}
             </p>
-            <p className="mt-0.5 font-mono text-[13px] font-bold text-slate-900 break-all">
+            <p className="mt-0.5 data-mono text-[13px] font-bold text-slate-900 break-all">
               {unit?.propertyId || activeFloor?.floorId || buildingId}
             </p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -330,21 +362,21 @@ function ExplorerBody({ params }) {
 
           {/* Identity / hierarchy */}
           <section>
-            <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Hierarchy</p>
+            <p className="mb-1 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Hierarchy</p>
             <Labelled label="Area">{AREA_LABELS[area] || '—'}</Labelled>
-            <Labelled label="Parcel ULPIN"><span className="font-mono">{ulpin}</span></Labelled>
+            <Labelled label="Parcel ULPIN"><span className="data-mono">{ulpin}</span></Labelled>
             <Labelled label="Building">{building?.name || building?.shortName || buildingId}</Labelled>
             <Labelled label="Floor">{activeFloor ? `${activeFloor.label} (${activeFloor.floorSegment})` : '—'}</Labelled>
             <Labelled label="Unit">{unit ? `${unit.unitId} · Apt ${unit.apartmentNumber}` : '—'}</Labelled>
             <Labelled label="Volume ID">
-              <span className="font-mono">{shownVol?.volumeId || '—'}</span>
+              <span className="data-mono">{shownVol?.volumeId || '—'}</span>
             </Labelled>
           </section>
 
           {/* Property detail */}
           {unit && (
             <section>
-              <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Unit details</p>
+              <p className="mb-1 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Unit details</p>
               <Labelled label="Carpet area">{unit.carpetAreaSqft ? `${unit.carpetAreaSqft} sq.ft` : '—'}</Labelled>
               <Labelled label="Built-up area">{unit.builtUpAreaSqft ? `${unit.builtUpAreaSqft} sq.ft` : '—'}</Labelled>
               <Labelled label="Bedrooms">{unit.bedrooms ?? '—'}</Labelled>
@@ -355,28 +387,68 @@ function ExplorerBody({ params }) {
           )}
           {!unit && building && (
             <section>
-              <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Building details</p>
+              <p className="mb-1 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Building details</p>
               <Labelled label="Name">{building.name || '—'}</Labelled>
               <Labelled label="Floors">{building.totalFloors ?? '—'}</Labelled>
               <Labelled label="Height">{building.heightM ? `${building.heightM} m` : '—'}</Labelled>
               <Labelled label="Structure">{building.structureType || building.constructionType || '—'}</Labelled>
-              <Labelled label="Approval no.">{approval?.approvalNumber || 'Not available'}</Labelled>
+              <Labelled label="Approval no."><span className="data-mono">{approval?.approvalNumber || 'Not available'}</span></Labelled>
               <Labelled label="Approval status">{approval?.status || 'Not available'}</Labelled>
             </section>
           )}
 
+          {/* Proposed 3D Property Identifier (Phase 9) — building-scoped */}
+          <section>
+            <p className="mb-1 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              Proposed 3D Property Identifier
+            </p>
+            {idQ.loading && <p className="text-[12px] text-slate-400">Loading…</p>}
+            {!idQ.loading && identifiers.length === 0 && (
+              <div data-testid="explorer-identifier-unavailable">
+                <p className="text-[12px] font-semibold text-slate-700">3D Property Identifier: Unavailable</p>
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  No associated 3D Property Identifier record is currently available for this building.
+                </p>
+              </div>
+            )}
+            {identifiers.length > 0 && (
+              <div data-testid="explorer-identifier">
+                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] text-warn">
+                  <ShieldAlert size={11} /> Proposed / research reference — not an Official 3D ULPIN, not a
+                  government-approved 3D cadastral standard.
+                </p>
+                {identifiers.map((r) => (
+                  <div key={r.identifierId} className="mb-2 rounded border border-warn/30 bg-warn/10 p-2 text-[11px] last:mb-0">
+                    <p className="data-mono text-slate-900 break-all">{r.canonicalIdentifier}</p>
+                    <Labelled label="Official ULPIN">
+                      <span className="data-mono">{r.officialULPIN || 'Unavailable from current source'}</span>
+                    </Labelled>
+                    <Labelled label="Building ID"><span className="data-mono">{r.buildingId || '—'}</span></Labelled>
+                    <Labelled label="Floor"><span className="data-mono">{r.floorId || '—'}</span></Labelled>
+                    <Labelled label="Unit"><span className="data-mono">{r.propertyId || '—'}</span></Labelled>
+                    <Labelled label="Volume ID"><span className="data-mono">{r.volumeId || '—'}</span></Labelled>
+                    <Labelled label="Geometry version">{r.geometryVersion ?? '—'}</Labelled>
+                    <Labelled label="Status">{r.status || '—'}</Labelled>
+                    <Labelled label="Provenance">{r.provenance || r.source || 'DEMO'}</Labelled>
+                    <Labelled label="Verification">{r.verificationStatus || 'UNVERIFIED'}</Labelled>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
           {/* 3D volume */}
           <section>
-            <p className="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <p className="mb-1 flex items-center gap-1.5 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">
               <Box size={12} /> 3D volume information
             </p>
-            <p className="mb-1.5 rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-700">
+            <p className="mb-1.5 rounded bg-warn/10 px-2 py-1 text-[10px] text-warn">
               Prototype 3D geometry — synthetic, not an official cadastral volume.
             </p>
             {shownVol ? (
               <>
                 {Object.entries(volumeBoundsRows(shownVol)).map(([k, v]) => (
-                  <Labelled key={k} label={k}>{v}</Labelled>
+                  <Labelled key={k} label={k}><span className="data-mono">{v}</span></Labelled>
                 ))}
                 <Labelled label="Est. height">{vm?.heightM != null ? `${vm.heightM} m` : 'Not available'}</Labelled>
                 <Labelled label="Est. footprint">{vm?.footprintM2 != null ? `${vm.footprintM2} m²` : 'Not available'}</Labelled>
@@ -391,7 +463,7 @@ function ExplorerBody({ params }) {
           {/* Geometry status */}
           {unitValidation && (
             <section>
-              <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Geometry status</p>
+              <p className="mb-1 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Geometry status</p>
               <div className="flex items-center gap-2">
                 <StatusPill tone={geometryStatusTone(unitValidation.status).tone}>
                   {geometryStatusTone(unitValidation.status).label}
@@ -402,8 +474,8 @@ function ExplorerBody({ params }) {
                 <ul className="mt-1.5 space-y-1 text-[11px] text-slate-600">
                   {unitValidation.issues.map((i, idx) => (
                     <li key={`${i.rule}-${idx}`}>
-                      <span className={i.status === 'ERROR' ? 'text-red-600' : 'text-amber-700'}>{i.status}</span>{' '}
-                      <span className="font-mono text-slate-500">{i.rule}</span> — {i.message}
+                      <span className={i.status === 'ERROR' ? 'text-danger' : 'text-warn'}>{i.status}</span>{' '}
+                      <span className="data-mono text-slate-500">{i.rule}</span> — {i.message}
                     </li>
                   ))}
                 </ul>
@@ -413,7 +485,7 @@ function ExplorerBody({ params }) {
 
           {/* Provenance & status */}
           <section>
-            <p className="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <p className="mb-1 flex items-center gap-1.5 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">
               <Info size={12} /> Provenance &amp; status
             </p>
             <Labelled label="Spatial data">
@@ -437,10 +509,12 @@ function ExplorerBody({ params }) {
           {/* Governance (read-only, labelled) */}
           {unit && (
             <section>
-              <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Governance (DEMO / MOCK)</p>
-              <Labelled label="Registration">{governance.registration?.docNumber || 'Not available'}</Labelled>
+              <p className="mb-1 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Governance (DEMO / MOCK)</p>
+              <Labelled label="Registration"><span className="data-mono">{governance.registration?.docNumber || 'Not available'}</span></Labelled>
               <Labelled label="Registered on">
-                {governance.registration?.registeredOn ? dateShort(governance.registration.registeredOn) : '—'}
+                <span className="data-mono">
+                  {governance.registration?.registeredOn ? dateShort(governance.registration.registeredOn) : '—'}
+                </span>
               </Labelled>
               <Labelled label="Encumbrance">{governance.encumbrance?.type || 'Nil'}</Labelled>
               <Labelled label="Property tax">{governance.propertyTax?.status || 'Not available'}</Labelled>

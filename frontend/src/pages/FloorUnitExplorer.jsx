@@ -75,7 +75,7 @@ export default function FloorUnitExplorer() {
                     href={explorerUrl({ ulpin: PARCEL_ULPIN, buildingSeg: b.buildingSegment })}
                     target="_blank"
                     data-testid={`explorer-link-${b.buildingSegment}`}
-                    className="mb-1 inline-flex items-center gap-1.5 rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+                    className="mb-1 inline-flex items-center gap-1.5 rounded border border-slate-300 bg-surface px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
                   >
                     <Box size={11} className="text-primary" /> Open 3D Building Explorer
                   </a>

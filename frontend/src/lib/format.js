@@ -3,6 +3,19 @@ export const inr = (n) =>
 
 export const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-IN'))
 
+// Formats an ULPIN for display only: uppercase, hyphens/spaces stripped —
+// e.g. the prototype's "TN-CHN-123456789" reads as "TNCHN123456789" (still
+// exactly 14 characters). Purely presentational: the underlying stored
+// value, composite IDs (buildingId/propertyId/...) and services/idService.js
+// parsing are never touched by this. No-op on null/empty (e.g. an
+// unavailable Official ULPIN stays unavailable).
+export const formatUlpinDisplay = (ulpin) => (ulpin ? String(ulpin).toUpperCase().replace(/[^A-Z0-9]/g, '') : ulpin)
+
+// 3D ULPIN — a system-generated 3D property identifier (see
+// backend/src/services/threeDUlpin.js for the generator/uniqueness check).
+// Never an officially issued government ULPIN.
+export const isValid3DUlpin = (value) => typeof value === 'string' && /^[A-Z0-9]{14}$/.test(value)
+
 export const dateShort = (d) => {
   if (!d) return '—'
   const dt = new Date(d)
@@ -43,4 +56,4 @@ export const LAND_USE_COLORS = {
 }
 
 // Restrained, print-friendly chart palette for a government portal.
-export const CHART_COLORS = ['#1e5fa8', '#0f766e', '#b45309', '#6b21a8', '#15803d', '#b91c1c', '#64748b']
+export const CHART_COLORS = ['#144382', '#0f766e', '#b45309', '#6b21a8', '#15803d', '#b91c1c', '#64748b']

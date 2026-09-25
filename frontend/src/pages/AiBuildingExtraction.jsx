@@ -103,7 +103,7 @@ export default function AiBuildingExtraction() {
         <DemoTag label="AI / PROTOTYPE — MODEL OUTPUT" />
       </PageHeader>
 
-      <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[12px] leading-relaxed text-amber-700">
+      <p className="mb-4 rounded-lg border border-warn/30 bg-warn/10 p-2.5 text-[12px] leading-relaxed text-warn">
         <strong>AI_DEMO / MODEL OUTPUT.</strong> This tool produces <em>candidate</em> building geometry from an
         automated model. It is <strong>not</strong> official cadastral, survey, ULPIN, building-approval or ownership
         data, and it never overwrites the existing demo buildings. Every result requires human review.
@@ -139,7 +139,7 @@ export default function AiBuildingExtraction() {
               value={locality}
               onChange={(e) => setLocality(e.target.value)}
               data-testid="ai-locality"
-              className="input !py-1 !w-auto [&>option]:bg-white"
+              className="input !py-1 !w-auto [&>option]:bg-surface"
             >
               {AREAS.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
@@ -179,7 +179,7 @@ export default function AiBuildingExtraction() {
           right={<Badge status={unavailable ? 'Under Review' : 'Verified'}>{result.status}</Badge>}
         >
           {unavailable ? (
-            <p className="text-sm text-amber-700" data-testid="ai-unavailable">
+            <p className="text-sm text-warn" data-testid="ai-unavailable">
               {result.status} — {result.reason || 'the AI service is not reachable. The rest of the app is unaffected.'}
             </p>
           ) : (
@@ -220,7 +220,7 @@ export default function AiBuildingExtraction() {
                   <MapIcon size={15} /> View on Cesium (same Chennai viewer)
                 </button>
               )}
-              <p className="mt-2 text-[10px] text-amber-700">{result.disclaimer}</p>
+              <p className="mt-2 text-[10px] text-warn">{result.disclaimer}</p>
             </>
           )}
         </Card>

@@ -47,6 +47,9 @@ r.get('/buildings', optionalAuth, prop.listBuildings)
 r.get('/buildings/:buildingId', optionalAuth, prop.getBuilding)
 r.get('/buildings/:buildingId/floors', optionalAuth, prop.listFloors)
 r.get('/buildings/:buildingId/approval', optionalAuth, gov.getBuildingApproval)
+// 3D ULPIN (Land Officer only) — see services/threeDUlpin.js. Distinct from
+// the Phase 9 /3d-identifiers routes below.
+r.post('/buildings/:buildingId/generate-3d-ulpin', requireAuth, requirePermission('3dulpin:create'), prop.generateBuildingThreeDUlpin)
 
 /* ----------------------------------------------------------------- floors */
 r.get('/floors/:floorId', optionalAuth, prop.getFloor)
@@ -55,6 +58,7 @@ r.get('/floors/:floorId', optionalAuth, prop.getFloor)
 r.get('/units', optionalAuth, prop.listUnits)
 r.get('/units/:propertyId', optionalAuth, prop.getUnit)
 r.post('/units/:propertyId/verify', requireAuth, requirePermission('property:verify'), prop.verifyUnit)
+r.post('/units/:propertyId/generate-3d-ulpin', requireAuth, requirePermission('3dulpin:create'), prop.generateUnitThreeDUlpin)
 r.get('/common-areas', optionalAuth, prop.listCommonAreas)
 
 /* ------------------------------------------------------------- governance */
@@ -82,6 +86,7 @@ r.get('/gis/ai-buildings', optionalAuth, aiBld.gisAiBuildings) // Phase 3 — AI
 r.get('/gis/ai-floor-units', optionalAuth, aiFp.gisAiFloorUnits) // Phase 4 — AI floor-plan units (AI_DEMO)
 r.get('/gis/gnss-control-points', optionalAuth, gnss.gisGnssControlPoints) // Phase 6 — GNSS/CORS control points
 r.get('/gis/underground-infrastructure', optionalAuth, infra.gisUndergroundInfrastructure) // Phase 8 — underground infrastructure
+r.get('/gis/tngis-parcels/bbox', optionalAuth, tngis.gisTngisParcelsViewport) // TNGIS — Chennai-wide viewport (BBOX) parcel loader
 r.get('/gis/tngis-parcels', optionalAuth, tngis.gisTngisParcels) // TNGIS / Tamil Nilam — public-source parcel geometry
 
 /* -------------------------------------------------- dashboard / analytics */

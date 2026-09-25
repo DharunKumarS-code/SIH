@@ -34,7 +34,7 @@ const unwrap = (p) =>
     throw e
   })
 
-const get = (url, params) => unwrap(http.get(url, { params }))
+const get = (url, params, config) => unwrap(http.get(url, { params, ...config }))
 const post = (url, body) => unwrap(http.post(url, body))
 
 export const api = {
@@ -56,10 +56,12 @@ export const api = {
   buildings: (params) => get('/buildings', params),
   building: (id) => get(`/buildings/${encodeURIComponent(id)}`),
   buildingFloors: (id) => get(`/buildings/${encodeURIComponent(id)}/floors`),
+  generateBuildingThreeDUlpin: (id) => post(`/buildings/${encodeURIComponent(id)}/generate-3d-ulpin`),
   floor: (id) => get(`/floors/${encodeURIComponent(id)}`),
   units: (params) => get('/units', params),
   unit: (propertyId) => get(`/units/${encodeURIComponent(propertyId)}`),
   verifyUnit: (propertyId) => post(`/units/${encodeURIComponent(propertyId)}/verify`),
+  generateUnitThreeDUlpin: (propertyId) => post(`/units/${encodeURIComponent(propertyId)}/generate-3d-ulpin`),
   commonAreas: (params) => get('/common-areas', params),
 
   // governance
@@ -83,6 +85,9 @@ export const api = {
   gisAiFloorUnits: (params) => get('/gis/ai-floor-units', params),
   gisUndergroundInfrastructure: (params) => get('/gis/underground-infrastructure', params),
   gisTngisParcels: (params) => get('/gis/tngis-parcels', params),
+  // Chennai-wide viewport (BBOX) parcel loader — bbox="minLon,minLat,maxLon,maxLat".
+  // Accepts an AbortController signal so a superseded pan cancels its request.
+  gisTngisParcelsBbox: (params, config) => get('/gis/tngis-parcels/bbox', params, config),
 
   // dashboards
   dashboard: () => get('/dashboard/stats'),

@@ -71,10 +71,10 @@ export default function AiStudio() {
 
       {result && (
         <Card className="mt-4" title={`Result — ${result.feature}`} right={<DemoTag label="SIMULATED" />}>
-          <p className="mb-2 flex items-center gap-2 text-xs text-amber-700">
+          <p className="mb-2 flex items-center gap-2 text-xs text-warn">
             <Cpu size={13} /> {result.r.disclaimer}
           </p>
-          <pre className="max-h-80 overflow-auto rounded bg-[#f5f7fa] p-3 text-[11px] text-slate-600">
+          <pre className="max-h-80 overflow-auto rounded bg-surface-2 p-3 text-[11px] text-slate-600">
             {JSON.stringify(result.r, null, 2)}
           </pre>
         </Card>

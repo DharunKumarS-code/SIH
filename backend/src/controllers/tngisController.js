@@ -15,6 +15,8 @@ import { LOCALITIES } from '../data/localities.js'
 import {
   tngisConfig, listDistricts, listTaluks, listVillages, listSurveyNumbers,
   fetchParcel, TngisSourceUnavailable, OFFICIAL_ULPIN_UNAVAILABLE, TNGIS_DISCLAIMER,
+  getCadastralParcelsInViewport, wfsCadastralFeatureToRecord,
+  VIEWPORT_MAX_SPAN_DEG, VIEWPORT_FEATURE_CAP,
 } from '../services/sources/tngis/index.js'
 import { relateBuildings, principalRing } from '../services/sources/tngis/relations.js'
 import { evaluate } from '../services/topology/index.js'
@@ -90,6 +92,7 @@ export const fetchOneParcel = asyncHandler(async (req, res) => {
     // spatial pointer to the nearest project locality (for the Cesium layer's
     // area-tag + demand loading) — NOT an authoritative admin mapping.
     locality: nearestLocality(record.centroid),
+    discovery: 'EXPLICIT_FETCH', // user drilled District→Taluk→Village→Survey (vs viewport BBOX)
     fetchedBy: req.user?.username || null,
     firstFetchedAt: now,
     updatedAt: now,
@@ -129,49 +132,151 @@ export const getParcel = asyncHandler(async (req, res) => {
 })
 
 /* --------------------------------------------------------- GIS layer */
+
+// One TNGIS parcel record -> one GeoJSON Feature for the Cesium "TNGIS Parcels"
+// layer. Shared by the cached-parcel layer and the viewport (BBOX) loader so
+// both render identically. officialULPIN is ALWAYS null.
+export const parcelLayerFeature = (r) => ({
+  type: 'Feature',
+  geometry: r.geometry,
+  properties: {
+    kind: 'tngis-parcel',
+    sourceRecordId: r.sourceRecordId,
+    source: r.source,
+    sourceType: r.sourceType,
+    provenance: r.provenance,
+    verificationStatus: r.verificationStatus,
+    sourceGeometry: true,
+    officialULPIN: null,
+    officialULPINStatus: r.officialULPINStatus || OFFICIAL_ULPIN_UNAVAILABLE,
+    discovery: r.discovery || null,
+    districtCode: r.districtCode,
+    districtName: r.districtName,
+    lgdDistrictCode: r.lgdDistrictCode,
+    talukCode: r.talukCode,
+    talukName: r.talukName,
+    lgdTalukCode: r.lgdTalukCode,
+    villageCode: r.villageCode,
+    villageName: r.villageName,
+    lgdVillageCode: r.lgdVillageCode,
+    surveyNumber: r.surveyNumber,
+    subDivision: r.subDivision,
+    centroidLatitude: r.centroid?.latitude ?? null,
+    centroidLongitude: r.centroid?.longitude ?? null,
+    sourceCRS: r.sourceCRS,
+    sourceUpdatedAt: r.sourceUpdatedAt,
+    retrievedAt: r.retrievedAt,
+    locality: r.locality,
+  },
+})
+
 // GET /api/gis/tngis-parcels — GeoJSON for the OFF-by-default "TNGIS Parcels"
-// layer inside the EXISTING Chennai-wide Cesium viewer. Only cached parcels
-// with usable geometry are emitted; nothing is bulk-fetched here.
+// layer inside the EXISTING Chennai-wide Cesium viewer. Emits cached parcels
+// with usable geometry. `?excludeViewport=1` returns only parcels a user
+// explicitly fetched (District→Taluk→Village→Survey), not viewport-discovered
+// ones — the Cesium map uses that so the viewport loader owns viewport parcels.
 export const gisTngisParcels = asyncHandler(async (req, res) => {
   const filter = {}
   if (req.query.locality) filter.locality = String(req.query.locality)
   if (req.query.districtCode) filter.districtCode = String(req.query.districtCode)
+  if (req.query.excludeViewport === '1' || req.query.excludeViewport === 'true') {
+    filter.discovery = { $ne: 'VIEWPORT_WFS' }
+  }
   const rows = await db.collection(COLL).find(filter, { sort: { updatedAt: -1 } })
   const features = rows
     .filter((r) => r.geometry && Array.isArray(r.geometry.coordinates) && r.geometry.coordinates.length)
-    .map((r) => ({
-      type: 'Feature',
-      geometry: r.geometry,
-      properties: {
-        kind: 'tngis-parcel',
-        sourceRecordId: r.sourceRecordId,
-        source: r.source,
-        sourceType: r.sourceType,
-        provenance: r.provenance,
-        verificationStatus: r.verificationStatus,
-        sourceGeometry: true,
-        officialULPIN: null,
-        officialULPINStatus: r.officialULPINStatus || OFFICIAL_ULPIN_UNAVAILABLE,
-        districtCode: r.districtCode,
-        districtName: r.districtName,
-        lgdDistrictCode: r.lgdDistrictCode,
-        talukCode: r.talukCode,
-        talukName: r.talukName,
-        lgdTalukCode: r.lgdTalukCode,
-        villageCode: r.villageCode,
-        villageName: r.villageName,
-        lgdVillageCode: r.lgdVillageCode,
-        surveyNumber: r.surveyNumber,
-        subDivision: r.subDivision,
-        centroidLatitude: r.centroid?.latitude ?? null,
-        centroidLongitude: r.centroid?.longitude ?? null,
-        sourceCRS: r.sourceCRS,
-        sourceUpdatedAt: r.sourceUpdatedAt,
-        retrievedAt: r.retrievedAt,
-        locality: r.locality,
-      },
-    }))
+    .map(parcelLayerFeature)
   ok(res, { type: 'FeatureCollection', features, disclaimer: TNGIS_DISCLAIMER })
+})
+
+/* ----------------------------------------- Chennai-wide viewport (BBOX) layer */
+// GET /api/gis/tngis-parcels/bbox?bbox=minLon,minLat,maxLon,maxLat&limit=
+//
+// Progressive, viewport-bounded official parcel geometry for the WHOLE Chennai
+// extent — one public GeoServer WFS GetFeature filtered to the current map view
+// AND district_code=Chennai, hard-capped at VIEWPORT_FEATURE_CAP. Refuses a
+// viewport wider than VIEWPORT_MAX_SPAN_DEG (client must zoom in) so the browser
+// never pulls the whole ~74k-parcel district. Fetched parcels are cached in the
+// `tngisParcels` collection (discovery: 'VIEWPORT_WFS') as a read-through cache
+// of already-public geometry — the RBAC-gated POST /parcels/fetch is unchanged.
+export const gisTngisParcelsViewport = asyncHandler(async (req, res) => {
+  const nums = String(req.query.bbox || '').split(',').map(Number)
+  if (nums.length !== 4 || nums.some((n) => !Number.isFinite(n))) {
+    throw badRequest('bbox=minLon,minLat,maxLon,maxLat (EPSG:4326 decimal degrees) is required')
+  }
+  let [minLon, minLat, maxLon, maxLat] = nums
+  if (minLon > maxLon) [minLon, maxLon] = [maxLon, minLon]
+  if (minLat > maxLat) [minLat, maxLat] = [maxLat, minLat]
+
+  if (maxLon - minLon > VIEWPORT_MAX_SPAN_DEG || maxLat - minLat > VIEWPORT_MAX_SPAN_DEG) {
+    return ok(res, {
+      type: 'FeatureCollection',
+      features: [],
+      meta: {
+        source: 'TNGIS_WFS_VIEWPORT',
+        zoomInRequired: true,
+        maxSpanDeg: VIEWPORT_MAX_SPAN_DEG,
+        reason: 'Viewport too large for parcel detail — zoom in to load TNGIS parcels.',
+      },
+      disclaimer: TNGIS_DISCLAIMER,
+    })
+  }
+
+  const cap = Math.max(1, Math.min(Number(req.query.limit) || VIEWPORT_FEATURE_CAP, VIEWPORT_FEATURE_CAP))
+  const persist = req.query.persist !== '0'
+
+  let fc
+  try {
+    fc = await getCadastralParcelsInViewport({ minLon, minLat, maxLon, maxLat, count: cap })
+  } catch (e) {
+    if (e instanceof TngisSourceUnavailable) throw badRequest(`TNGIS source temporarily unavailable: ${e.message}`)
+    throw e
+  }
+
+  // Best-effort taluk names (one cached admin-master call; never blocks).
+  const talukNames = {}
+  try {
+    for (const t of await listTaluks('02')) talukNames[String(t.talukCode)] = t.name
+  } catch { /* names optional — codes/LGD are still authoritative */ }
+
+  const now = new Date().toISOString()
+  const records = (fc.features || [])
+    .map((f) => wfsCadastralFeatureToRecord(f, now, { talukName: talukNames[String(f?.properties?.taluk_code)] }))
+    .filter(Boolean)
+    .map((r) => ({ ...r, locality: nearestLocality(r.centroid) }))
+
+  // Read-through cache — batched: one lookup for what we already have, one
+  // insert for the rest. Existing rows are left as-is (parcel geometry is
+  // stable), so a viewport pan costs 1 read + 1 write, not O(features).
+  if (persist && records.length) {
+    try {
+      const ids = records.map((r) => r.sourceRecordId)
+      const have = new Set(
+        (await db.collection(COLL).find({ sourceRecordId: { $in: ids } }, { projection: { sourceRecordId: 1 } }))
+          .map((d) => d.sourceRecordId),
+      )
+      const fresh = records
+        .filter((r) => !have.has(r.sourceRecordId))
+        .map((r) => ({ ...r, discovery: 'VIEWPORT_WFS', fetchedBy: null, firstFetchedAt: now, updatedAt: now }))
+      if (fresh.length) await db.collection(COLL).insertMany(fresh)
+    } catch { /* cache write is best-effort — never fail the map request */ }
+  }
+
+  const features = records.filter((r) => r.geometry).map(parcelLayerFeature)
+  ok(res, {
+    type: 'FeatureCollection',
+    features,
+    meta: {
+      source: 'TNGIS_WFS_VIEWPORT',
+      bbox: [minLon, minLat, maxLon, maxLat],
+      numberMatched: Number.isFinite(fc.numberMatched) ? fc.numberMatched : null,
+      returned: features.length,
+      cap,
+      truncated: Number.isFinite(fc.numberMatched) && fc.numberMatched > features.length,
+      persisted: persist,
+    },
+    disclaimer: TNGIS_DISCLAIMER,
+  })
 })
 
 /* ------------------------------------------------- relations (buildings) */

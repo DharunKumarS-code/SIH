@@ -145,7 +145,7 @@ export default function ElevationLiDAR() {
         <DemoTag label="ELEVATION_DEMO — MODEL OUTPUT" />
       </PageHeader>
 
-      <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[12px] leading-relaxed text-amber-700">
+      <p className="mb-4 rounded-lg border border-warn/30 bg-warn/10 p-2.5 text-[12px] leading-relaxed text-warn">
         <strong>ELEVATION_DEMO / MODEL OUTPUT.</strong> Building height, ground and roof elevation are estimated from
         DSM-minus-DEM analysis of demo/research or uploaded elevation data. This is <strong>not</strong> official,
         survey-certified or government-authoritative elevation data, and it never overwrites an existing building's
@@ -178,13 +178,13 @@ export default function ElevationLiDAR() {
           <div className="mt-3 grid grid-cols-2 gap-2">
             <div>
               <label className="text-[12px] text-slate-500">Target area</label>
-              <select value={locality} onChange={(e) => setLocality(e.target.value)} data-testid="elev-locality" className="input mt-1 !py-1 [&>option]:bg-white">
+              <select value={locality} onChange={(e) => setLocality(e.target.value)} data-testid="elev-locality" className="input mt-1 !py-1 [&>option]:bg-surface">
                 {AREAS.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[12px] text-slate-500">Source label</label>
-              <select value={sourceLabel} onChange={(e) => setSourceLabel(e.target.value)} data-testid="elev-source-label" className="input mt-1 !py-1 [&>option]:bg-white">
+              <select value={sourceLabel} onChange={(e) => setSourceLabel(e.target.value)} data-testid="elev-source-label" className="input mt-1 !py-1 [&>option]:bg-surface">
                 <option value="ELEVATION_DEMO">ELEVATION_DEMO</option>
                 <option value="RESEARCH_DATA">RESEARCH_DATA</option>
                 <option value="TEST_FIXTURE">TEST_FIXTURE</option>
@@ -232,7 +232,7 @@ export default function ElevationLiDAR() {
         <div data-testid="elev-results">
           <Card className="mt-4" title="3 · Results" right={<Badge status={unavailable ? 'Under Review' : 'Verified'}>{result.status}</Badge>}>
             {unavailable ? (
-              <p className="text-sm text-amber-700" data-testid="elev-unavailable">
+              <p className="text-sm text-warn" data-testid="elev-unavailable">
                 {result.status} — {result.reason || 'the AI service is not reachable. The rest of the app is unaffected.'}
               </p>
             ) : (
@@ -267,7 +267,7 @@ export default function ElevationLiDAR() {
                         key: 'review', header: 'Review',
                         render: (r) => (
                           r.reviewStatus === 'ACCEPTED'
-                            ? <span className="flex items-center gap-1 text-[11px] text-emerald-700"><CheckCircle2 size={12} /> Applied</span>
+                            ? <span className="flex items-center gap-1 text-[11px] text-teal"><CheckCircle2 size={12} /> Applied</span>
                             : r.reviewStatus === 'REJECTED'
                               ? <span className="text-[11px] text-slate-500">Rejected</span>
                               : can('change-detection:review') ? (
@@ -283,7 +283,7 @@ export default function ElevationLiDAR() {
                     empty="No building height results."
                   />
                 </div>
-                <p className="mt-2 flex items-center gap-1.5 text-[10px] text-amber-700">
+                <p className="mt-2 flex items-center gap-1.5 text-[10px] text-warn">
                   <Mountain size={11} /> {result.disclaimer}
                 </p>
               </>

@@ -51,10 +51,27 @@ test.describe('Phase 10 — detailed 3D Building Explorer (new tab, Three.js)', 
     await expect(explorer.locator('[data-testid="building-scene"] canvas')).toBeVisible({ timeout: 30_000 })
     await expect(explorer.getByTestId('explorer-floor-list')).toContainText('Floor 02')
     await expect(explorer.getByTestId('explorer-unit-list')).toContainText('U201')
-    await expect(explorer.getByText(PROTO_ID)).toBeVisible()
+    await expect(explorer.getByText(PROTO_ID).first()).toBeVisible()
     // Volume / provenance panel present and honestly labelled.
     await expect(explorer.getByText('3D volume information')).toBeVisible()
     await expect(explorer.getByText(/PROTOTYPE \/ AI_DERIVED/)).toBeVisible()
+
+    // Phase 9 — Proposed 3D Property Identifier is shown at BUILDING level
+    // (reusing the same identifier3d service as the unit-level sidebar panel),
+    // and the officialULPIN it displays is exactly what the backend returned —
+    // never a fabricated/invented value, never labelled as an official ULPIN itself.
+    const idPanel = explorer.getByTestId('explorer-identifier')
+    await expect(idPanel).toBeVisible()
+    await expect(idPanel).toContainText('3DPR:')
+    await expect(idPanel).toContainText('Official ULPIN')
+    await expect(idPanel).toContainText(ULPIN)
+    await expect(explorer.getByText(/not an Official 3D ULPIN/i)).toBeVisible()
+    await expect(explorer.getByTestId('explorer-identifier-unavailable')).toHaveCount(0)
+
+    // This building has real seeded floor data — the honest-unavailable path
+    // must NOT fire when data actually exists.
+    await expect(explorer.getByTestId('explorer-floors-unavailable')).toHaveCount(0)
+    await expect(explorer.getByText('Loading floors…')).toHaveCount(0)
 
     // Floor navigation works inside the explorer.
     await explorer.getByTestId('explorer-floor-F01').click()
@@ -90,5 +107,60 @@ test.describe('Phase 10 — detailed 3D Building Explorer (new tab, Three.js)', 
     await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toBeVisible()
     // Return control is always available.
     await expect(page.getByRole('button', { name: /Return to 3D map/i })).toBeVisible()
+  })
+
+  test('honest unavailable states when a building has no floor/interior data or proposed identifier', async ({ page }) => {
+    // Every currently-seeded Sholinganallur/Adyar/Anna Nagar building has real
+    // floor and identifier data, so there is no genuinely "empty" building to
+    // point this deep link at without inventing one. Instead this intercepts
+    // the SAME real backend responses for building B01 and strips them down —
+    // a controlled fixture, not a fabricated building — purely to exercise the
+    // UI's honest-unavailable rendering path.
+    await login(page)
+
+    await page.route('**/api/buildings/TN-CHN-123456789-B01', async (route) => {
+      const res = await route.fetch()
+      const json = await res.json()
+      json.data.floors = []
+      json.data.unitCount = 0
+      await route.fulfill({ response: res, json })
+    })
+    await page.route('**/api/3d-identifiers*', async (route) => {
+      await route.fulfill({ json: { ok: true, data: [] } })
+    })
+
+    await page.goto('/3d-explorer?area=sholinganallur&ulpin=TN-CHN-123456789&buildingId=B01')
+    await expect(page.getByRole('heading', { name: '3D Building Explorer' })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByTestId('building-scene')).toBeVisible({ timeout: 30_000 })
+
+    // Floors: an explicit "unavailable" once the request settles — never a
+    // perpetual "Loading floors…" spinner, and no fabricated floor rows.
+    await expect(page.getByTestId('explorer-floors-unavailable')).toBeVisible()
+    await expect(page.getByText('Floor data unavailable.')).toBeVisible()
+    await expect(page.getByText('Loading floors…')).toHaveCount(0)
+    await expect(page.getByTestId('explorer-floor-list').getByRole('button')).toHaveCount(0)
+
+    // Interior / cutaway / floor-plan modes: honest "unavailable" banner, no
+    // fabricated interior geometry standing in for missing data.
+    await page.getByTestId('explorer-mode-INTERIOR').click()
+    await expect(page.getByTestId('explorer-interior-unavailable')).toContainText('INTERIOR DATA UNAVAILABLE')
+    await page.getByTestId('explorer-mode-CUTAWAY').click()
+    await expect(page.getByTestId('explorer-interior-unavailable')).toBeVisible()
+    await page.getByTestId('explorer-mode-FLOOR_PLAN').click()
+    await expect(page.getByTestId('explorer-interior-unavailable')).toBeVisible()
+    // EXTERIOR always has real footprint/height data — no unavailable banner there.
+    await page.getByTestId('explorer-mode-EXTERIOR').click()
+    await expect(page.getByTestId('explorer-interior-unavailable')).toHaveCount(0)
+
+    // Proposed 3D Property Identifier: an explicit "unavailable" message, never
+    // a fabricated 3DPR: id and never presented as an official ULPIN.
+    await expect(page.getByTestId('explorer-identifier-unavailable')).toBeVisible()
+    await expect(page.getByText('3D Property Identifier: Unavailable')).toBeVisible()
+    await expect(page.getByTestId('explorer-identifier')).toHaveCount(0)
+
+    const pageErrors = []
+    page.on('pageerror', (e) => pageErrors.push(e.stack || String(e)))
+    await page.waitForTimeout(500)
+    expect(pageErrors, pageErrors.join('\n')).toEqual([])
   })
 })

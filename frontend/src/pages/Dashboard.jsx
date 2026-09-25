@@ -5,7 +5,7 @@ import {
 import { useApi } from '../lib/useApi.js'
 import { api } from '../lib/api.js'
 import { num } from '../lib/format.js'
-import { PageHeader, Stat, Spinner, ErrorNote, DemoTag, Card } from '../components/ui/primitives.jsx'
+import { PageHeader, StatStrip, StatStripItem, Spinner, ErrorNote, Card } from '../components/ui/primitives.jsx'
 import { BarCard, PieCard, LineCard } from '../components/charts/Charts.jsx'
 import { PARCEL_ULPIN } from '../lib/constants.js'
 
@@ -33,16 +33,22 @@ export default function Dashboard() {
   return (
     <Scroll>
       <PageHeader title="Government Dashboard" subtitle="Chennai — OMR / Sholinganallur demonstration area">
-        <DemoTag label="DEMO STATISTICS" />
         <button className="btn-primary" onClick={() => navigate('/map')}>
           Open 3D Map
         </button>
       </PageHeader>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {kpis.map(([label, value, icon]) => (
-          <Stat key={label} label={label} value={value} icon={icon} />
-        ))}
+      <div className="space-y-3">
+        <StatStrip>
+          {kpis.slice(0, 4).map(([label, value, icon]) => (
+            <StatStripItem key={label} label={label} value={value} icon={icon} />
+          ))}
+        </StatStrip>
+        <StatStrip>
+          {kpis.slice(4).map(([label, value, icon]) => (
+            <StatStripItem key={label} label={label} value={value} icon={icon} />
+          ))}
+        </StatStrip>
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">

@@ -3,6 +3,7 @@ import { asyncHandler, ok, list, notFoundError } from '../utils/http.js'
 import { parseProtoPropertyId, PROTOTYPE_ID_LABEL } from '../services/idService.js'
 import { recordAudit } from '../services/auditService.js'
 import { unitVolume, floorVolume, buildingVolume, validateUnitVolume } from '../services/geometry3d/index.js'
+import { generateUnique3DUlpin } from '../services/threeDUlpin.js'
 import { buildingHeightProvenance } from './landController.js'
 
 /* ---------------------------------------------------------------- buildings */
@@ -53,6 +54,38 @@ export const getBuilding = asyncHandler(async (req, res) => {
       findings: topologyFindings.slice(0, 10),
     },
   })
+})
+
+// 3D ULPIN — Land-Officer-only, idempotent. This is a system-generated
+// application identifier, never an officially issued government ULPIN; it
+// never touches `building.ulpin` / `building.officialUlpin`.
+export const generateBuildingThreeDUlpin = asyncHandler(async (req, res) => {
+  const { buildingId } = req.params
+  const building = await db.collection('buildings').findOne({ buildingId })
+  if (!building) throw notFoundError(`No building ${buildingId}`)
+
+  if (building.threeDUlpinStatus === 'GENERATED' && building.threeDUlpin) {
+    return ok(res, { building, alreadyGenerated: true })
+  }
+
+  const threeDUlpin = await generateUnique3DUlpin()
+  const patch = {
+    threeDUlpin,
+    threeDUlpinStatus: 'GENERATED',
+    threeDUlpinGeneratedBy: req.user?.username || null,
+    threeDUlpinGeneratedAt: new Date().toISOString(),
+  }
+  const updated = await db.collection('buildings').updateOne({ buildingId }, patch)
+  await recordAudit({
+    user: req.user?.username,
+    action: 'THREE_D_ULPIN_GENERATED',
+    entityType: 'Building',
+    entityId: buildingId,
+    before: { threeDUlpin: building.threeDUlpin || null },
+    after: { threeDUlpin },
+    ip: req.ip,
+  })
+  ok(res, { building: updated, alreadyGenerated: false })
 })
 
 /* ------------------------------------------------------------------- floors */
@@ -180,6 +213,37 @@ export const verifyUnit = asyncHandler(async (req, res) => {
     ip: req.ip,
   })
   ok(res, { unit: updated })
+})
+
+// 3D ULPIN — Land-Officer-only, idempotent (see generateBuildingThreeDUlpin
+// above for the shared rationale). Never touches `unit.ulpin`.
+export const generateUnitThreeDUlpin = asyncHandler(async (req, res) => {
+  const { propertyId } = req.params
+  const unit = await db.collection('propertyUnits').findOne({ propertyId })
+  if (!unit) throw notFoundError(`No unit ${propertyId}`)
+
+  if (unit.threeDUlpinStatus === 'GENERATED' && unit.threeDUlpin) {
+    return ok(res, { unit, alreadyGenerated: true })
+  }
+
+  const threeDUlpin = await generateUnique3DUlpin()
+  const patch = {
+    threeDUlpin,
+    threeDUlpinStatus: 'GENERATED',
+    threeDUlpinGeneratedBy: req.user?.username || null,
+    threeDUlpinGeneratedAt: new Date().toISOString(),
+  }
+  const updated = await db.collection('propertyUnits').updateOne({ propertyId }, patch)
+  await recordAudit({
+    user: req.user?.username,
+    action: 'THREE_D_ULPIN_GENERATED',
+    entityType: 'PropertyUnit',
+    entityId: propertyId,
+    before: { threeDUlpin: unit.threeDUlpin || null },
+    after: { threeDUlpin },
+    ip: req.ip,
+  })
+  ok(res, { unit: updated, alreadyGenerated: false })
 })
 
 /* ------------------------------------------------------------ common areas */

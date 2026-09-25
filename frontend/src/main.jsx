@@ -5,17 +5,20 @@ import './index.css'
 import App from './App.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import { SelectionProvider } from './context/SelectionContext.jsx'
+import { ThemeProvider } from './context/ThemeContext.jsx'
 import { AppErrorBoundary } from './components/ui/AppErrorBoundary.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <AppErrorBoundary>
       <BrowserRouter>
-        <AuthProvider>
-          <SelectionProvider>
-            <App />
-          </SelectionProvider>
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <SelectionProvider>
+              <App />
+            </SelectionProvider>
+          </AuthProvider>
+        </ThemeProvider>
       </BrowserRouter>
     </AppErrorBoundary>
   </StrictMode>,

@@ -110,7 +110,7 @@ const GROUPS = [
 
 function OfficialTag() {
   return (
-    <span className="inline-flex items-center rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-emerald-700">
+    <span className="inline-flex items-center rounded border border-brass/30 bg-brass/10 px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-brass">
       OFFICIAL SOURCE
     </span>
   )
@@ -123,7 +123,7 @@ export function LayerManager() {
   return (
     <div
       className={clsx(
-        'pointer-events-auto absolute left-3 top-3 z-10 rounded-xl panel transition-all',
+        'panel pointer-events-auto absolute left-3 top-3 z-10 transition-all',
         open ? 'w-64' : 'w-11',
       )}
       data-testid="layer-manager"

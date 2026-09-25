@@ -15,6 +15,12 @@ const BuildingExplorer3D = lazyWithRetry(() => import('./pages/BuildingExplorer3
 // same reason. ONE Three.js scene, NOT a second Chennai geographic viewer.
 const UndergroundExplorer3D = lazyWithRetry(() => import('./pages/UndergroundExplorer3D.jsx'), 'UndergroundExplorer3D')
 
+// Coimbatore Demonstration Property 3D Explorer — standalone tab, lazy-loaded
+// for the same reason. Loads the user-provided ODM textured model (OBJ + MTL
+// + 21 textures, ~99MB) ONLY when this route is actually opened — Chennai
+// startup never pays for it, and the main Cesium viewer never loads it either.
+const CoimbatoreExplorer3D = lazyWithRetry(() => import('./pages/CoimbatoreExplorer3D.jsx'), 'CoimbatoreExplorer3D')
+
 import Login from './pages/Login.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import LandParcels from './pages/LandParcels.jsx'
@@ -72,6 +78,14 @@ export default function App() {
         element={
           <Suspense fallback={<div className="grid h-full place-items-center"><Spinner label="Loading Underground Infrastructure Explorer…" /></div>}>
             <UndergroundExplorer3D />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/coimbatore-explorer"
+        element={
+          <Suspense fallback={<div className="grid h-full place-items-center"><Spinner label="Loading 3D Property Explorer…" /></div>}>
+            <CoimbatoreExplorer3D />
           </Suspense>
         }
       />

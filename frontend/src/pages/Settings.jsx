@@ -53,7 +53,7 @@ export default function Settings() {
 
         <Card title="Prototype disclaimer" right={<DemoTag />}>
           <p className="text-xs leading-relaxed text-slate-500">{APP_DISCLAIMER}</p>
-          {data && <p className="mt-2 text-[11px] text-amber-700">{data.disclaimer}</p>}
+          {data && <p className="mt-2 text-[11px] text-warn">{data.disclaimer}</p>}
         </Card>
 
         <Card
@@ -61,7 +61,7 @@ export default function Settings() {
           right={<Badge status="Under Review">Chennai ULPIN: {land.chennai?.status || 'UNAVAILABLE'}</Badge>}
           className="lg:col-span-2"
         >
-          <p className="text-xs leading-relaxed text-amber-700" data-testid="ulpin-availability">
+          <p className="text-xs leading-relaxed text-warn" data-testid="ulpin-availability">
             Official Chennai ULPIN parcel data is <strong>UNAVAILABLE</strong> via public channels — every
             authoritative Government of India / Tamil Nadu source requires an Aadhaar OTP, a CAPTCHA, or a
             registered login, none of which this prototype bypasses. <strong>All parcels shown in the app are
@@ -93,7 +93,7 @@ export default function Settings() {
                     <td className="py-1.5 pr-3 text-slate-600">{s.dataset}</td>
                     <td className="py-1.5 pr-3 text-slate-500">{s.accessBarrier}</td>
                     <td className="py-1.5">
-                      <span className="rounded bg-amber-100 px-1.5 py-0.5 font-bold uppercase text-amber-700">
+                      <span className="rounded bg-warn/10 px-1.5 py-0.5 font-bold uppercase text-warn">
                         {s.chennaiAvailability}
                       </span>
                     </td>

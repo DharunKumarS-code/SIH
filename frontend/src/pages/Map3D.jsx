@@ -63,7 +63,7 @@ export default function Map3D() {
       <ExplorerDock />
 
       {/* Camera + view-level controls (spec section 30) — top-centre strip */}
-      <div className="pointer-events-auto absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-1 rounded-xl panel p-1.5">
+      <div className="panel pointer-events-auto absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-1 p-1.5">
         <CamButton onClick={() => m().zoomBy?.(-0.25)} title="Zoom in"><ZoomIn size={15} /></CamButton>
         <CamButton onClick={() => m().zoomBy?.(0.4)} title="Zoom out"><ZoomOut size={15} /></CamButton>
         <CamButton onClick={() => m().rotateBy?.(-20)} title="Rotate left"><RotateCcw size={15} /></CamButton>

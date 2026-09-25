@@ -790,6 +790,58 @@ export function buildSeed() {
     { logId: 'AUD-0003', user: 'land01', action: 'PROPERTY_VERIFIED', entityType: 'PropertyUnit', entityId: makeProtoPropertyId(PU, 1, 2, '201'), at: iso('2025-07-06T14:40:00Z'), before: { status: 'Pending' }, after: { status: 'Verified' }, ip: '10.0.0.21' },
   ]
 
+  // ---------------------------------------------------------------------
+  // Coimbatore — official land-record fields for the ONE demonstration
+  // property backing the standalone ODM 3D explorer (see
+  // frontend/src/lib/constants.js COIMBATORE_DEMO_PROPERTY). Deliberately
+  // isolated from the Chennai locality loop above and from every other
+  // Chennai building in `agg.buildings`: `officialUlpin` / district / taluk
+  // / village / villageLgdCode / surveyNumber / subdivisionNumber are real
+  // government land-record identifiers the user supplied for this specific
+  // property, so they are NOT stamped `isDemo`. The 3D geometry/height
+  // stay a synthetic ODM-derived reconstruction (`heightSource:
+  // 'ODM_RECONSTRUCTION'`, `isDemo: true`) — never a surveyed volume, and
+  // this record must never be conflated with the Phase 9 Proposed 3D
+  // Property Identifier system (`proposed3DPropertyIdentifiers`) or treated
+  // as an official government-issued 3D ULPIN.
+  const COIMBATORE_CENTROID = { lat: 10.942593, lon: 76.956652 }
+  agg.buildings.push({
+    buildingId: 'COIMBATORE-DEMO-001',
+    ulpin: '72TEYHD9TSKCH0',
+    officialUlpin: '72TEYHD9TSKCH0',
+    parcelId: 'CBE-61N-11',
+    name: 'Coimbatore Kuniyamuthur — Survey 61N/11',
+    shortName: 'Kuniyamuthur',
+    district: 'Coimbatore',
+    districtTamil: 'கோயம்புத்தூர்',
+    taluk: 'Perur',
+    talukTamil: 'பேரூர்',
+    village: 'Kuniamuthur',
+    villageTamil: 'குனியமுத்தூர்',
+    villageLgdCode: '932292',
+    surveyNumber: '61N',
+    subdivisionNumber: '11',
+    subDivision: '11',
+    geometry: polygon(rectRing(COIMBATORE_CENTROID.lon, COIMBATORE_CENTROID.lat, 18, 12)),
+    centroid: point(COIMBATORE_CENTROID.lon, COIMBATORE_CENTROID.lat),
+    footprintSqm: 216,
+    floorsAboveGround: 1,
+    groundFloors: 1,
+    totalFloors: 1,
+    unitCount: 0,
+    heightM: 6,
+    constructionType: 'RCC',
+    approvalStatus: 'Approved',
+    constructionStatus: 'Completed',
+    locality: 'coimbatore-demo',
+    // Height/geometry provenance is derived generically by
+    // buildingHeightProvenance() below (no heightSource override here) —
+    // this is a synthetic ODM reconstruction, not a LIDAR/SURVEY height, so
+    // it correctly falls through to DEMO_PROCEDURAL / UNVERIFIED like every
+    // other prototype building volume in this dataset.
+    isDemo: true,
+  })
+
   return {
     users,
     owners,

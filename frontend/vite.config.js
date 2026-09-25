@@ -28,7 +28,22 @@ export default defineConfig({
   // pass, so the lazy chunk always resolves. (This does not change the
   // lazy-loading architecture — the routes stay lazy(() => import(...)).)
   optimizeDeps: {
-    include: ['three', 'three/examples/jsm/controls/OrbitControls.js'],
+    include: [
+      'three',
+      'three/examples/jsm/controls/OrbitControls.js',
+      // Coimbatore 3D Property Explorer (/coimbatore-explorer) — same
+      // lazy-chunk cold-start issue as OrbitControls above.
+      'three/examples/jsm/controls/PointerLockControls.js',
+      'three/examples/jsm/loaders/OBJLoader.js',
+      'three/examples/jsm/loaders/MTLLoader.js',
+      // 3D Property Certificate download (PropertySidebar's "Download
+      // Certificate" button) — same lazy-chunk cold-start issue: jspdf/qrcode
+      // are only pulled in behind PropertyCertificateModal's lazy(() =>
+      // import(...)), so without this they aren't discovered until the first
+      // click, triggering the same mid-session re-optimize + reload.
+      'jspdf',
+      'qrcode',
+    ],
   },
   server: {
     port: 5173,

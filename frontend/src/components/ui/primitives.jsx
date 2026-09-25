@@ -6,7 +6,7 @@ export function Badge({ children, status, className }) {
   return (
     <span
       className={clsx(
-        'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+        'inline-flex items-center rounded border px-2 py-0.5 text-[11px] font-semibold',
         status ? statusStyle(status) : 'bg-slate-50 text-slate-600 border-slate-300',
         className,
       )}
@@ -16,11 +16,14 @@ export function Badge({ children, status, className }) {
   )
 }
 
+// Amber/"warn" toned, deliberately — brass is reserved for genuinely
+// official marks elsewhere (e.g. OfficialTag in LayerManager). A demo/
+// prototype tag must always read as a caution, never as an official seal.
 export function DemoTag({ className, label = 'DEMO' }) {
   return (
     <span
       className={clsx(
-        'inline-flex items-center rounded bg-amber-100 text-amber-700 px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide',
+        'inline-flex items-center rounded border border-warn/30 bg-warn/10 px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-warn',
         className,
       )}
     >
@@ -47,10 +50,34 @@ export function Stat({ label, value, hint, icon: Icon, accent }) {
   return (
     <div className="card p-4">
       <div className="flex items-start justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</span>
+        <span className="section-title">{label}</span>
         {Icon && <Icon size={16} className={accent || 'text-primary'} />}
       </div>
-      <div className="mt-1 text-2xl font-extrabold text-slate-900">{value}</div>
+      <div className="data-mono mt-1 text-2xl font-semibold text-slate-900">{value}</div>
+      {hint && <div className="mt-0.5 text-xs text-slate-500">{hint}</div>}
+    </div>
+  )
+}
+
+/* Ledger-style stat strip — a row of figures separated by hairline dividers
+   instead of a grid of identical boxed cards. Use for dashboard-style KPI
+   rows; falls back to a single-column stack on narrow screens. */
+export function StatStrip({ children, className }) {
+  return (
+    <div className={clsx('card grid grid-cols-2 divide-y divide-slate-100 sm:grid-cols-4 sm:divide-y-0 sm:divide-x', className)}>
+      {children}
+    </div>
+  )
+}
+
+export function StatStripItem({ label, value, hint, icon: Icon, accent }) {
+  return (
+    <div className="p-4">
+      <div className="flex items-start justify-between gap-2">
+        <span className="section-title">{label}</span>
+        {Icon && <Icon size={14} className={accent || 'text-primary'} />}
+      </div>
+      <div className="data-mono mt-1 text-2xl font-semibold text-slate-900">{value}</div>
       {hint && <div className="mt-0.5 text-xs text-slate-500">{hint}</div>}
     </div>
   )
@@ -79,7 +106,7 @@ export function PageHeader({ title, subtitle, children }) {
   return (
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 className="text-xl font-extrabold tracking-tight text-slate-900">{title}</h1>
+        <h1 className="font-display text-xl font-semibold tracking-tight text-slate-900">{title}</h1>
         {subtitle && <p className="mt-0.5 text-sm text-slate-500">{subtitle}</p>}
       </div>
       {children && <div className="flex items-center gap-2">{children}</div>}
@@ -123,11 +150,14 @@ export function DataTable({ columns, rows, onRowClick, empty = 'No records', row
               onClick={onRowClick ? () => onRowClick(row) : undefined}
               className={clsx(
                 'border-t border-slate-200',
-                onRowClick && 'cursor-pointer hover:bg-primary/10',
+                onRowClick && 'cursor-pointer hover:bg-primary/5',
               )}
             >
               {columns.map((c) => (
-                <td key={c.key} className="px-3 py-2 align-top text-slate-700">
+                <td
+                  key={c.key}
+                  className={clsx('px-3 py-2 align-top text-slate-700', c.mono && 'data-mono')}
+                >
                   {c.render ? c.render(row) : row[c.key] ?? '—'}
                 </td>
               ))}
@@ -146,9 +176,9 @@ export function PageScroll({ children, className }) {
 export function ErrorNote({ error, onRetry }) {
   if (!error) return null
   return (
-    <div className="rounded-lg border border-danger/30 bg-red-50 p-3 text-sm text-danger">
+    <div className="rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
       <p className="font-semibold">Couldn’t load data</p>
-      <p className="text-red-700">{String(error.message || error)}</p>
+      <p className="text-danger/90">{String(error.message || error)}</p>
       {onRetry && (
         <button className="btn-ghost mt-2" onClick={onRetry} type="button">
           Retry

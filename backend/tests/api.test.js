@@ -877,3 +877,54 @@ test('phase5: existing building/floor/unit APIs remain compatible after elevatio
   assert.equal(ok1.status, 200)
   assert.ok(ok1.body.data.building.volume)
 })
+
+/* --------------------------------------------- Coimbatore official ULPIN + 3D ULPIN */
+
+test('coimbatore: seeded building exposes the official ULPIN and land-record fields', async () => {
+  const res = await get('/api/buildings/COIMBATORE-DEMO-001')
+  assert.equal(res.status, 200)
+  const b = res.body.data.building
+  assert.equal(b.officialUlpin, '72TEYHD9TSKCH0')
+  assert.equal(b.district, 'Coimbatore')
+  assert.equal(b.taluk, 'Perur')
+  assert.equal(b.village, 'Kuniamuthur')
+  assert.equal(b.villageLgdCode, '932292')
+  assert.equal(b.surveyNumber, '61N')
+  assert.equal(b.subdivisionNumber, '11')
+  assert.deepEqual(b.centroid.coordinates, [76.956652, 10.942593])
+})
+
+test('3D ULPIN: Land Officer can generate one for the Coimbatore building, it persists, and is idempotent', async () => {
+  // reset any 3D ULPIN left over from a previous run of this test, so the
+  // "first generation" assertions below are meaningful regardless of
+  // whether this suite has run against this store before.
+  await db.collection('buildings').updateOne({ buildingId: 'COIMBATORE-DEMO-001' }, { threeDUlpin: null, threeDUlpinStatus: null })
+
+  const officer = await post('/api/auth/login', { username: 'land01', password: 'Officer@123' })
+  assert.equal(officer.body.data.user.role, 'Land Officer')
+
+  const gen1 = await post('/api/buildings/COIMBATORE-DEMO-001/generate-3d-ulpin', {}, officer.body.data.token)
+  assert.equal(gen1.status, 200)
+  assert.equal(gen1.body.data.alreadyGenerated, false)
+  const threeDUlpin = gen1.body.data.building.threeDUlpin
+  assert.match(threeDUlpin, /^[A-Z0-9]{14}$/)
+  assert.notEqual(threeDUlpin, '72TEYHD9TSKCH0') // never the official ULPIN
+
+  // idempotent — a second call returns the SAME value, not a fresh one
+  const gen2 = await post('/api/buildings/COIMBATORE-DEMO-001/generate-3d-ulpin', {}, officer.body.data.token)
+  assert.equal(gen2.status, 200)
+  assert.equal(gen2.body.data.alreadyGenerated, true)
+  assert.equal(gen2.body.data.building.threeDUlpin, threeDUlpin)
+
+  // persists server-side — visible on a fresh, unauthenticated fetch (as any other role would see it)
+  const reread = await get('/api/buildings/COIMBATORE-DEMO-001')
+  assert.equal(reread.body.data.building.threeDUlpin, threeDUlpin)
+  // the official land ULPIN is untouched by 3D ULPIN generation
+  assert.equal(reread.body.data.building.officialUlpin, '72TEYHD9TSKCH0')
+})
+
+test('3D ULPIN: non-Land-Officer roles cannot generate one', async () => {
+  const citizen = await post('/api/auth/login', { username: 'citizen01', password: 'Citizen@123' })
+  const res = await post('/api/buildings/COIMBATORE-DEMO-001/generate-3d-ulpin', {}, citizen.body.data.token)
+  assert.equal(res.status, 403)
+})

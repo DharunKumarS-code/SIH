@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { PARCEL_ULPIN, DEFAULT_AREA_ID, LOCALITIES_FALLBACK, CHENNAI_CITY_VIEW } from '../lib/constants.js'
+import { PARCEL_ULPIN, DEFAULT_AREA_ID, LOCALITIES_FALLBACK, CHENNAI_CITY_VIEW, CHENNAI_REGIONS, COIMBATORE_DEMO_PROPERTY } from '../lib/constants.js'
 import { api } from '../lib/api.js'
 
 const SelectionContext = createContext(null)
@@ -156,6 +156,19 @@ export function SelectionProvider({ children }) {
     mapApi.current.flyToCity?.()
   }, [])
 
+  // Chennai coverage regions (North / Central / South / OMR). Same one camera,
+  // same viewer — only the view moves; the TNGIS viewport loader then streams
+  // that region's official parcels as the user zooms in.
+  const flyToRegion = useCallback((regionId) => {
+    const r = CHENNAI_REGIONS.find((x) => x.id === regionId)
+    if (!r) return
+    // Pure camera move — deliberately does NOT touch `selection` so it never
+    // triggers the map's selection-reaction effect (which would fly the camera
+    // straight back to the active locality's overview).
+    setIsolated(false)
+    mapApi.current.flyToLonLat?.(r.lon, r.lat, r.height)
+  }, [])
+
   const selectParcel = useCallback((ulpin) => {
     setIsolated(false)
     setSelection({ mode: 'parcel', ulpin, buildingId: null, floorNumber: null, propertyId: null })
@@ -233,6 +246,16 @@ export function SelectionProvider({ children }) {
     mapApi.current.flyToTngisParcel?.(sourceRecordId)
   }, [])
 
+  // Coimbatore — the ONE demonstration property (user-provided ODM textured
+  // model). Deliberately NOT a locality: it never touches `localities` /
+  // `CHENNAI_REGIONS` and is not fetched from the backend/TNGIS pipeline.
+  // Additive selection mode; reuses the same viewer, camera and sidebar.
+  const selectCoimbatoreDemo = useCallback(() => {
+    setIsolated(false)
+    setSelection({ mode: 'coimbatore-demo', ulpin: null, buildingId: null, floorNumber: null, propertyId: COIMBATORE_DEMO_PROPERTY.propertyId })
+    mapApi.current.flyToCoimbatoreDemo?.()
+  }, [])
+
   const reset = useCallback(() => {
     setIsolated(false)
     setSelection((s) => ({ mode: 'overview', ulpin: s.ulpin, buildingId: null, floorNumber: null, propertyId: null, aiBuildingId: null, aiFloorUnitId: null, infrastructureId: null, sourceRecordId: null }))
@@ -261,6 +284,8 @@ export function SelectionProvider({ children }) {
       syncArea,
       cityView,
       cityViewTarget: CHENNAI_CITY_VIEW,
+      flyToRegion,
+      regions: CHENNAI_REGIONS,
       selection,
       isolated,
       setIsolated,
@@ -279,6 +304,7 @@ export function SelectionProvider({ children }) {
       selectGnssPoint,
       selectInfrastructure,
       selectTngisParcel,
+      selectCoimbatoreDemo,
       reset,
     }),
     [
@@ -287,6 +313,7 @@ export function SelectionProvider({ children }) {
       selectArea,
       syncArea,
       cityView,
+      flyToRegion,
       selection,
       isolated,
       layers,
@@ -302,6 +329,7 @@ export function SelectionProvider({ children }) {
       selectGnssPoint,
       selectInfrastructure,
       selectTngisParcel,
+      selectCoimbatoreDemo,
       reset,
     ],
   )

@@ -15,7 +15,7 @@ export function AreaSelector() {
   return (
     <div
       className={clsx(
-        'pointer-events-auto absolute top-3 z-10 rounded-xl panel transition-all',
+        'panel pointer-events-auto absolute top-3 z-10 transition-all',
         ['unit', 'parcel', 'ai-building', 'ai-floor-unit'].includes(selection.mode) ? 'right-3 xl:right-[21.5rem]' : 'right-3',
         open ? 'w-64' : 'w-11',
       )}
@@ -80,10 +80,10 @@ export function AreaSelector() {
           </div>
 
           {active && (
-            <div className="rounded-md border border-slate-200 bg-[#f5f7fa]/40 p-2 text-[11px] text-slate-600">
+            <div className="rounded-md border border-slate-200 bg-surface-2 p-2 text-[11px] text-slate-600">
               <p className="font-semibold text-slate-900">{active.label || active.name}</p>
               {active.zone && <p className="text-slate-500">{active.zone}</p>}
-              <p className="mt-1 font-mono text-[10px] text-cyan">{active.ulpinPrimary}</p>
+              <p className="data-mono mt-1 text-[10px] text-teal">{active.ulpinPrimary}</p>
               <p className="mt-1 text-slate-500">
                 {selection.mode === 'overview'
                   ? 'Select a building to drill into floors and units.'

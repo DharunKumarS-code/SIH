@@ -34,7 +34,7 @@ export default function LandParcels() {
               rowKey={(r) => r.ulpin}
               onRowClick={(r) => navigate(`/parcels/${encodeURIComponent(r.ulpin)}`)}
               columns={[
-                { key: 'ulpin', header: 'ULPIN', render: (r) => <span className="font-mono text-xs text-slate-900">{r.ulpin}</span> },
+                { key: 'ulpin', header: 'ULPIN', render: (r) => <span className="data-mono text-xs text-slate-900">{r.ulpin}</span> },
                 { key: 'landUse', header: 'Land Use' },
                 { key: 'areaSqft', header: 'Area (sq.ft)', render: (r) => num(r.areaSqft) },
                 { key: 'status', header: 'Status', render: (r) => <Badge status={r.status} /> },

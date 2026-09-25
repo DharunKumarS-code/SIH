@@ -181,7 +181,7 @@ export default function GNSSControlPoints() {
         <DemoTag label="GNSS/CORS DEMO — MODEL OUTPUT" />
       </PageHeader>
 
-      <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[12px] leading-relaxed text-amber-700">
+      <p className="mb-4 rounded-lg border border-warn/30 bg-warn/10 p-2.5 text-[12px] leading-relaxed text-warn">
         <strong>GNSS/CORS DEMO / MODEL OUTPUT.</strong> Control-point coordinates, elevations, deviations and validation
         results are derived from uploaded, demonstration, research or survey datasets. They are <strong>not</strong>{' '}
         automatically official cadastral control points or government-authoritative survey data. GNSS/CORS accuracy is
@@ -196,13 +196,13 @@ export default function GNSSControlPoints() {
           <div className="mt-3 grid grid-cols-2 gap-2">
             <div>
               <label className="text-[12px] text-slate-500">Target area</label>
-              <select value={locality} onChange={(e) => setLocality(e.target.value)} data-testid="gnss-locality" className="input mt-1 !py-1 [&>option]:bg-white">
+              <select value={locality} onChange={(e) => setLocality(e.target.value)} data-testid="gnss-locality" className="input mt-1 !py-1 [&>option]:bg-surface">
                 {AREAS.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[12px] text-slate-500">Provenance / source</label>
-              <select value={sourceLabel} onChange={(e) => setSourceLabel(e.target.value)} data-testid="gnss-source-label" className="input mt-1 !py-1 [&>option]:bg-white">
+              <select value={sourceLabel} onChange={(e) => setSourceLabel(e.target.value)} data-testid="gnss-source-label" className="input mt-1 !py-1 [&>option]:bg-surface">
                 {SOURCES.map((s2) => <option key={s2} value={s2}>{s2}</option>)}
               </select>
             </div>
@@ -254,7 +254,7 @@ export default function GNSSControlPoints() {
             Boundary tolerance: {config?.thresholds?.boundaryToleranceM ?? '—'} m · outlier MAD-k: {config?.thresholds?.outlierMadK ?? '—'}
           </p>
           {config?.transform === null && (
-            <p className="mt-2 text-[11px] text-amber-700">AI service unreachable — CRS transformation for projected coordinates will report TRANSFORMATION_UNAVAILABLE.</p>
+            <p className="mt-2 text-[11px] text-warn">AI service unreachable — CRS transformation for projected coordinates will report TRANSFORMATION_UNAVAILABLE.</p>
           )}
         </Card>
       </div>
@@ -287,7 +287,7 @@ export default function GNSSControlPoints() {
                     key: 'review', header: 'Review',
                     render: (r) => (
                       r.verificationStatus === 'ACCEPTED'
-                        ? <span className="flex items-center gap-1 text-[11px] text-emerald-700"><CheckCircle2 size={12} /> Accepted</span>
+                        ? <span className="flex items-center gap-1 text-[11px] text-teal"><CheckCircle2 size={12} /> Accepted</span>
                         : r.verificationStatus === 'REJECTED'
                           ? <span className="text-[11px] text-slate-500">Rejected</span>
                           : can('change-detection:review') ? (
@@ -303,7 +303,7 @@ export default function GNSSControlPoints() {
                 empty="No control points imported."
               />
             </div>
-            <p className="mt-2 flex items-center gap-1.5 text-[10px] text-amber-700">
+            <p className="mt-2 flex items-center gap-1.5 text-[10px] text-warn">
               <Satellite size={11} /> {result.disclaimer}
             </p>
           </Card>

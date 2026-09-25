@@ -227,6 +227,81 @@ test('search: a fetched TNGIS parcel is findable by village name / survey number
   assert.ok(r.body.data.results.some((x) => x.kind === 'tngis-parcel'))
 })
 
+// ------------------------------------------------ Chennai-wide viewport (BBOX)
+
+// bbox key the loader builds for the bundled OMR fixture: rounded to 3dp.
+const OMR_BBOX = '80.220,12.893,80.247,12.912'
+const ANNA_BBOX = '80.198,13.076,80.221,13.094'
+
+test('GET /api/gis/tngis-parcels/bbox — Chennai-wide viewport returns MANY official parcels, no ULPIN', async () => {
+  const { status, body } = await get(`/api/gis/tngis-parcels/bbox?bbox=${OMR_BBOX}`)
+  assert.equal(status, 200)
+  assert.equal(body.data.type, 'FeatureCollection')
+  // the OMR fixture holds 50 real public parcels — this is the Chennai-wide fix:
+  // the map is no longer limited to one hand-fetched parcel.
+  assert.ok(body.data.features.length >= 20, `expected many parcels, got ${body.data.features.length}`)
+  assert.equal(body.data.meta.source, 'TNGIS_WFS_VIEWPORT')
+  for (const f of body.data.features) {
+    assert.equal(f.properties.kind, 'tngis-parcel')
+    assert.equal(f.properties.provenance, 'OFFICIAL_SOURCE')
+    assert.equal(f.properties.verificationStatus, 'SOURCE_VERIFIED')
+    assert.equal(f.properties.officialULPIN, null)
+    assert.equal(f.properties.officialULPINStatus, 'UNAVAILABLE_FROM_PUBLIC_TNGIS_SOURCE')
+    assert.equal(f.properties.sourceCRS, 'EPSG:4326')
+    assert.equal(f.properties.districtCode, '02')
+    assert.ok(['MultiPolygon', 'Polygon'].includes(f.geometry.type))
+    assert.ok(f.properties.sourceRecordId.startsWith('tngis:'))
+  }
+  // every parcel is an individual, uniquely-identified feature (not one merged polygon)
+  const ids = new Set(body.data.features.map((f) => f.properties.sourceRecordId))
+  assert.equal(ids.size, body.data.features.length)
+})
+
+test('GET /api/gis/tngis-parcels/bbox — a second Chennai viewport loads a DIFFERENT parcel set', async () => {
+  const omr = (await get(`/api/gis/tngis-parcels/bbox?bbox=${OMR_BBOX}`)).body.data
+  const anna = (await get(`/api/gis/tngis-parcels/bbox?bbox=${ANNA_BBOX}`)).body.data
+  const omrIds = new Set(omr.features.map((f) => f.properties.sourceRecordId))
+  const annaIds = new Set(anna.features.map((f) => f.properties.sourceRecordId))
+  assert.ok(anna.features.length >= 20)
+  // the two viewports are disjoint areas of Chennai — proves it is not one fixed locality
+  const overlap = [...annaIds].filter((id) => omrIds.has(id))
+  assert.equal(overlap.length, 0)
+})
+
+test('GET /api/gis/tngis-parcels/bbox — refuses a viewport wider than the max span (no bulk district download)', async () => {
+  const { status, body } = await get('/api/gis/tngis-parcels/bbox?bbox=80.0,12.8,80.5,13.3')
+  assert.equal(status, 200)
+  assert.equal(body.data.features.length, 0)
+  assert.equal(body.data.meta.zoomInRequired, true)
+})
+
+test('GET /api/gis/tngis-parcels/bbox — bad bbox is a 400', async () => {
+  assert.equal((await get('/api/gis/tngis-parcels/bbox')).status, 400)
+  assert.equal((await get('/api/gis/tngis-parcels/bbox?bbox=1,2,3')).status, 400)
+})
+
+test('viewport parcels are cached as VIEWPORT_WFS and are inspectable / topology-checkable like any parcel', async () => {
+  const fc = (await get(`/api/gis/tngis-parcels/bbox?bbox=${OMR_BBOX}`)).body.data
+  const one = fc.features[0].properties.sourceRecordId
+
+  const byId = await get(`/api/tngis/parcels/${encodeURIComponent(one)}`)
+  assert.equal(byId.status, 200)
+  assert.equal(byId.body.data.officialULPIN, null)
+  assert.equal(byId.body.data.discovery, 'VIEWPORT_WFS')
+
+  const token = await login('survey01', 'Officer@123')
+  const topo = await post(`/api/tngis/parcels/${encodeURIComponent(one)}/validate-topology`, {}, token)
+  assert.equal(topo.status, 200)
+  assert.ok(topo.body.data.summary)
+})
+
+test('the plain /api/gis/tngis-parcels?excludeViewport=1 layer hides viewport-discovered parcels', async () => {
+  await get(`/api/gis/tngis-parcels/bbox?bbox=${OMR_BBOX}`) // populate
+  const all = (await get('/api/gis/tngis-parcels')).body.data.features.length
+  const explicitOnly = (await get('/api/gis/tngis-parcels?excludeViewport=1')).body.data.features.length
+  assert.ok(all > explicitOnly, `all=${all} should exceed explicitOnly=${explicitOnly}`)
+})
+
 test('the existing DEMO ULPIN parcel system is untouched', async () => {
   const r = await get('/api/parcels/TN-CHN-123456789')
   assert.equal(r.status, 200)

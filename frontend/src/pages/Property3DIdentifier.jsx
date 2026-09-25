@@ -20,11 +20,11 @@ function HierarchyTree({ h, officialULPINDisplay }) {
     <div className="flex items-center gap-2 py-0.5 text-[12px]">
       <ChevronRight size={11} className="text-primary" />
       <span className="text-slate-500">{label}:</span>
-      <span className={mono ? 'font-mono text-slate-900' : 'text-slate-900'}>{value ?? '—'}</span>
+      <span className={mono ? 'data-mono text-slate-900' : 'text-slate-900'}>{value ?? '—'}</span>
     </div>
   )
   return (
-    <div data-testid="identifier-hierarchy" className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+    <div data-testid="identifier-hierarchy" className="rounded-lg border border-slate-200 bg-surface-2 p-2.5">
       {row('Parcel', h.parcel?.parcelId, true)}
       <div className="ml-3">{row('Official ULPIN', officialULPINDisplay, true)}</div>
       <div className="ml-6">{row('Building', h.building ? `${h.building.buildingSegment} · ${h.building.name}` : null)}</div>
@@ -62,9 +62,9 @@ function IdentifierDetail({ id }) {
   return (
     <Card className="mt-4" title="Selected identifier" right={<Badge status={statusTone(d.geometryStatus)}>{d.geometryStatus}</Badge>}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
+        <div className="rounded-lg border border-teal/25 bg-teal/10 p-2.5">
           <p className="text-[10px] uppercase tracking-wide text-slate-500">Official ULPIN (parcel-level, authoritative)</p>
-          <p className="mt-0.5 font-mono text-[13px] font-bold text-slate-900 break-all" data-testid="identifier-official-ulpin">
+          <p className="mt-0.5 data-mono text-[13px] font-bold text-slate-900 break-all" data-testid="identifier-official-ulpin">
             {d.officialULPINDisplay}
           </p>
           <p className="mt-1 text-[10px] text-slate-500">
@@ -73,14 +73,14 @@ function IdentifierDetail({ id }) {
               : 'Not government-verified in this prototype. The Official ULPIN keeps its own provenance and is never upgraded by this identifier.'}
           </p>
         </div>
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-2.5">
-          <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-amber-700">
+        <div className="rounded-lg border border-warn/30 bg-warn/10 p-2.5">
+          <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-warn">
             Proposed 3D Property Identifier <DemoTag label="PROPOSED / RESEARCH" />
           </p>
-          <p className="mt-0.5 font-mono text-[13px] font-bold text-slate-900 break-all" data-testid="identifier-canonical">
+          <p className="mt-0.5 data-mono text-[13px] font-bold text-slate-900 break-all" data-testid="identifier-canonical">
             {d.canonicalIdentifier}
           </p>
-          <p className="mt-1 text-[10px] text-amber-700">
+          <p className="mt-1 text-[10px] text-warn">
             Research / prototype application reference — <strong>not</strong> an Official ULPIN and <strong>not</strong> a
             government-approved 3D ULPIN standard.
           </p>
@@ -121,11 +121,11 @@ function IdentifierDetail({ id }) {
 
       <div className="mt-3">
         <p className="section-title mb-1">Conceptual Volumetric Rights (Proposed Rights Association)</p>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-[11px] text-slate-600" data-testid="identifier-rights">
+        <div className="rounded-lg border border-slate-200 bg-surface-2 p-2.5 text-[11px] text-slate-600" data-testid="identifier-rights">
           <p>Rights: {(d.conceptualVolumetricRights?.rights || []).length === 0 ? 'NOT_ESTABLISHED (none)' : d.conceptualVolumetricRights.rights.join(', ')}</p>
           <p>Restrictions: {(d.conceptualVolumetricRights?.restrictions || []).length === 0 ? 'NOT_PROVIDED (none)' : d.conceptualVolumetricRights.restrictions.join(', ')}</p>
           <p>Encumbrances: {(d.conceptualVolumetricRights?.encumbrances || []).length === 0 ? 'NOT_PROVIDED (none)' : d.conceptualVolumetricRights.encumbrances.join(', ')}</p>
-          <p className="mt-1 text-[10px] text-amber-700">{d.conceptualVolumetricRights?.note}</p>
+          <p className="mt-1 text-[10px] text-warn">{d.conceptualVolumetricRights?.note}</p>
         </div>
       </div>
 
@@ -136,7 +136,7 @@ function IdentifierDetail({ id }) {
           <ul className="space-y-1">
             {(versionsQ.data?.versions || d.geometryVersions || []).map((v) => (
               <li key={v.geometryVersionId || v.geometryVersion} className="flex items-center justify-between rounded border border-slate-200 px-2 py-1 text-[11px]">
-                <span className="font-mono text-slate-900">{v.geometryVersion}</span>
+                <span className="data-mono text-slate-900">{v.geometryVersion}</span>
                 <Badge status={statusTone(v.status)}>{v.status}</Badge>
                 <span className="text-slate-500">src {v.source}</span>
                 <span className="text-slate-500">{v.previousVersion ? `prev ${v.previousVersion}` : 'baseline'}</span>
@@ -171,12 +171,12 @@ function IdentifierDetail({ id }) {
                 <ul className="space-y-0.5 text-[11px] text-slate-600" data-testid="identifier-underground">
                   {d.relatedUndergroundInfrastructure.map((r) => (
                     <li key={r.infrastructureId}>
-                      <span className="font-mono text-slate-500">{r.infrastructureId}</span> · {r.type} · {r.spatialRelation} · legal {r.legalOwnership}
+                      <span className="data-mono text-slate-500">{r.infrastructureId}</span> · {r.type} · {r.spatialRelation} · legal {r.legalOwnership}
                     </li>
                   ))}
                 </ul>
               )}
-            <p className="mt-1 text-[10px] text-amber-700">Spatial relationship only — never part of the identifier hierarchy and never an ownership claim.</p>
+            <p className="mt-1 text-[10px] text-warn">Spatial relationship only — never part of the identifier hierarchy and never an ownership claim.</p>
           </div>
         </div>
       )}
@@ -187,8 +187,8 @@ function IdentifierDetail({ id }) {
           <ul className="space-y-1 text-[11px]" data-testid="identifier-findings">
             {d.validation.findings.map((f) => (
               <li key={f.validationId}>
-                <span className={f.status === 'ERROR' ? 'text-danger' : f.status === 'VALID' ? 'text-emerald-700' : 'text-amber-700'}>{f.status}</span>{' '}
-                <span className="font-mono text-slate-500">{f.ruleId}</span> — {f.message}
+                <span className={f.status === 'ERROR' ? 'text-danger' : f.status === 'VALID' ? 'text-teal' : 'text-warn'}>{f.status}</span>{' '}
+                <span className="data-mono text-slate-500">{f.ruleId}</span> — {f.message}
               </li>
             ))}
           </ul>
@@ -202,7 +202,7 @@ function IdentifierDetail({ id }) {
         <button className="btn-ghost" onClick={() => navigator.clipboard?.writeText(d.canonicalIdentifier)}>Copy identifier</button>
       </div>
 
-      <p className="mt-3 text-[10px] text-amber-700" data-testid="identifier-detail-disclaimer">{d.disclaimer}</p>
+      <p className="mt-3 text-[10px] text-warn" data-testid="identifier-detail-disclaimer">{d.disclaimer}</p>
     </Card>
   )
 }
@@ -267,7 +267,7 @@ export default function Property3DIdentifier() {
         <DemoTag label="PROPOSED / RESEARCH" />
       </PageHeader>
 
-      <p className="mb-4 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[12px] leading-relaxed text-amber-700" data-testid="identifier-disclaimer">
+      <p className="mb-4 flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/10 p-2.5 text-[12px] leading-relaxed text-warn" data-testid="identifier-disclaimer">
         <ShieldAlert size={16} className="mt-0.5 shrink-0" />
         <span>
           <strong>PROPOSED 3D PROPERTY IDENTIFIER.</strong> This identifier is a research / prototype reference created by this
@@ -281,7 +281,7 @@ export default function Property3DIdentifier() {
 
       {config && (
         <Card className="mb-4" title="Canonical format">
-          <p className="font-mono text-[12px] text-slate-900">{config.canonicalFormat}</p>
+          <p className="data-mono text-[12px] text-slate-900">{config.canonicalFormat}</p>
           <p className="mt-1 text-[11px] text-slate-500">{config.officialUlpinNote}</p>
           <p className="mt-1 text-[11px] text-slate-500">{config.standardizationNote}</p>
         </Card>
@@ -289,7 +289,7 @@ export default function Property3DIdentifier() {
 
       <Card className="mb-4" title="Search">
         <form onSubmit={runSearch} className="flex gap-2">
-          <input className="input font-mono text-[12px]" data-testid="identifier-search-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="3DPR:… or Official ULPIN / Building / Floor / Unit / Volume id" />
+          <input className="input data-mono text-[12px]" data-testid="identifier-search-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="3DPR:… or Official ULPIN / Building / Floor / Unit / Volume id" />
           <button className="btn-primary" type="submit"><Search size={15} /> Search</button>
         </form>
         {searchState.loading && <div className="mt-2"><Spinner /></div>}
@@ -300,7 +300,7 @@ export default function Property3DIdentifier() {
             {searchState.results.map((r) => (
               <li key={r.identifierId} className="flex items-center justify-between gap-3 py-2">
                 <button className="min-w-0 text-left" onClick={() => setSelectedId(r.identifierId)}>
-                  <p className="truncate font-mono text-[12px] font-semibold text-slate-900">{r.canonicalIdentifier}</p>
+                  <p className="truncate data-mono text-[12px] font-semibold text-slate-900">{r.canonicalIdentifier}</p>
                   <p className="truncate text-[11px] text-slate-500">ULPIN {r.officialULPIN || 'NOT AVAILABLE'} · {r.geometryVersion} · {r.status}</p>
                 </button>
                 <Badge>{r.verificationStatus}</Badge>
@@ -317,7 +317,7 @@ export default function Property3DIdentifier() {
           {validateBusy ? <Spinner label="…" /> : 'Validate'}
         </button>
       }>
-        <input className="input font-mono text-[12px]" data-testid="identifier-validate-input" value={validateInput} onChange={(e) => setValidateInput(e.target.value)} />
+        <input className="input data-mono text-[12px]" data-testid="identifier-validate-input" value={validateInput} onChange={(e) => setValidateInput(e.target.value)} />
         {validateResult && (
           <div className="mt-2" data-testid="identifier-validate-result">
             <div className="flex items-center gap-2 text-[12px]">
@@ -328,11 +328,11 @@ export default function Property3DIdentifier() {
             <ul className="mt-1 space-y-1 text-[11px]">
               {(validateResult.findings || []).map((f) => (
                 <li key={f.validationId}>
-                  <span className={f.status === 'ERROR' ? 'text-danger' : f.status === 'VALID' ? 'text-emerald-700' : 'text-amber-700'}>{f.status}</span>{' '}
-                  <span className="font-mono text-slate-500">{f.ruleId}</span> — {f.message}
+                  <span className={f.status === 'ERROR' ? 'text-danger' : f.status === 'VALID' ? 'text-teal' : 'text-warn'}>{f.status}</span>{' '}
+                  <span className="data-mono text-slate-500">{f.ruleId}</span> — {f.message}
                 </li>
               ))}
-              {(validateResult.findings || []).length === 0 && <li className="text-emerald-700">VALID — no findings.</li>}
+              {(validateResult.findings || []).length === 0 && <li className="text-teal">VALID — no findings.</li>}
             </ul>
           </div>
         )}
@@ -340,7 +340,7 @@ export default function Property3DIdentifier() {
 
       <Card className="mt-4" title="Look up by Official ULPIN">
         <div className="flex flex-wrap items-end gap-2">
-          <input className="input w-64 font-mono text-[12px]" data-testid="identifier-ulpin-input" value={ulpinLookup} onChange={(e) => setUlpinLookup(e.target.value)} />
+          <input className="input w-64 data-mono text-[12px]" data-testid="identifier-ulpin-input" value={ulpinLookup} onChange={(e) => setUlpinLookup(e.target.value)} />
           <button className="btn-primary" data-testid="identifier-ulpin-run" onClick={runUlpinLookup}>Find associated 3D references</button>
         </div>
         <ErrorNote error={ulpinState.error} />
@@ -355,7 +355,7 @@ export default function Property3DIdentifier() {
             <ul className="mt-2 space-y-1">
               {(ulpinState.data.proposed3DIdentifiers || []).map((r) => (
                 <li key={r.identifierId} className="flex items-center justify-between rounded border border-slate-200 px-2 py-1 text-[11px]">
-                  <button className="font-mono text-slate-900" onClick={() => setSelectedId(r.identifierId)}>{r.canonicalIdentifier}</button>
+                  <button className="data-mono text-slate-900" onClick={() => setSelectedId(r.identifierId)}>{r.canonicalIdentifier}</button>
                   <Badge>{r.geometryVersion}</Badge>
                 </li>
               ))}
@@ -372,8 +372,8 @@ export default function Property3DIdentifier() {
             rowKey={(r) => r.identifierId}
             onRowClick={(r) => setSelectedId(r.identifierId)}
             columns={[
-              { key: 'canonicalIdentifier', header: 'Proposed 3D Property Identifier', render: (r) => <span className="font-mono text-xs">{r.canonicalIdentifier}</span> },
-              { key: 'officialULPIN', header: 'Official ULPIN', render: (r) => <span className="font-mono text-xs">{r.officialULPIN || 'NOT AVAILABLE'}</span> },
+              { key: 'canonicalIdentifier', header: 'Proposed 3D Property Identifier', render: (r) => <span className="data-mono text-xs">{r.canonicalIdentifier}</span> },
+              { key: 'officialULPIN', header: 'Official ULPIN', render: (r) => <span className="data-mono text-xs">{r.officialULPIN || 'NOT AVAILABLE'}</span> },
               { key: 'geometryVersion', header: 'Ver', render: (r) => <Badge>{r.geometryVersion}</Badge> },
               { key: 'status', header: 'Status', render: (r) => <DemoTag label={r.status} /> },
               { key: 'geometryStatus', header: 'Geometry', render: (r) => <Badge status={statusTone(r.geometryStatus)}>{r.geometryStatus}</Badge> },

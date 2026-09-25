@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { useNavigate } from 'react-router-dom'
-import { Menu, Search, MapPin, LogOut, Building, Home, User2, Layers, Layers3, Waypoints, Boxes, Landmark } from 'lucide-react'
+import { Menu, Search, MapPin, LogOut, Building, Home, User2, Layers, Layers3, Waypoints, Boxes, Landmark, Sun, Moon } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useSelection } from '../../context/SelectionContext.jsx'
+import { useTheme } from '../../context/ThemeContext.jsx'
 import { api } from '../../lib/api.js'
+import { COIMBATORE_DEMO_PROPERTY } from '../../lib/constants.js'
 import { NotificationBell } from './NotificationBell.jsx'
 
 const KIND_ICON = { unit: Home, building: Building, floor: Layers3, parcel: Layers, owner: User2, infrastructure: Waypoints, identifier: Boxes, 'tngis-parcel': Landmark }
 
 export function TopBar({ onToggleNav }) {
   const { user, logout } = useAuth()
-  const { selectParcel, selectBuilding, selectFloor, selectUnit, selectInfrastructure, selectTngisParcel, setLayerGroup, localities, area, selectArea } = useSelection()
+  const { theme, toggleTheme } = useTheme()
+  const { selectParcel, selectBuilding, selectFloor, selectUnit, selectInfrastructure, selectTngisParcel, setLayerGroup, localities, area, selectArea, cityView, flyToRegion, regions, selectCoimbatoreDemo, selection } = useSelection()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
   const [results, setResults] = useState([])
@@ -69,21 +72,21 @@ export function TopBar({ onToggleNav }) {
   }
 
   return (
-    <header className="z-30 flex h-16 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-3">
+    <header className="z-30 flex h-16 shrink-0 items-center gap-3 border-b border-slate-200 bg-surface px-3">
       <button className="btn-ghost lg:hidden !px-2" onClick={onToggleNav} aria-label="Toggle navigation">
         <Menu size={18} />
       </button>
 
       {/* Government masthead */}
       <div className="flex items-center gap-2.5 pr-2">
-        <div className="grid h-9 w-9 place-items-center rounded bg-primary text-white">
-          <Landmark size={18} />
+        <div className="grid h-9 w-9 place-items-center rounded-md border border-primary/25 bg-primary/10 text-primary">
+          <Landmark size={17} />
         </div>
         <div className="hidden leading-tight sm:block">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
             Government &middot; Land Governance Portal
           </div>
-          <div className="text-sm font-extrabold tracking-tight text-slate-900">PROPERTY 3D ULPIN</div>
+          <div className="font-display text-sm font-semibold tracking-tight text-slate-900">PROPERTY 3D ULPIN</div>
           <div className="text-[10px] text-slate-500">Chennai 3D Cadastre</div>
         </div>
       </div>
@@ -101,7 +104,7 @@ export function TopBar({ onToggleNav }) {
         />
         {open && (
           <ul
-            className="panel absolute left-0 right-0 top-11 z-40 max-h-80 overflow-y-auto rounded-lg p-1"
+            className="panel absolute left-0 right-0 top-11 z-40 max-h-80 overflow-y-auto p-1"
             data-testid="search-results"
           >
             {results.length === 0 ? (
@@ -114,20 +117,20 @@ export function TopBar({ onToggleNav }) {
                     <button
                       type="button"
                       onClick={() => choose(r)}
-                      className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-primary/10"
+                      className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-primary/5"
                     >
                       <Icon size={15} className="text-primary" />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-semibold text-slate-900">{r.title}</span>
-                        <span className="block truncate text-xs text-slate-500">{r.subtitle}</span>
+                        <span className="data-mono block truncate text-xs text-slate-500">{r.subtitle}</span>
                       </span>
                       {r.kind === 'parcel' && r.verification && (
                         <span
                           className={clsx(
                             'rounded px-1.5 py-0.5 text-[10px] font-bold uppercase',
                             r.verification === 'OFFICIAL'
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : 'bg-amber-100 text-amber-700',
+                              ? 'bg-brass/10 text-brass'
+                              : 'bg-warn/10 text-warn',
                           )}
                         >
                           {r.verification}
@@ -144,25 +147,53 @@ export function TopBar({ onToggleNav }) {
       </div>
 
       <div className="hidden items-center gap-1 rounded-md border border-slate-200 bg-slate-50 pl-2 pr-1 py-1 text-xs text-slate-600 md:flex">
-        <MapPin size={13} className="text-cyan" />
-        <span className="text-slate-500">Chennai &middot;</span>
+        <MapPin size={13} className="text-teal" />
+        <span className="text-slate-500">
+          {selection?.mode === 'coimbatore-demo' ? 'Coimbatore' : 'Chennai'} &middot;
+        </span>
         <select
-          value={area?.id || ''}
+          value={selection?.mode === 'coimbatore-demo' ? 'coimbatore-demo' : area?.id || ''}
           onChange={(e) => {
+            const v = e.target.value
             navigate('/map')
-            selectArea(e.target.value)
+            if (v === '__city') cityView?.()
+            else if (v === 'coimbatore-demo') selectCoimbatoreDemo?.()
+            else if (v.startsWith('region:')) flyToRegion?.(v.slice(7))
+            else selectArea(v)
           }}
           className="bg-transparent pr-1 font-semibold text-slate-900 outline-none"
-          aria-label="Chennai area"
+          aria-label="Location"
           data-testid="area-select"
         >
-          {(localities || []).map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.name}
+          <option value="__city">Chennai — full coverage</option>
+          <optgroup label="Coverage regions">
+            {(regions || []).map((r) => (
+              <option key={r.id} value={`region:${r.id}`}>{r.name}</option>
+            ))}
+          </optgroup>
+          <optgroup label="Detailed localities">
+            {(localities || []).map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Coimbatore">
+            <option value="coimbatore-demo" data-testid="area-option-coimbatore-demo">
+              {COIMBATORE_DEMO_PROPERTY.name}
             </option>
-          ))}
+          </optgroup>
         </select>
       </div>
+
+      <button
+        className="btn-ghost !px-2"
+        onClick={toggleTheme}
+        aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+        title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+      >
+        {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+      </button>
 
       <NotificationBell />
 

@@ -54,6 +54,14 @@ const FIXTURES = {
   'admin:survey:02:11:013': 'surveys-02-11-013.json',
   'geom:survey_number:02:11:013:234': 'geom-02-11-013-234.json',
   'wfs:11:013:234': 'wfs-cadastral-02-11-013-234.json',
+  // Viewport WFS reads (BBOX + district_code=2). Keyed by the rounded bbox the
+  // loader builds: `wfs:bbox:<minLon>,<minLat>,<maxLon>,<maxLat>` (3dp). These
+  // are real public GeoServer responses captured for offline / CI so the map
+  // shows Chennai-wide parcels without a live call.
+  'wfs:bbox:80.220,12.893,80.247,12.912': 'wfs-bbox-omr.json', // OMR / Sholinganallur
+  'wfs:bbox:80.198,13.076,80.221,13.094': 'wfs-bbox-annanagar.json', // Anna Nagar
+  'wfs:bbox:80.240,13.040,80.270,13.070': 'wfs-bbox-central.json', // central Chennai
+  'wfs:bbox:80.270,13.100,80.300,13.130': 'wfs-bbox-north.json', // north Chennai
 }
 
 function fixture(key) {

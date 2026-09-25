@@ -34,6 +34,7 @@ export const PERMISSIONS = {
     'topology:read',
     'infrastructure:read',
     '3didentifier:read',
+    '3dulpin:create',
   ],
   'Survey Officer': [
     'parcel:search',

@@ -21,7 +21,7 @@ function statusTone(status) {
 
 function severityTone(sev) {
   if (sev === 'CRITICAL' || sev === 'HIGH') return 'text-danger'
-  if (sev === 'MEDIUM') return 'text-amber-700'
+  if (sev === 'MEDIUM') return 'text-warn'
   return 'text-slate-500'
 }
 
@@ -32,7 +32,7 @@ function EntitySummaryRow({ label, bucket }) {
       <span className="text-slate-600">{label}</span>
       <div className="flex gap-3">
         <span className="text-slate-500">Valid <b className="text-slate-600">{bucket.valid}</b></span>
-        <span className="text-amber-700">Warning <b>{bucket.warning}</b></span>
+        <span className="text-warn">Warning <b>{bucket.warning}</b></span>
         <span className="text-danger">Error <b>{bucket.error}</b></span>
         {bucket.reviewRequired > 0 && <span className="text-slate-500">Review <b>{bucket.reviewRequired}</b></span>}
       </div>
@@ -48,7 +48,7 @@ function Finding({ f, canReview, onFocus, onReview, reviewBusy, expanded, onTogg
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge status={statusTone(f.status)}>{f.status}</Badge>
             <span className={`text-[10px] font-bold uppercase ${severityTone(f.severity)}`}>{f.severity}</span>
-            <span className="font-mono text-[11px] text-slate-500">{f.ruleId}</span>
+            <span className="data-mono text-[11px] text-slate-500">{f.ruleId}</span>
             <Badge>{f.entityType}</Badge>
           </div>
           <p className="mt-1 text-[13px] text-slate-700">{f.message}</p>
@@ -73,21 +73,21 @@ function Finding({ f, canReview, onFocus, onReview, reviewBusy, expanded, onTogg
         </button>
       )}
       {expanded && (
-        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 rounded bg-slate-50 p-2 text-[11px] text-slate-500" data-testid="topology-finding-details">
-          <span>Entity ID: <span className="font-mono text-slate-600">{f.entityId}</span></span>
-          {f.parentEntityId && <span>Parent: <span className="font-mono text-slate-600">{f.parentEntityId}</span></span>}
-          {f.relatedEntityId && <span>Related: <span className="font-mono text-slate-600">{f.relatedEntityId}</span></span>}
+        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 rounded bg-surface-2 p-2 text-[11px] text-slate-500" data-testid="topology-finding-details">
+          <span>Entity ID: <span className="data-mono text-slate-600">{f.entityId}</span></span>
+          {f.parentEntityId && <span>Parent: <span className="data-mono text-slate-600">{f.parentEntityId}</span></span>}
+          {f.relatedEntityId && <span>Related: <span className="data-mono text-slate-600">{f.relatedEntityId}</span></span>}
           {f.computedValue != null && <span>Computed Value: <span className="text-slate-600">{f.computedValue}</span></span>}
           {f.tolerance != null && <span>Tolerance: <span className="text-slate-600">{f.tolerance}</span></span>}
           {f.provenance && <span>Provenance: <span className="text-slate-600">{f.provenance}</span></span>}
-          {f.aliases?.length > 0 && <span>Also known as: <span className="font-mono text-slate-600">{f.aliases.join(', ')}</span></span>}
-          <span>Validation ID: <span className="font-mono text-slate-600">{f.validationId}</span></span>
+          {f.aliases?.length > 0 && <span>Also known as: <span className="data-mono text-slate-600">{f.aliases.join(', ')}</span></span>}
+          <span>Validation ID: <span className="data-mono text-slate-600">{f.validationId}</span></span>
         </div>
       )}
       {canReview && f.status !== 'VALID' && (
         <div className="mt-1.5 flex items-center gap-2">
           {f.reviewAction ? (
-            <span className="flex items-center gap-1 text-[11px] text-emerald-700"><CheckCircle2 size={12} /> {f.reviewAction}</span>
+            <span className="flex items-center gap-1 text-[11px] text-teal"><CheckCircle2 size={12} /> {f.reviewAction}</span>
           ) : (
             <button className="btn-ghost !px-2 !py-0.5 text-[11px]" disabled={reviewBusy === f.validationId} onClick={() => onReview(f.validationId)}>
               {reviewBusy === f.validationId ? <Spinner label="…" /> : 'Mark Reviewed'}
@@ -200,7 +200,7 @@ export default function TopologyValidation() {
         <DemoTag label="RULE_ENGINE — DETERMINISTIC_VALIDATION" />
       </PageHeader>
 
-      <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[12px] leading-relaxed text-amber-700">
+      <p className="mb-4 rounded-lg border border-warn/30 bg-warn/10 p-2.5 text-[12px] leading-relaxed text-warn">
         <strong>Deterministic geometry rules, not AI.</strong> Findings come from explainable rule-based checks
         (self-intersection, overlap, containment, Z-range, stacking…) against the existing prototype/DEMO geometry.
         A finding never modifies stored geometry — any suggested fix is guidance for a separate, explicit review
@@ -265,19 +265,19 @@ export default function TopologyValidation() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
               <label className="text-[12px] text-slate-500">Entity</label>
-              <select value={filters.entity} onChange={(e) => setFilters((f) => ({ ...f, entity: e.target.value }))} data-testid="topology-filter-entity" className="input mt-1 !py-1 [&>option]:bg-white">
+              <select value={filters.entity} onChange={(e) => setFilters((f) => ({ ...f, entity: e.target.value }))} data-testid="topology-filter-entity" className="input mt-1 !py-1 [&>option]:bg-surface">
                 {ENTITY_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[12px] text-slate-500">Status</label>
-              <select value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} data-testid="topology-filter-status" className="input mt-1 !py-1 [&>option]:bg-white">
+              <select value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} data-testid="topology-filter-status" className="input mt-1 !py-1 [&>option]:bg-surface">
                 {STATUS_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[12px] text-slate-500">Severity</label>
-              <select value={filters.severity} onChange={(e) => setFilters((f) => ({ ...f, severity: e.target.value }))} data-testid="topology-filter-severity" className="input mt-1 !py-1 [&>option]:bg-white">
+              <select value={filters.severity} onChange={(e) => setFilters((f) => ({ ...f, severity: e.target.value }))} data-testid="topology-filter-severity" className="input mt-1 !py-1 [&>option]:bg-surface">
                 {SEVERITY_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
               </select>
             </div>
@@ -302,7 +302,7 @@ export default function TopologyValidation() {
               />
             ))}
           </div>
-          <p className="mt-2 text-[10px] text-amber-700">{run.disclaimer}</p>
+          <p className="mt-2 text-[10px] text-warn">{run.disclaimer}</p>
         </Card>
       )}
     </PageScroll>

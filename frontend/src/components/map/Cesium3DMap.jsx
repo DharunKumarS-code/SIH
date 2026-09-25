@@ -4,7 +4,7 @@ import 'cesium/Build/Cesium/Widgets/widgets.css'
 import { useSelection } from '../../context/SelectionContext.jsx'
 import { applyGrading } from '../../lib/cesiumGrading.js'
 import { api } from '../../lib/api.js'
-import { PARCEL_ULPIN, DEFAULT_AREA_ID, CHENNAI_CITY_VIEW } from '../../lib/constants.js'
+import { PARCEL_ULPIN, DEFAULT_AREA_ID, CHENNAI_CITY_VIEW, COIMBATORE_DEMO_PROPERTY } from '../../lib/constants.js'
 import { LAND_USE_COLORS } from '../../lib/format.js'
 
 const CESIUM_TOKEN = import.meta.env.VITE_CESIUM_ION_TOKEN
@@ -17,19 +17,43 @@ const ring = (geometry) => {
 }
 const finite = (n) => typeof n === 'number' && Number.isFinite(n)
 
+// Deterministic tone pick from COL.buildingShellVariants, keyed by buildingId
+// — same building always gets the same tone, no randomness/flicker on reload.
+function shellVariantIndex(id, variantCount) {
+  let h = 0
+  const s = String(id || '')
+  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) | 0
+  return Math.abs(h) % variantCount
+}
+
 // Camera-height bands that gate progressive detail. ONE scene, ONE camera —
 // selecting an area only moves the camera and flips visibility.
 const LOD = { CITY: 5200, AREA: 750 } // > CITY: city  | CITY..AREA: area  | < AREA: building/unit
 
+// TNGIS Chennai-wide viewport (BBOX) parcel loader tuning.
+const TNGIS_VIEWPORT_MAX_CAM_M = 4200 // only pull parcel geometry when this close
+const TNGIS_VIEWPORT_LIMIT = 250 // per-viewport server cap (server hard cap is 400)
+const TNGIS_MAX_ENTITIES = 1400 // resident TNGIS parcel entities before oldest are evicted
+
 const COL = {
-  buildingShell: Cesium.Color.fromCssColorString('#8b97ad').withAlpha(0.28),
-  buildingShellSel: Cesium.Color.fromCssColorString('#4784f5').withAlpha(0.12),
+  // Solid, near-opaque neutral massing (was a translucent 0.28 ghost fill —
+  // read as a flat map overlay rather than a 3D city). A small deterministic
+  // tone set (below) gives buildings gentle, professional separation without
+  // turning into a gaming palette.
+  buildingShell: Cesium.Color.fromCssColorString('#aab2c0').withAlpha(0.95),
+  buildingShellSel: Cesium.Color.fromCssColorString('#4784f5').withAlpha(0.18),
   unit: Cesium.Color.fromCssColorString('#9aa7bd').withAlpha(0.92),
   unitCommercial: Cesium.Color.fromCssColorString('#d99b3f').withAlpha(0.9),
   unitSelected: Cesium.Color.fromCssColorString('#f2b807'),
   unitDim: Cesium.Color.fromCssColorString('#9aa7bd').withAlpha(0.08),
   common: Cesium.Color.fromCssColorString('#38c9d6').withAlpha(0.5),
-  outline: Cesium.Color.fromCssColorString('#0b1220').withAlpha(0.6),
+  outline: Cesium.Color.fromCssColorString('#0b1220').withAlpha(0.75),
+  // Deterministic, near-neutral tone set for building massing — picked per
+  // buildingId (see buildingShellVariant()) so adjacent buildings in a dense
+  // block read as distinct structures rather than one fused slab.
+  buildingShellVariants: ['#aab2c0', '#a2acb9', '#b3bac4', '#9fa9b7'].map((c) =>
+    Cesium.Color.fromCssColorString(c).withAlpha(0.95),
+  ),
   floorVolume: Cesium.Color.fromCssColorString('#4784f5').withAlpha(0.14), // prototype floor volume slab
   floorVolumeLine: Cesium.Color.fromCssColorString('#4784f5').withAlpha(0.8),
   areaFill: Cesium.Color.fromCssColorString('#4784f5').withAlpha(0.05),
@@ -59,6 +83,15 @@ const COL = {
   tngisParcel: Cesium.Color.fromCssColorString('#0f766e').withAlpha(0.20),
   tngisParcelSel: Cesium.Color.fromCssColorString('#f2b807').withAlpha(0.28),
   tngisParcelLine: Cesium.Color.fromCssColorString('#0f766e').withAlpha(0.95),
+  // TNGIS building/house footprints — vertical DEMO_VISUAL_HEIGHT extrusion
+  // (see TNGIS_DEMO_VISUAL_HEIGHT_M below). Same neutral ash-gray "placeholder
+  // mass" language as the selected-parcel DEMO_VISUALIZATION extrusion — never
+  // presented as a surveyed/official building volume. The ground boundary
+  // keeps the teal tngisParcelLine/tngisParcelSel above so the footprint's
+  // official-source origin stays visually identifiable.
+  tngisBuilding: Cesium.Color.fromCssColorString('#9a9ea6').withAlpha(0.88),
+  tngisBuildingSel: Cesium.Color.fromCssColorString('#f2b807').withAlpha(0.55),
+  tngisBuildingOutline: Cesium.Color.fromCssColorString('#55565c').withAlpha(0.9),
   // Phase 8 — underground infrastructure, coloured by utility type. An
   // earthy / amber family so it never reads as a parcel, building, AI overlay,
   // DEM/DSM or GNSS layer. Selected = the same gold used everywhere else.
@@ -78,6 +111,16 @@ const COL = {
   },
   infraSelected: Cesium.Color.fromCssColorString('#f2b807'),
   infraUnknownDepth: Cesium.Color.fromCssColorString('#8b97ad').withAlpha(0.5),
+  // Coimbatore — the ONE demonstration property. A distinct emerald so it
+  // never reads as a Chennai parcel/building/AI/GNSS/infrastructure/TNGIS
+  // layer; gold on select, matching every other selected entity in the scene.
+  coimbatoreDemo: Cesium.Color.fromCssColorString('#059669'),
+  coimbatoreDemoSelected: Cesium.Color.fromCssColorString('#f2b807'),
+  // Temporary DEMO_VISUALIZATION extrusion for the selected land parcel — a
+  // neutral ash-gray so it reads as "placeholder mass", never as a real
+  // surveyed building. Not used for any other layer.
+  parcelDemoExtrusion: Cesium.Color.fromCssColorString('#8c8c91').withAlpha(0.75),
+  parcelDemoExtrusionOutline: Cesium.Color.fromCssColorString('#55565c').withAlpha(0.9),
 }
 
 // Underground records without a supplied depth are drawn just below the surface
@@ -90,6 +133,14 @@ const UNKNOWN_DEPTH_Z = 7.0
 const ESTIMATED_AI_HEIGHT_M = 24
 // AI floor-plan units without a floor z-range: a thin ESTIMATED/DEMO slab only.
 const ESTIMATED_AI_UNIT_HEIGHT_M = 3
+
+// TNGIS building/house footprints have no official height in the public
+// geometry TNGIS exposes (survey-number polygon only — see
+// docs/13-official-ulpin-data-investigation.md) — extrude every footprint by
+// this fixed DEMO_VISUAL_HEIGHT so it reads as a genuine elevated 3D
+// structure instead of a flat map marking. Never surveyed/official; never
+// persisted or presented as a certified building/cadastral volume.
+const TNGIS_DEMO_VISUAL_HEIGHT_M = 8
 
 export function Cesium3DMap() {
   const hostRef = useRef(null)
@@ -106,11 +157,22 @@ export function Cesium3DMap() {
   const loadedBuildingAreasRef = useRef(new Set()) // areaId whose city-wide 3D buildings are loaded
   const buildingShellRef = useRef(new Map()) // buildingId -> Entity
   const parcelEntityRef = useRef(new Map()) // ulpin -> Entity
+  const selectedParcelExtrusionRef = useRef(null) // the ONE temporary ash-gray DEMO_VISUALIZATION extrusion, for whichever parcel is currently selected
   const aiBuildingsRef = useRef(new Map()) // aiBuildingId -> Entity (Phase 3, AI_DEMO)
   const aiFloorUnitsRef = useRef(new Map()) // aiFloorUnitId -> Entity (Phase 4, AI_DEMO)
   const gnssPointsRef = useRef(new Map()) // controlPointId -> Entity (Phase 6, GNSS/CORS DEMO)
   const infraEntitiesRef = useRef(new Map()) // infrastructureId -> Entity (Phase 8, underground infrastructure)
   const tngisParcelRef = useRef(new Map()) // sourceRecordId -> Entity (TNGIS / Tamil Nilam public-source parcels)
+  const coimbatoreEntityRef = useRef(null) // the ONE Coimbatore demonstration property Entity — always resident, own layer
+  // Coimbatore sits ~400-450m above the ellipsoid (unlike coastal Chennai, near
+  // sea level) — a flat small height there would bury the entity/camera inside
+  // real World Terrain. Sampled once from the actual terrain provider (see
+  // buildCoimbatoreDemoProperty); this fallback is only used if that sample
+  // hasn't resolved yet.
+  const coimbatoreGroundHeightRef = useRef(411)
+  const tngisAbortRef = useRef(null) // in-flight viewport (BBOX) request — cancelled on the next camera move
+  const tngisLastBboxRef = useRef('') // last viewport key loaded (2dp) — skip a redundant refetch
+  const tngisMoveTimerRef = useRef(null) // debounce timer for the viewport loader
   const cityAreaRef = useRef(new Map()) // areaId -> { fill, line }
   const localityCacheRef = useRef(new Map()) // 'building:<id>' | 'infra:<id>' | 'parcel:<ulpin>' -> locality id
   const activeAreaRef = useRef(DEFAULT_AREA_ID)
@@ -122,6 +184,27 @@ export function Cesium3DMap() {
   // City-wide 3D building coverage counters — computed from ACTUAL entity state,
   // never a fabricated number (spec section 26).
   const [buildingStats, setBuildingStats] = useState({ available: 0, loaded: 0, visible: 0 })
+  // TNGIS Chennai-wide parcel coverage — all from ACTUAL state, never fabricated.
+  // `loaded`/`visible` are resident entities; `inViewFromSource` is what the
+  // public GeoServer WFS reported for the last viewport (numberMatched).
+  const [tngisStats, setTngisStats] = useState({ loaded: 0, visible: 0, inViewFromSource: null, truncated: false })
+
+  function recomputeTngisStats(meta) {
+    const group = groupsRef.current.tngisParcels || []
+    let visible = 0
+    for (const ent of group) if (ent?.show) visible += 1
+    setTngisStats((prev) => {
+      const next = {
+        loaded: tngisParcelRef.current.size,
+        visible,
+        inViewFromSource: meta && Number.isFinite(meta.numberMatched) ? meta.numberMatched : prev.inViewFromSource,
+        truncated: meta ? !!meta.truncated : prev.truncated,
+      }
+      return prev.loaded === next.loaded && prev.visible === next.visible
+        && prev.inViewFromSource === next.inViewFromSource && prev.truncated === next.truncated
+        ? prev : next
+    })
+  }
 
   function recomputeBuildingStats() {
     const loaded = buildingShellRef.current.size
@@ -204,6 +287,23 @@ export function Cesium3DMap() {
       } catch {
         /* keep ellipsoid */
       }
+
+      // Elevated 3D-city presentation: sun-based terrain relief + soft building
+      // shadows, so buildings visibly rise off the ground instead of reading as
+      // flat coloured polygons. Purely visual — never touches geometry, picking
+      // or the LOD/loading pipeline — so it is wrapped and non-fatal like the
+      // colour grading above (a GPU without shadow-map/depth-texture support
+      // just keeps the flat-shaded look).
+      try {
+        viewer.scene.globe.enableLighting = true
+        viewer.shadows = true
+        viewer.terrainShadows = Cesium.ShadowMode.RECEIVE_ONLY
+        viewer.shadowMap.softShadows = true
+        viewer.shadowMap.darkness = 0.45 // restrained — never a dark/gaming look
+        viewer.shadowMap.maximumDistance = 3000 // bounded to area/building LOD range
+      } catch {
+        /* shadows are optional */
+      }
       if (cancelled) return
 
       registerMapApi(viewer)
@@ -213,6 +313,8 @@ export function Cesium3DMap() {
       // ONE Chennai-wide scene: a cheap city-overview layer that is always
       // resident, then demand-load the starting locality's detail.
       buildCityOverview(viewer)
+      await buildCoimbatoreDemoProperty(viewer)
+      if (cancelled) return
       const startArea = selRef.current.area?.id || DEFAULT_AREA_ID
       activeAreaRef.current = startArea
       await ensureAreaLayers(startArea)
@@ -307,6 +409,56 @@ export function Cesium3DMap() {
     viewer.scene.requestRender()
   }
 
+  // Coimbatore — the ONE demonstration property (user-provided ODM textured
+  // model). Always resident (like the city-overview boundaries above) — it is
+  // NOT a Chennai locality, never loaded/unloaded by loadArea(), and never
+  // hidden by the Chennai LOD/area visibility system (no `.__area` tag, so
+  // `areaOk()` treats it as always-visible; `.show` is set once here and never
+  // revisited by applyLayerVisibility()). A single point + label, exactly like
+  // one GNSS/CORS control point — deliberately not a 3D model, so the main
+  // Cesium map stays a clean geographic marker/selection point. The ACTUAL
+  // ODM reconstruction (OBJ + MTL + 21 textures) is shown exclusively in the
+  // detailed Three.js explorer (/coimbatore-explorer, Exterior mode).
+  async function buildCoimbatoreDemoProperty(viewer) {
+    const p = COIMBATORE_DEMO_PROPERTY
+    // Coimbatore is well inland (~400-450m above the ellipsoid), unlike
+    // coastal Chennai — sample the actual World Terrain height here so the
+    // marker sits ON the ground instead of buried inside it.
+    try {
+      const [sampled] = await Cesium.sampleTerrainMostDetailed(viewer.terrainProvider, [
+        Cesium.Cartographic.fromDegrees(p.lon, p.lat),
+      ])
+      if (finite(sampled?.height)) coimbatoreGroundHeightRef.current = sampled.height
+    } catch { /* keep the documented fallback */ }
+    if (!liveViewer()) return
+    const ent = viewer.entities.add({
+      show: true,
+      position: Cesium.Cartesian3.fromDegrees(p.lon, p.lat, coimbatoreGroundHeightRef.current + 2),
+      point: {
+        pixelSize: 14,
+        color: COL.coimbatoreDemo,
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+      label: {
+        text: p.name,
+        font: '600 14px "Inter", system-ui, sans-serif',
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.fromCssColorString('#0b1220'),
+        outlineWidth: 3,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        pixelOffset: new Cesium.Cartesian2(0, -14),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        scaleByDistance: new Cesium.NearFarScalar(2.0e3, 1.1, 8.0e5, 0.4),
+      },
+      properties: { kind: 'coimbatore-demo', propertyId: p.propertyId },
+    })
+    coimbatoreEntityRef.current = ent
+    viewer.scene.requestRender()
+  }
+
   /* ---------------------------------------------------- 3D building massing */
   // ONE reusable path for turning a gisBuildings feature into a lightweight 3D
   // extruded structure inside the SAME Cesium viewer. Guarded per buildingId so
@@ -328,15 +480,20 @@ export function Cesium3DMap() {
     const byFloors = finite(p.totalFloors) && finite(p.floorHeightM) ? p.totalFloors * p.floorHeightM : null
     const h = finite(p.heightM) ? p.heightM : byFloors != null ? byFloors : 30
     const top = base + Math.max(h, 3)
+    const shellMaterial = COL.buildingShellVariants[shellVariantIndex(id, COL.buildingShellVariants.length)]
 
     const ent = viewer.entities.add({
       polygon: {
         hierarchy: Cesium.Cartesian3.fromDegreesArray(positions),
-        material: COL.buildingShell,
+        material: shellMaterial,
         outline: true,
         outlineColor: COL.outline,
         height: base,
         extrudedHeight: top,
+        // Buildings cast + receive shadows (viewer.shadows, set up at init) so
+        // the extruded massing visibly rises off the terrain instead of
+        // reading as a flat coloured footprint.
+        shadows: Cesium.ShadowMode.ENABLED,
       },
       // A roof-height label point — shown only at close zoom via LOD + the
       // Building Labels layer toggle, and scaled down with distance.
@@ -363,6 +520,7 @@ export function Cesium3DMap() {
       properties: { kind: 'building', ...p },
     })
     ent.__area = areaId
+    ent.__baseMaterial = shellMaterial
     buildingShellRef.current.set(id, ent)
     ;(groupsRef.current.buildings ||= []).push(ent)
     return ent
@@ -755,51 +913,167 @@ export function Cesium3DMap() {
     return added
   }
 
-  // TNGIS / Tamil Nilam — PUBLIC-source parcel polygons the user has explicitly
-  // fetched (District → Taluk → Village → Survey). Own layer, OFF by default.
-  // Rendered INSIDE THIS SAME viewer as terrain-clamped polygons. Idempotent
-  // (guarded per sourceRecordId). Nothing is bulk-loaded — the backend only
-  // serves parcels already cached by an explicit fetch.
-  async function ensureTngisParcels(areaId) {
-    if (!liveViewer()) return 0
-    let added = 0
-    try {
-      const fc = await api.gisTngisParcels({})
-      const viewer = liveViewer()
-      if (!viewer) return 0
-      for (const f of fc.features || []) {
-        const p = f.properties || {}
-        const id = p.sourceRecordId
-        if (!id || tngisParcelRef.current.has(id)) continue
-        const g = f.geometry
-        if (!g) continue
-        const polys = g.type === 'MultiPolygon' ? g.coordinates : g.type === 'Polygon' ? [g.coordinates] : []
-        for (let pi = 0; pi < polys.length; pi += 1) {
-          const flat = []
-          for (const c of polys[pi][0] || []) flat.push(c[0], c[1])
-          if (flat.length < 6) continue
-          const ent = viewer.entities.add({
-            show: false,
-            polygon: {
-              hierarchy: Cesium.Cartesian3.fromDegreesArray(flat),
-              material: COL.tngisParcel,
-              outline: false,
-              classificationType: Cesium.ClassificationType.TERRAIN,
-            },
-            properties: { kind: 'tngis-parcel', ...p },
-          })
-          ent.__area = p.locality || areaId
-          if (pi === 0) tngisParcelRef.current.set(id, ent)
-          ;(groupsRef.current.tngisParcels ||= []).push(ent)
-          added += 1
-        }
+  // Turn TNGIS parcel GeoJSON features into individual, selectable, VERTICALLY
+  // EXTRUDED building/house volumes — the actual (possibly irregular) TNGIS
+  // footprint, raised off the terrain by a fixed DEMO_VISUAL_HEIGHT (never a
+  // generic box, never a real surveyed height) — plus a crisp ground outline
+  // so every footprint boundary stays visually distinct. Idempotent per
+  // sourceRecordId. Shared by the explicit-fetch layer and the Chennai-wide
+  // viewport (BBOX) loader.
+  async function addTngisFeatures(features) {
+    const viewer = liveViewer()
+    if (!viewer) return 0
+
+    // First pass (sync): collect every new ring's actual footprint positions,
+    // skipping already-known ids / degenerate rings.
+    const toAdd = []
+    for (const f of features || []) {
+      const p = f.properties || {}
+      const id = p.sourceRecordId
+      if (!id || tngisParcelRef.current.has(id)) continue
+      const g = f.geometry
+      if (!g) continue
+      const polys = g.type === 'MultiPolygon' ? g.coordinates : g.type === 'Polygon' ? [g.coordinates] : []
+      for (let pi = 0; pi < polys.length; pi += 1) {
+        const flat = []
+        for (const c of polys[pi][0] || []) flat.push(c[0], c[1])
+        if (flat.length < 6) continue
+        toAdd.push({ id, p, pi, positions: Cesium.Cartesian3.fromDegreesArray(flat) })
       }
-    } catch { /* TNGIS layer is optional — never block the map */ }
-    if (added && liveViewer()) {
-      applyLayerVisibility()
-      liveViewer().scene.requestRender()
     }
+    if (!toAdd.length) return 0
+
+    // Batch-sample the real terrain height under each footprint's own centroid
+    // in ONE call (same sampleTerrainMostDetailed approach already used for the
+    // selected-parcel DEMO_VISUALIZATION extrusion) — the base of every
+    // extrusion sits on real ground, never sea level, never clamped flat. Falls
+    // back to height 0 per-footprint if sampling is unavailable — the layer
+    // must never be blocked by it.
+    const cartos = toAdd.map(({ positions }) => {
+      const c = Cesium.Cartographic.fromCartesian(Cesium.BoundingSphere.fromPoints(positions).center)
+      return Cesium.Cartographic.fromRadians(c.longitude, c.latitude)
+    })
+    let sampled = []
+    try {
+      sampled = await Cesium.sampleTerrainMostDetailed(viewer.terrainProvider, cartos)
+    } catch { /* keep sampled empty — every footprint falls back to height 0 below */ }
+    if (!liveViewer()) return 0 // viewer torn down while the terrain request was in flight
+
+    let added = 0
+    for (let i = 0; i < toAdd.length; i += 1) {
+      const { id, p, pi, positions } = toAdd[i]
+      if (tngisParcelRef.current.has(id)) continue // guard a race with a second concurrent load
+      const groundHeight = finite(sampled[i]?.height) ? sampled[i].height : 0
+      const ent = viewer.entities.add({
+        show: false,
+        polygon: {
+          hierarchy: positions, // the ACTUAL TNGIS footprint — never a generic box
+          material: COL.tngisBuilding,
+          outline: true,
+          outlineColor: COL.tngisBuildingOutline,
+          outlineWidth: 1,
+          height: groundHeight,
+          extrudedHeight: groundHeight + TNGIS_DEMO_VISUAL_HEIGHT_M,
+        },
+        polyline: {
+          positions,
+          width: 1.5,
+          material: COL.tngisParcelLine,
+          clampToGround: true,
+        },
+        properties: {
+          kind: 'tngis-parcel',
+          ...p,
+          heightProvenance: 'DEMO_VISUAL_HEIGHT',
+          heightM: TNGIS_DEMO_VISUAL_HEIGHT_M,
+        },
+      })
+      // TNGIS parcels are Chennai-wide by nature (viewport-loaded or explicitly
+      // fetched anywhere in the district) — not bound to one demo locality.
+      // Tag '__city' so visibility is governed only by the layer switch + LOD.
+      ent.__area = '__city'
+      ent.__tngisId = id
+      if (pi === 0) tngisParcelRef.current.set(id, ent)
+      ;(groupsRef.current.tngisParcels ||= []).push(ent)
+      added += 1
+    }
+    // Keep the resident TNGIS entity set bounded — evict the oldest parcels that
+    // are not the current selection when we blow past the cap (Chennai has ~74k
+    // parcels; we only ever keep what has been in view).
+    const group = groupsRef.current.tngisParcels || []
+    if (group.length > TNGIS_MAX_ENTITIES) {
+      const selId = selRef.current.selection?.sourceRecordId
+      const overflow = group.length - TNGIS_MAX_ENTITIES
+      let removed = 0
+      for (let i = 0; i < group.length && removed < overflow; i += 1) {
+        const ent = group[i]
+        if (!ent || ent.__tngisId === selId) continue
+        viewer.entities.remove(ent)
+        if (ent.__tngisId) tngisParcelRef.current.delete(ent.__tngisId)
+        group[i] = null
+        removed += 1
+      }
+      groupsRef.current.tngisParcels = group.filter(Boolean)
+    }
+    if (added) {
+      applyLayerVisibility()
+      viewer.scene.requestRender()
+    }
+    recomputeTngisStats()
     return added
+  }
+
+  // TNGIS / Tamil Nilam — PUBLIC-source parcels a user EXPLICITLY fetched
+  // (District → Taluk → Village → Survey). Own layer, OFF by default. Viewport-
+  // discovered parcels are excluded here — the BBOX loader below owns those.
+  async function ensureTngisParcels() {
+    if (!liveViewer()) return 0
+    try {
+      const fc = await api.gisTngisParcels({ excludeViewport: 1 })
+      return addTngisFeatures(fc.features)
+    } catch { /* TNGIS layer is optional — never block the map */ }
+    return 0
+  }
+
+  // TNGIS Chennai-wide — progressively load OFFICIAL parcel geometry for
+  // whatever Chennai extent is in view, from the public GeoServer WFS (BBOX +
+  // district_code=Chennai, capped server-side). Only runs when the layer is ON
+  // and the camera is close enough for parcel detail. Previous request is
+  // cancelled on every new camera move. Never downloads the whole district.
+  async function loadTngisViewport() {
+    const viewer = liveViewer()
+    if (!viewer) return
+    if (!(selRef.current.layers?.tngisParcels)) return
+    if (lodRef.current === 'city') return
+    const carto = viewer.camera.positionCartographic
+    if (!carto || carto.height > TNGIS_VIEWPORT_MAX_CAM_M) return
+
+    const rect = viewer.camera.computeViewRectangle()
+    if (!rect) return
+    const minLon = Cesium.Math.toDegrees(rect.west)
+    const minLat = Cesium.Math.toDegrees(rect.south)
+    const maxLon = Cesium.Math.toDegrees(rect.east)
+    const maxLat = Cesium.Math.toDegrees(rect.north)
+    // Outside greater Chennai — nothing to ask the Chennai cadastre for.
+    if (maxLon < 79.9 || minLon > 80.45 || maxLat < 12.8 || minLat > 13.35) return
+
+    const key = [minLon, minLat, maxLon, maxLat].map((n) => n.toFixed(2)).join(',')
+    if (key === tngisLastBboxRef.current) return
+    tngisLastBboxRef.current = key
+
+    tngisAbortRef.current?.abort()
+    const ac = new AbortController()
+    tngisAbortRef.current = ac
+    try {
+      const fc = await api.gisTngisParcelsBbox(
+        { bbox: `${minLon},${minLat},${maxLon},${maxLat}`, limit: TNGIS_VIEWPORT_LIMIT },
+        { signal: ac.signal },
+      )
+      if (ac.signal.aborted) return
+      await addTngisFeatures(fc.features)
+      if (ac.signal.aborted) return
+      recomputeTngisStats(fc.meta)
+    } catch { /* aborted or source unavailable — the layer just stays as-is */ }
   }
 
   async function ensureUnits(buildingId) {
@@ -945,6 +1219,61 @@ export function Cesium3DMap() {
     viewer.scene.requestRender()
   }
 
+  // Temporary DEMO_VISUALIZATION for the selected land parcel — an ash-gray
+  // vertical extrusion of the parcel's OWN (possibly irregular) polygon, so a
+  // selected parcel reads as a 3D mass rather than a flat tile, until a real
+  // building/property model exists for it. Exactly one at a time: always
+  // clears whatever the previous selection drew first. NOT an official
+  // height — DEMO_VISUAL_HEIGHT_M is a fixed placeholder, never persisted or
+  // presented as surveyed/cadastral data.
+  const DEMO_VISUAL_HEIGHT_M = 10
+  async function updateSelectedParcelExtrusion(ulpin) {
+    const viewer = liveViewer()
+    if (!viewer) return
+    if (selectedParcelExtrusionRef.current) {
+      viewer.entities.remove(selectedParcelExtrusionRef.current)
+      selectedParcelExtrusionRef.current = null
+    }
+    const parcelEnt = parcelEntityRef.current.get(ulpin)
+    const hv = parcelEnt?.polygon?.hierarchy?.getValue?.(Cesium.JulianDate.now())
+    const positions = hv?.positions || hv
+    if (!Array.isArray(positions) || positions.length < 3) return
+
+    // Terrain-sample the footprint's own centroid — same approach already
+    // used for Coimbatore (sampleTerrainMostDetailed) — so the extrusion's
+    // base sits on the real ground, never sea level, never clamped flat.
+    let groundHeight = 0
+    try {
+      const centerCarto = Cesium.Cartographic.fromCartesian(Cesium.BoundingSphere.fromPoints(positions).center)
+      const [sampled] = await Cesium.sampleTerrainMostDetailed(viewer.terrainProvider, [
+        Cesium.Cartographic.fromRadians(centerCarto.longitude, centerCarto.latitude),
+      ])
+      if (finite(sampled?.height)) groundHeight = sampled.height
+    } catch { /* keep groundHeight = 0 rather than block the extrusion */ }
+    if (!liveViewer()) return
+
+    const ent = viewer.entities.add({
+      polygon: {
+        hierarchy: [...positions], // the ACTUAL parcel footprint — never a generic box
+        height: groundHeight,
+        extrudedHeight: groundHeight + DEMO_VISUAL_HEIGHT_M,
+        material: COL.parcelDemoExtrusion,
+        outline: true,
+        outlineColor: COL.parcelDemoExtrusionOutline,
+        outlineWidth: 1,
+      },
+      properties: {
+        kind: 'parcel-demo-extrusion',
+        ulpin,
+        provenance: 'DEMO_VISUALIZATION',
+        heightLabel: 'DEMO_VISUAL_HEIGHT_M',
+        heightM: DEMO_VISUAL_HEIGHT_M,
+      },
+    })
+    selectedParcelExtrusionRef.current = ent
+    viewer.scene.requestRender()
+  }
+
   /* --------------------------------------------------------------- picking */
   function installPicker(viewer) {
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
@@ -980,7 +1309,7 @@ export function Cesium3DMap() {
         })
       } else if (kind === 'building') {
         s.selectBuilding(valueOf(props.buildingId), valueOf(props.ulpin))
-      } else if (kind === 'parcel') {
+      } else if (kind === 'parcel' || kind === 'parcel-demo-extrusion') {
         s.selectParcel(valueOf(props.ulpin))
       } else if (kind === 'ai-building') {
         s.selectAiBuilding(valueOf(props.aiBuildingId))
@@ -992,6 +1321,8 @@ export function Cesium3DMap() {
         s.selectInfrastructure(valueOf(props.infrastructureId))
       } else if (kind === 'tngis-parcel') {
         s.selectTngisParcel(valueOf(props.sourceRecordId))
+      } else if (kind === 'coimbatore-demo') {
+        s.selectCoimbatoreDemo()
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
   }
@@ -1015,9 +1346,22 @@ export function Cesium3DMap() {
       })
     }
     viewer.camera.changed.addEventListener(onChange)
+
+    // TNGIS Chennai-wide: after the camera settles, pull OFFICIAL parcel
+    // geometry for the new viewport (debounced, cancellable, LOD-gated inside
+    // loadTngisViewport). moveEnd fires once per gesture — right for a fetch.
+    const onMoveEnd = () => {
+      if (tngisMoveTimerRef.current) clearTimeout(tngisMoveTimerRef.current)
+      tngisMoveTimerRef.current = setTimeout(() => { loadTngisViewport() }, 350)
+    }
+    viewer.camera.moveEnd.addEventListener(onMoveEnd)
+
     lodCleanupRef.current = () => {
       if (raf) cancelAnimationFrame(raf)
       viewer.camera.changed.removeEventListener(onChange)
+      viewer.camera.moveEnd.removeEventListener(onMoveEnd)
+      if (tngisMoveTimerRef.current) clearTimeout(tngisMoveTimerRef.current)
+      tngisAbortRef.current?.abort()
     }
   }
 
@@ -1054,6 +1398,28 @@ export function Cesium3DMap() {
       resetView: () => flyToArea(activeAreaRef.current, 1.4),
       flyToArea: (areaId, duration) => flyToArea(areaId, duration),
       flyToCity: () => flyToCity(1.6),
+      // Chennai coverage regions — same camera, same viewer. Parks over a region
+      // at an overview height; the user then zooms in and the TNGIS viewport
+      // loader streams that region's official parcels.
+      flyToLonLat: (lon, lat, height = 9000) => {
+        cityViewRef.current = false
+        viewer.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(lon, lat, height),
+          orientation: { heading: 0, pitch: Cesium.Math.toRadians(-55), roll: 0 },
+          duration: 1.6,
+        })
+        viewer.scene.requestRender()
+      },
+      // Coimbatore — camera-only move to the ONE demonstration property. Does
+      // NOT touch activeAreaRef / loadArea — the Chennai locality data stays
+      // exactly as it was, simply out of frame, so switching back to Chennai
+      // afterwards needs no reload. Framed the same way as every other point
+      // entity (flyToGnssPoint et al.) — a bounding-sphere flyTo centred on
+      // the entity's own (terrain-sampled) position, not a raw camera offset.
+      flyToCoimbatoreDemo: () => {
+        cityViewRef.current = false
+        flyToEntity(coimbatoreEntityRef.current, new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-35), 260))
+      },
       topView: () => {
         const b = localityOf(activeAreaRef.current).base
         viewer.camera.flyTo({
@@ -1072,7 +1438,11 @@ export function Cesium3DMap() {
       flyToAiFloorUnit: (aiFloorUnitId) => flyToEntity(aiFloorUnitsRef.current.get(aiFloorUnitId), new Cesium.HeadingPitchRange(Cesium.Math.toRadians(40), Cesium.Math.toRadians(-24), 120)),
       flyToGnssPoint: (controlPointId) => flyToEntity(gnssPointsRef.current.get(controlPointId), new Cesium.HeadingPitchRange(Cesium.Math.toRadians(30), Cesium.Math.toRadians(-35), 80)),
       flyToInfrastructure: (infrastructureId) => flyToEntity(infraEntitiesRef.current.get(infrastructureId), new Cesium.HeadingPitchRange(Cesium.Math.toRadians(30), Cesium.Math.toRadians(-32), 160)),
-      flyToTngisParcel: (sourceRecordId) => flyToEntity(tngisParcelRef.current.get(sourceRecordId), new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-45), 500)),
+      // Close, oblique framing (matching the AI-candidate-building fly-to scale)
+      // so the DEMO_VISUAL_HEIGHT extrusion's walls are clearly visible on
+      // selection — the previous 500m "whole parcel" distance was tuned for a
+      // flat footprint and reads as a dot now that it stands upright.
+      flyToTngisParcel: (sourceRecordId) => flyToEntity(tngisParcelRef.current.get(sourceRecordId), new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-38), 180)),
       // Pull freshly-extracted AI buildings into the running viewer (called by
       // the AI Building Extraction page after an inference completes).
       refreshAiBuildings: (areaId) => ensureAiBuildings(areaId || activeAreaRef.current),
@@ -1126,7 +1496,7 @@ export function Cesium3DMap() {
     const h = loc.cameraHeightM || 1500
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(loc.base.lon, loc.base.lat - h * 6e-6, h),
-      orientation: { heading: Cesium.Math.toRadians(15), pitch: Cesium.Math.toRadians(-34), roll: 0 },
+      orientation: { heading: Cesium.Math.toRadians(15), pitch: Cesium.Math.toRadians(-40), roll: 0 },
       duration,
     })
     viewer.scene.requestRender()
@@ -1158,7 +1528,7 @@ export function Cesium3DMap() {
     const h = loc.cameraHeightM || 1500
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(loc.base.lon, loc.base.lat - h * 6e-6, h),
-      orientation: { heading: Cesium.Math.toRadians(15), pitch: Cesium.Math.toRadians(-34), roll: 0 },
+      orientation: { heading: Cesium.Math.toRadians(15), pitch: Cesium.Math.toRadians(-40), roll: 0 },
       duration,
     })
   }
@@ -1216,8 +1586,16 @@ export function Cesium3DMap() {
       if (mode === 'parcel' && ulpin) {
         const key = `parcel:${ulpin}`
         if (!cache.has(key)) {
+          // GET /api/parcels/:ulpin nests locality under `.parcel.locality`
+          // (unlike /api/infrastructure/:id and /api/buildings/:id, which are
+          // flat/nested-under-their-own-key respectively) — reading the
+          // non-existent `res.locality` here silently resolved to null for
+          // EVERY parcel, so `loadArea()` below was skipped whenever the
+          // selected parcel's locality differed from the already-active one:
+          // its entity never got created, and flyToParcel had nothing to fly
+          // to (falling back to Cesium's raw default global camera).
           const res = await api.parcel(ulpin)
-          cache.set(key, res?.locality || null)
+          cache.set(key, res?.parcel?.locality || null)
         }
         return cache.get(key)
       }
@@ -1275,6 +1653,14 @@ export function Cesium3DMap() {
     if (mode === 'tngis-parcel' && selection.sourceRecordId) {
       await ensureTngisParcels(activeAreaRef.current)
     }
+    // Temporary DEMO_VISUALIZATION extrusion for the selected parcel — exactly
+    // one at a time; clears itself whenever the selection isn't a parcel.
+    if (mode === 'parcel' && selection.ulpin) {
+      await updateSelectedParcelExtrusion(selection.ulpin)
+    } else if (selectedParcelExtrusionRef.current) {
+      liveViewer()?.entities.remove(selectedParcelExtrusionRef.current)
+      selectedParcelExtrusionRef.current = null
+    }
     const viewer = liveViewer()
     if (!viewer) return
 
@@ -1290,6 +1676,7 @@ export function Cesium3DMap() {
     else if (mode === 'gnss-point' && selection.controlPointId) mapApi.flyToGnssPoint?.(selection.controlPointId)
     else if (mode === 'infrastructure' && selection.infrastructureId) mapApi.flyToInfrastructure?.(selection.infrastructureId)
     else if (mode === 'tngis-parcel' && selection.sourceRecordId) mapApi.flyToTngisParcel?.(selection.sourceRecordId)
+    else if (mode === 'coimbatore-demo') mapApi.flyToCoimbatoreDemo?.()
     else if (mode === 'overview') flyToOverview(1.4)
 
     viewer.scene.requestRender()
@@ -1358,7 +1745,7 @@ export function Cesium3DMap() {
         const level = valueOf(ent.properties?.elevationConfidenceLevel)
         ent.polygon.material = level === 'HIGH' ? COL.elevationHigh : level === 'MEDIUM' ? COL.elevationMedium : COL.elevationLow
       } else {
-        ent.polygon.material = isActive ? COL.buildingShellSel : COL.buildingShell
+        ent.polygon.material = isActive ? COL.buildingShellSel : (ent.__baseMaterial || COL.buildingShell)
       }
       ent.polygon.outlineColor = isActive ? Cesium.Color.fromCssColorString('#f2b807') : COL.outline
     }
@@ -1477,6 +1864,17 @@ export function Cesium3DMap() {
       }
     }
 
+    // Coimbatore — the ONE demonstration property: always shown (see
+    // buildCoimbatoreDemoProperty), only its selected-state colour changes.
+    if (coimbatoreEntityRef.current) {
+      const isSel = mode === 'coimbatore-demo'
+      const ent = coimbatoreEntityRef.current
+      if (ent.point) {
+        ent.point.color = isSel ? COL.coimbatoreDemoSelected : COL.coimbatoreDemo
+        ent.point.pixelSize = isSel ? 18 : 14
+      }
+    }
+
     // TNGIS / Tamil Nilam — public-source parcels: own layer, OFF by default.
     // Visible at area + building zoom (never at the city overview). The selected
     // parcel is highlighted gold. Every polygon of a MultiPolygon shares the
@@ -1485,16 +1883,24 @@ export function Cesium3DMap() {
       const id = valueOf(ent.properties?.sourceRecordId)
       const isSel = mode === 'tngis-parcel' && id === selection.sourceRecordId
       ent.show = (L.tngisParcels ?? false) && detailOk && areaOk(ent)
-      // Terrain-clamped polygons can't draw outlines (Cesium) — selection is
-      // shown by the gold fill, exactly like the base `parcels` layer.
-      if (ent.polygon) ent.polygon.material = isSel ? COL.tngisParcelSel : COL.tngisParcel
+      // Selection is shown by the gold fill; the per-parcel ground polyline keeps
+      // every boundary crisp and individually distinguishable.
+      if (ent.polygon) ent.polygon.material = isSel ? COL.tngisBuildingSel : COL.tngisBuilding
+      if (ent.polyline) ent.polyline.material = isSel ? COL.tngisParcelSel : COL.tngisParcelLine
     }
+    recomputeTngisStats()
   }
 
   /* ----------------------------------------------------- layer visibility */
   useEffect(() => {
     applyLayerVisibility()
     viewerRef.current?.scene.requestRender()
+    // Turning the TNGIS Parcels layer ON while already zoomed in must load the
+    // current viewport immediately (no camera move to wait for).
+    if (sel.layers?.tngisParcels && ready) {
+      tngisLastBboxRef.current = ''
+      loadTngisViewport()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel.layers])
 
@@ -1524,11 +1930,11 @@ export function Cesium3DMap() {
 
       {ready && buildingStats.loaded > 0 && (
         <div
-          className="pointer-events-none absolute bottom-3 left-3 z-10 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-[11px] shadow-sm"
+          className="pointer-events-none absolute bottom-3 left-3 z-10 rounded-lg border border-slate-200 bg-surface/95 px-3 py-2 text-[11px] shadow-sm"
           data-testid="building-coverage"
         >
           <p className="font-bold uppercase tracking-wider text-slate-500">Chennai 3D Buildings</p>
-          <div className="mt-1 flex gap-3 font-mono text-slate-700">
+          <div className="data-mono mt-1 flex gap-3 text-slate-700">
             <span data-testid="buildings-available">Available: {buildingStats.available.toLocaleString('en-IN')}</span>
             <span data-testid="buildings-loaded">Loaded: {buildingStats.loaded.toLocaleString('en-IN')}</span>
             <span data-testid="buildings-visible">Visible: {buildingStats.visible.toLocaleString('en-IN')}</span>
@@ -1536,13 +1942,32 @@ export function Cesium3DMap() {
         </div>
       )}
 
+      {ready && sel.layers?.tngisParcels && (
+        <div
+          className="pointer-events-none absolute bottom-20 left-3 z-10 rounded-lg border border-brass/30 bg-surface/95 px-3 py-2 text-[11px] shadow-sm"
+          data-testid="tngis-coverage"
+        >
+          <p className="font-bold uppercase tracking-wider text-brass">TNGIS Parcels · Official Source</p>
+          <div className="data-mono mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-slate-700">
+            <span data-testid="tngis-loaded">Loaded: {tngisStats.loaded.toLocaleString('en-IN')}</span>
+            <span data-testid="tngis-visible">Visible: {tngisStats.visible.toLocaleString('en-IN')}</span>
+            {tngisStats.inViewFromSource != null && (
+              <span data-testid="tngis-in-view">In view (source): {tngisStats.inViewFromSource.toLocaleString('en-IN')}{tngisStats.truncated ? '+' : ''}</span>
+            )}
+          </div>
+          {tngisStats.loaded === 0 && (
+            <p className="mt-0.5 text-[10px] text-slate-500">Zoom in over Chennai to stream official parcels for the view.</p>
+          )}
+        </div>
+      )}
+
       {!ready && !error && (
-        <div className="pointer-events-none absolute inset-0 grid place-items-center bg-white/85 text-sm text-slate-600">
+        <div className="pointer-events-none absolute inset-0 grid place-items-center bg-paper/85 text-sm text-slate-600">
           Loading Chennai 3D scene…
         </div>
       )}
       {error && (
-        <div className="absolute inset-0 grid place-items-center bg-white/85 p-6 text-center">
+        <div className="absolute inset-0 grid place-items-center bg-paper/85 p-6 text-center">
           <div>
             <p className="font-bold text-slate-900">3D map unavailable</p>
             <p className="mt-1 max-w-sm text-sm text-slate-500">{error}</p>

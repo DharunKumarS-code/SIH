@@ -1,19 +1,42 @@
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 import {
   X, Crosshair, Focus, ShieldCheck, FileText, Share2, StickyNote, Building2, Layers, Home,
   BadgeCheck, TriangleAlert, MapPin, ExternalLink, Box, Mountain, Satellite, Waypoints,
+  Fingerprint, Copy,
 } from 'lucide-react'
 import { useSelection } from '../../context/SelectionContext.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useApi } from '../../lib/useApi.js'
 import { api } from '../../lib/api.js'
 import { Badge, DemoTag, KeyValue, Spinner, ErrorNote } from '../ui/primitives.jsx'
-import { inr } from '../../lib/format.js'
-import { PROTOTYPE_ID_LABEL, LOCALITIES_FALLBACK } from '../../lib/constants.js'
+import { inr, formatUlpinDisplay } from '../../lib/format.js'
+import { PROTOTYPE_ID_LABEL, LOCALITIES_FALLBACK, COIMBATORE_DEMO_PROPERTY } from '../../lib/constants.js'
 import { verificationBadge, isOfficial } from '../../lib/provenance.js'
 import { volumeMetrics, volumeBoundsRows, geometryStatusTone } from '../../lib/volume.js'
+import { buildParcelCertificate, buildBuildingCertificate, buildUnitCertificate } from '../../lib/certificate.js'
+import { lazyWithRetry } from '../../lib/lazyWithRetry.js'
+import { GenerateThreeDUlpinDialog } from './GenerateThreeDUlpinDialog.jsx'
+
+// The certificate modal pulls in jsPDF + a QR-code generator (~350KB) — kept
+// out of the app's eagerly-loaded main bundle and fetched only the first time
+// a user actually opens a certificate, same pattern as the standalone 3D
+// explorer routes (see lib/lazyWithRetry.js / App.jsx).
+const PropertyCertificateModal = lazyWithRetry(
+  () => import('../certificate/PropertyCertificateModal.jsx').then((m) => ({ default: m.PropertyCertificateModal })),
+  'PropertyCertificateModal',
+)
+
+function CertificateModalFallback() {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60">
+      <div className="rounded-lg bg-surface px-4 py-3 shadow-xl">
+        <Spinner label="Preparing certificate…" />
+      </div>
+    </div>
+  )
+}
 
 // Deep link into the standalone detailed 3D Building Explorer (opens in a new
 // tab). Short hierarchy segments per the documented contract; the explorer
@@ -39,6 +62,11 @@ function undergroundUrl({ area, ulpin, infrastructureId }) {
   return `/underground-explorer?${q.toString()}`
 }
 
+// Deep link into the standalone Coimbatore 3D Property Explorer (opens in a
+// new tab, exactly like the other two explorers above) — lazy-loads the
+// user-provided ODM textured model only once the user gets there.
+const COIMBATORE_EXPLORER_URL = '/coimbatore-explorer'
+
 function Section({ title, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
@@ -54,8 +82,11 @@ function Section({ title, children, defaultOpen = true }) {
 
 export function PropertySidebar() {
   const { selection, isolated, setIsolated, reset, mapApi, selectBuilding, selectParcel } = useSelection()
-  const { can } = useAuth()
+  const { can, user } = useAuth()
   const [note, setNote] = useState('')
+  const [showCert, setShowCert] = useState(false)
+  const [showGen3D, setShowGen3D] = useState(false)
+  const [gen3DBusy, setGen3DBusy] = useState(false)
 
   const isUnit = selection.mode === 'unit' && selection.propertyId
   const isParcel = selection.mode === 'parcel' && !!selection.ulpin
@@ -64,6 +95,7 @@ export function PropertySidebar() {
   const isGnss = selection.mode === 'gnss-point' && !!selection.controlPointId
   const isInfra = selection.mode === 'infrastructure' && !!selection.infrastructureId
   const isTngis = selection.mode === 'tngis-parcel' && !!selection.sourceRecordId
+  const isCoimbatoreDemo = selection.mode === 'coimbatore-demo'
   const isBuildingLevel = (selection.mode === 'building' || selection.mode === 'floor') && !!selection.buildingId
   const { data, error, loading, reload } = useApi(
     () => (isUnit ? api.unit(selection.propertyId) : Promise.resolve(null)),
@@ -133,10 +165,18 @@ export function PropertySidebar() {
     () => (isBuildingLevel ? api.building(selection.buildingId).catch(() => null) : Promise.resolve(null)),
     [isBuildingLevel, selection.buildingId],
   )
+  // Coimbatore demonstration property — backed by a real `buildings` document
+  // (buildingId COIMBATORE-DEMO-001, see backend/src/data/seed.js) so its
+  // official ULPIN/land-record fields and any generated 3D ULPIN persist in
+  // MongoDB and are visible to every role, exactly like a regular building.
+  const coimbatoreQ = useApi(
+    () => (isCoimbatoreDemo ? api.building(COIMBATORE_DEMO_PROPERTY.propertyId).catch(() => null) : Promise.resolve(null)),
+    [isCoimbatoreDemo],
+  )
 
   if (!isUnit) {
     if (isParcel) {
-      return <ParcelCard query={parcelQ} ulpin={selection.ulpin} mapApi={mapApi} onClose={reset} canVerify={can('parcel:verify')} />
+      return <ParcelCard query={parcelQ} ulpin={selection.ulpin} mapApi={mapApi} onClose={reset} canVerify={can('parcel:verify')} generatedBy={user} />
     }
     if (isAi) {
       return <AiBuildingCard query={aiQ} id={selection.aiBuildingId} onClose={reset} canReview={can('change-detection:review')} />
@@ -153,6 +193,9 @@ export function PropertySidebar() {
     if (isTngis) {
       return <TngisParcelCard query={tngisQ} relQuery={tngisRelQ} id={selection.sourceRecordId} onClose={reset} mapApi={mapApi} canValidate={can('topology:validate')} />
     }
+    if (isCoimbatoreDemo) {
+      return <CoimbatoreDemoCard query={coimbatoreQ} onClose={reset} generatedBy={user} can3dUlpin={can('3dulpin:create')} />
+    }
     if (isBuildingLevel) {
       return (
         <BuildingCard
@@ -163,11 +206,13 @@ export function PropertySidebar() {
           mapApi={mapApi}
           onClose={reset}
           onSelectParcel={selectParcel}
+          generatedBy={user}
+          can3dUlpin={can('3dulpin:create')}
         />
       )
     }
     return (
-      <aside className="pointer-events-auto absolute right-3 top-3 z-30 w-80 rounded-xl panel p-4" data-testid="property-sidebar">
+      <aside className="pointer-events-auto absolute right-3 top-3 z-30 w-80 panel p-4" data-testid="property-sidebar">
         <p className="section-title">Property / Unit Details</p>
         <p className="mt-2 text-sm text-slate-500">
           Search a ULPIN, Survey Number, Subdivision or locality — or pick a parcel / building in the 3D scene.
@@ -182,21 +227,34 @@ export function PropertySidebar() {
   const vol = data?.volume || u?.volume || null
   const vval = data?.validation || null
   const vm = volumeMetrics(vol)
+  const cert = u ? buildUnitCertificate({ unitData: data, generatedBy: user }) : null
 
   const verify = async () => {
     await api.verifyUnit(selection.propertyId).catch(() => {})
     reload()
   }
 
+  const generate3D = async () => {
+    setGen3DBusy(true)
+    try {
+      await api.generateUnitThreeDUlpin(selection.propertyId).catch(() => {})
+      await reload()
+    } finally {
+      setGen3DBusy(false)
+      setShowGen3D(false)
+    }
+  }
+
   return (
+    <>
     <aside
-      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
+      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col panel"
       data-testid="property-sidebar"
     >
       <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-slate-900">Unified Property Record</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-amber-700">
+          <p className="font-display text-sm font-semibold text-slate-900">Unified Property Record</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-warn">
             <DemoTag label="PROTOTYPE" /> {PROTOTYPE_ID_LABEL} — not an official ULPIN
           </p>
         </div>
@@ -212,7 +270,7 @@ export function PropertySidebar() {
         {u && (
           <>
             <div className="rounded-lg border border-primary/30 bg-primary/10 p-2.5" data-testid="proto-id">
-              <p className="font-mono text-[13px] font-bold text-slate-900 break-all">{u.propertyId}</p>
+              <p className="data-mono text-[13px] font-bold text-slate-900 break-all">{u.propertyId}</p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <Badge status={u.status}>{u.status}</Badge>
                 <Badge>{u.propertyType}</Badge>
@@ -224,7 +282,7 @@ export function PropertySidebar() {
               <ul className="space-y-1 text-[12px]">
                 <li className="flex items-center gap-2 text-slate-600">
                   <Layers size={12} className="text-primary" /> ULPIN (Parcel):{' '}
-                  <span className="font-mono text-slate-900">{h.ulpin}</span>
+                  <span className="data-mono text-slate-900">{formatUlpinDisplay(h.ulpin)}</span>
                 </li>
                 <li className="flex items-center gap-2 text-slate-600">
                   <Building2 size={12} className="text-primary" /> Building:{' '}
@@ -241,6 +299,25 @@ export function PropertySidebar() {
                   <span className="text-slate-900">{h.unit?.id} · Apt {h.unit?.apartmentNumber}</span>
                 </li>
                 <li className="flex items-center gap-2 text-slate-600">
+                  <Fingerprint size={12} className="text-primary" /> 3D ULPIN:{' '}
+                  {u.threeDUlpin ? (
+                    <span className="inline-flex items-center gap-1">
+                      <span className="data-mono text-slate-900" title="System Generated 3D Property Identifier">{u.threeDUlpin}</span>
+                      <button
+                        className="text-slate-400 hover:text-slate-700"
+                        onClick={() => navigator.clipboard?.writeText(u.threeDUlpin)}
+                        aria-label="Copy 3D ULPIN"
+                        title="Copy 3D ULPIN"
+                        type="button"
+                      >
+                        <Copy size={11} />
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="text-slate-500">Not generated</span>
+                  )}
+                </li>
+                <li className="flex items-center gap-2 text-slate-600">
                   <Box size={12} className="text-primary" /> Volume ID:{' '}
                   <span className="font-mono text-slate-900">{h.unit?.volumeId || vol?.volumeId || '—'}</span>
                 </li>
@@ -249,12 +326,12 @@ export function PropertySidebar() {
 
             {(idQ.data || []).length > 0 && (
               <Section title="Proposed 3D Property Identifier">
-                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] text-amber-700">
+                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] text-warn">
                   <DemoTag label="PROPOSED / RESEARCH" /> Not an Official ULPIN · not a government-approved 3D ULPIN standard.
                 </p>
                 <div data-testid="sidebar-identifier">
                   {idQ.data.map((r) => (
-                    <div key={r.identifierId} className="mb-1 rounded border border-gold/25 bg-amber-50 p-2 text-[11px]">
+                    <div key={r.identifierId} className="mb-1 rounded border border-warn/30 bg-warn/10 p-2 text-[11px]">
                       <p className="font-mono text-slate-900 break-all">{r.canonicalIdentifier}</p>
                       <p className="mt-0.5 text-slate-500">
                         Official ULPIN: <span className="font-mono text-slate-900">{r.officialULPIN || 'NOT AVAILABLE'}</span> · {r.geometryVersion} · {r.status}
@@ -268,7 +345,7 @@ export function PropertySidebar() {
 
             {vol && (
               <Section title="3D Geometry (Prototype)">
-                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] text-amber-700">
+                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] text-warn">
                   <DemoTag label="PROTOTYPE" /> Prototype 3D Geometry — synthetic, not an official cadastral volume.
                 </p>
                 <KeyValue
@@ -300,7 +377,7 @@ export function PropertySidebar() {
                   <ul className="mt-1.5 space-y-1 text-[11px]">
                     {vval.issues.map((i, idx) => (
                       <li key={`${i.rule}-${idx}`} className="text-slate-600">
-                        <span className={i.status === 'ERROR' ? 'text-danger' : 'text-amber-700'}>{i.status}</span>{' '}
+                        <span className={i.status === 'ERROR' ? 'text-danger' : 'text-warn'}>{i.status}</span>{' '}
                         <span className="font-mono text-slate-500">{i.rule}</span> — {i.message}
                       </li>
                     ))}
@@ -369,7 +446,7 @@ export function PropertySidebar() {
             {data.disputes?.length > 0 && (
               <Section title="Disputes">
                 {data.disputes.map((d) => (
-                  <div key={d.disputeId} className="rounded border border-danger/30 bg-red-50 p-2 text-[12px]">
+                  <div key={d.disputeId} className="rounded border border-danger/30 bg-danger/5 p-2 text-[12px]">
                     <p className="font-semibold text-danger">
                       {d.type} · {d.status}
                     </p>
@@ -397,6 +474,21 @@ export function PropertySidebar() {
           <button className="btn-ghost col-span-2 justify-center" onClick={verify} disabled={u?.status === 'Verified'}>
             <ShieldCheck size={14} /> {u?.status === 'Verified' ? 'Verified' : 'Verify Unit'}
           </button>
+        )}
+        {can('3dulpin:create') && (
+          u?.threeDUlpin ? (
+            <p className="col-span-2 flex items-center justify-center gap-1.5 rounded-md border border-teal/30 bg-teal/10 px-2 py-1.5 text-xs font-semibold text-teal">
+              <Fingerprint size={13} /> Already Generated
+            </p>
+          ) : (
+            <button
+              className="btn-ghost col-span-2 justify-center"
+              onClick={() => setShowGen3D(true)}
+              data-testid="generate-3d-ulpin"
+            >
+              <Fingerprint size={14} /> Generate 3D ULPIN
+            </button>
+          )
         )}
         <a
           href={explorerUrl({
@@ -426,6 +518,15 @@ export function PropertySidebar() {
         <button className="btn-ghost justify-center" onClick={() => setNote(note ? '' : ' ')}>
           <StickyNote size={14} /> Add Note
         </button>
+        {cert && (
+          <button
+            className="btn-primary col-span-2 justify-center"
+            onClick={() => setShowCert(true)}
+            data-testid="open-certificate"
+          >
+            <FileText size={14} /> Download Certificate
+          </button>
+        )}
         {note !== '' && (
           <textarea
             className="input col-span-2 mt-1 text-xs"
@@ -437,6 +538,21 @@ export function PropertySidebar() {
         )}
       </footer>
     </aside>
+    {showCert && cert && (
+      <Suspense fallback={<CertificateModalFallback />}>
+        <PropertyCertificateModal data={cert} onClose={() => setShowCert(false)} />
+      </Suspense>
+    )}
+    <GenerateThreeDUlpinDialog
+      open={showGen3D}
+      onClose={() => setShowGen3D(false)}
+      onConfirm={generate3D}
+      busy={gen3DBusy}
+      building={h?.building?.name}
+      floor={h?.floor?.label}
+      unit={h?.unit?.id}
+    />
+    </>
   )
 }
 
@@ -487,7 +603,7 @@ function FloorApartments({ floor }) {
   )
 }
 
-function BuildingCard({ query, elevQuery, mode, buildingId, mapApi, onClose, onSelectParcel }) {
+function BuildingCard({ query, elevQuery, mode, buildingId, mapApi, onClose, onSelectParcel, generatedBy, can3dUlpin }) {
   const { data, error, loading, reload } = query
   const b = data?.building
   const floors = Array.isArray(data?.floors) ? data.floors : []
@@ -500,16 +616,32 @@ function BuildingCard({ query, elevQuery, mode, buildingId, mapApi, onClose, onS
     LIDAR_DERIVED: 'LIDAR-DERIVED', DEMO_PROCEDURAL: 'DEMO / PROCEDURAL',
     SURVEY: 'SURVEY', OFFICIAL: 'SOURCE-VERIFIED', UNAVAILABLE: 'UNAVAILABLE',
   }[b?.heightSource] || (b?.heightSource || 'DEMO / PROCEDURAL')
+  const [showCert, setShowCert] = useState(false)
+  const [showGen3D, setShowGen3D] = useState(false)
+  const [gen3DBusy, setGen3DBusy] = useState(false)
+  const cert = b ? buildBuildingCertificate({ buildingData: data, generatedBy }) : null
+
+  const generate3D = async () => {
+    setGen3DBusy(true)
+    try {
+      await api.generateBuildingThreeDUlpin(buildingId).catch(() => {})
+      await reload()
+    } finally {
+      setGen3DBusy(false)
+      setShowGen3D(false)
+    }
+  }
 
   return (
+    <>
     <aside
-      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
+      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col panel"
       data-testid="property-sidebar"
     >
       <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-slate-900">{mode === 'floor' ? 'Floor — Building' : 'Building'}</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-amber-700">
+          <p className="font-display text-sm font-semibold text-slate-900">{mode === 'floor' ? 'Floor — Building' : 'Building'}</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-warn">
             <DemoTag label="PROTOTYPE" /> Synthetic demo building — not an official record
           </p>
         </div>
@@ -524,7 +656,7 @@ function BuildingCard({ query, elevQuery, mode, buildingId, mapApi, onClose, onS
         {b && (
           <>
             <div className="rounded-lg border border-primary/30 bg-primary/10 p-2.5">
-              <p className="font-mono text-[13px] font-bold text-slate-900 break-all" data-testid="building-id">{b.buildingId}</p>
+              <p className="data-mono text-[13px] font-bold text-slate-900 break-all" data-testid="building-id">{b.buildingId}</p>
               <p className="mt-0.5 text-[12px] font-semibold text-slate-700">{b.name}</p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <Badge status={stone}>{b.constructionStatus || 'Unknown'}</Badge>
@@ -537,7 +669,7 @@ function BuildingCard({ query, elevQuery, mode, buildingId, mapApi, onClose, onS
               <KeyValue
                 data={{
                   'Building ID': b.buildingId,
-                  'Official ULPIN': b.officialUlpin || 'Unavailable',
+                  'Official ULPIN': b.officialUlpin ? formatUlpinDisplay(b.officialUlpin) : 'Unavailable',
                   Locality: b.locality || 'Unavailable',
                   Floors: b.totalFloors ?? b.floorsAboveGround ?? floors.length ?? 'Unavailable',
                   Units: b.unitCount ?? data?.unitCount ?? 'Unavailable',
@@ -550,11 +682,30 @@ function BuildingCard({ query, elevQuery, mode, buildingId, mapApi, onClose, onS
               <div className="mt-1.5 flex items-center gap-2 text-[12px] text-slate-600">
                 <Layers size={12} className="text-primary" /> ULPIN (Parcel):{' '}
                 {b.ulpin ? (
-                  <button className="font-mono text-slate-900 underline decoration-dotted" onClick={() => onSelectParcel(b.ulpin)}>
-                    {b.ulpin}
+                  <button className="data-mono text-slate-900 underline decoration-dotted" onClick={() => onSelectParcel(b.ulpin)}>
+                    {formatUlpinDisplay(b.ulpin)}
                   </button>
                 ) : (
                   <span className="text-slate-500">Unavailable</span>
+                )}
+              </div>
+              <div className="mt-1.5 flex items-center gap-2 text-[12px] text-slate-600" data-testid="building-3d-ulpin">
+                <Fingerprint size={12} className="text-primary" /> 3D ULPIN:{' '}
+                {b.threeDUlpin ? (
+                  <span className="inline-flex items-center gap-1">
+                    <span className="data-mono text-slate-900" title="System Generated 3D Property Identifier">{b.threeDUlpin}</span>
+                    <button
+                      className="text-slate-400 hover:text-slate-700"
+                      onClick={() => navigator.clipboard?.writeText(b.threeDUlpin)}
+                      aria-label="Copy 3D ULPIN"
+                      title="Copy 3D ULPIN"
+                      type="button"
+                    >
+                      <Copy size={11} />
+                    </button>
+                  </span>
+                ) : (
+                  <span className="text-slate-500">Not generated</span>
                 )}
               </div>
             </Section>
@@ -575,14 +726,14 @@ function BuildingCard({ query, elevQuery, mode, buildingId, mapApi, onClose, onS
                 <ul className="mt-1.5 space-y-0.5 text-[11px]" data-testid="building-topology-findings">
                   {topo.findings.map((f) => (
                     <li key={f.validationId || f.ruleId}>
-                      <span className={f.status === 'ERROR' ? 'text-danger' : 'text-amber-700'}>{f.status}</span>{' '}
+                      <span className={f.status === 'ERROR' ? 'text-danger' : 'text-warn'}>{f.status}</span>{' '}
                       <span className="font-mono text-slate-500">{f.ruleId}</span> — {f.message}
                     </li>
                   ))}
                 </ul>
               )}
               {b.isDemo !== false && (
-                <p className="mt-1 text-[10px] text-amber-700">
+                <p className="mt-1 text-[10px] text-warn">
                   Synthetic prototype geometry — the height is DEMO / PROCEDURAL, not a surveyed value.
                 </p>
               )}
@@ -626,6 +777,30 @@ function BuildingCard({ query, elevQuery, mode, buildingId, mapApi, onClose, onS
               >
                 <Waypoints size={14} /> View Underground Infrastructure
               </a>
+              {can3dUlpin && (
+                b.threeDUlpin ? (
+                  <p className="flex items-center justify-center gap-1.5 rounded-md border border-teal/30 bg-teal/10 px-2 py-1.5 text-xs font-semibold text-teal">
+                    <Fingerprint size={13} /> Already Generated
+                  </p>
+                ) : (
+                  <button
+                    className="btn-ghost justify-center"
+                    onClick={() => setShowGen3D(true)}
+                    data-testid="generate-3d-ulpin"
+                  >
+                    <Fingerprint size={14} /> Generate 3D ULPIN
+                  </button>
+                )
+              )}
+              {cert && (
+                <button
+                  className="btn-primary justify-center"
+                  onClick={() => setShowCert(true)}
+                  data-testid="open-certificate"
+                >
+                  <FileText size={14} /> Download Certificate
+                </button>
+              )}
             </div>
 
             <BuildingElevationPanel query={elevQuery} />
@@ -639,6 +814,19 @@ function BuildingCard({ query, elevQuery, mode, buildingId, mapApi, onClose, onS
         )}
       </div>
     </aside>
+    {showCert && cert && (
+      <Suspense fallback={<CertificateModalFallback />}>
+        <PropertyCertificateModal data={cert} onClose={() => setShowCert(false)} />
+      </Suspense>
+    )}
+    <GenerateThreeDUlpinDialog
+      open={showGen3D}
+      onClose={() => setShowGen3D(false)}
+      onConfirm={generate3D}
+      busy={gen3DBusy}
+      building={b?.name || buildingId}
+    />
+    </>
   )
 }
 
@@ -667,8 +855,8 @@ function BuildingElevationPanel({ query }) {
 
   const qtone = h.qualityStatus === 'VALID' ? 'Verified' : h.qualityStatus === 'ERROR' ? 'Disputed' : 'Under Review'
   return (
-    <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-2.5" data-testid="elevation-height-panel">
-      <p className="flex items-center gap-1.5 text-[11px] font-bold text-amber-700">
+    <div className="mt-3 rounded-lg border border-warn/30 bg-warn/10 p-2.5" data-testid="elevation-height-panel">
+      <p className="flex items-center gap-1.5 text-[11px] font-bold text-warn">
         <Mountain size={12} /> Elevation-Derived Height <DemoTag label="ELEVATION_DEMO" />
       </p>
       <KeyValue
@@ -682,12 +870,12 @@ function BuildingElevationPanel({ query }) {
       />
       <div className="mt-1.5 flex items-center gap-2">
         <Badge status={qtone}>{h.qualityStatus}</Badge>
-        {h.appliedToBuilding && <span className="text-[10px] text-emerald-700">Applied to 3D extrusion</span>}
+        {h.appliedToBuilding && <span className="text-[10px] text-teal">Applied to 3D extrusion</span>}
       </div>
       {(h.qualityIssues || []).length > 0 && (
         <ul className="mt-1.5 space-y-1 text-[11px] text-slate-600">
           {h.qualityIssues.slice(0, 3).map((i, idx) => (
-            <li key={idx}><span className={i.status === 'ERROR' ? 'text-danger' : 'text-amber-700'}>{i.status}</span> {i.message}</li>
+            <li key={idx}><span className={i.status === 'ERROR' ? 'text-danger' : 'text-warn'}>{i.status}</span> {i.message}</li>
           ))}
         </ul>
       )}
@@ -699,7 +887,7 @@ function BuildingElevationPanel({ query }) {
 // Parcel view — shows the ULPIN with an explicit OFFICIAL / DEMO distinction
 // and full data provenance. (Phase 1: all parcels are DEMO.)
 // --------------------------------------------------------------------------
-function ParcelCard({ query, ulpin, mapApi, onClose, canVerify }) {
+function ParcelCard({ query, ulpin, mapApi, onClose, canVerify, generatedBy }) {
   const { data, error, loading, reload } = query
   const p = data?.parcel
   const prov = data?.provenance || {}
@@ -707,6 +895,8 @@ function ParcelCard({ query, ulpin, mapApi, onClose, canVerify }) {
   const official = isOfficial(prov.verificationStatus)
   const coord = p?.centroid?.coordinates
   const gov = data?.providerChain?.find((c) => c.provider === 'GovernmentDataProvider')
+  const [showCert, setShowCert] = useState(false)
+  const cert = p ? buildParcelCertificate({ parcelData: data, generatedBy }) : null
 
   const verify = async () => {
     await api.verifyParcel(ulpin).catch(() => {})
@@ -714,17 +904,18 @@ function ParcelCard({ query, ulpin, mapApi, onClose, canVerify }) {
   }
 
   return (
+    <>
     <aside
-      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
+      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col panel"
       data-testid="property-sidebar"
     >
       <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-slate-900">Land Parcel Record</p>
+          <p className="font-display text-sm font-semibold text-slate-900">Land Parcel Record</p>
           <p
             className={clsx(
               'mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold',
-              official ? 'text-emerald-700' : 'text-amber-700',
+              official ? 'text-brass' : 'text-warn',
             )}
             data-testid="parcel-verification"
           >
@@ -746,13 +937,13 @@ function ParcelCard({ query, ulpin, mapApi, onClose, canVerify }) {
             <div
               className={clsx(
                 'rounded-lg border p-2.5',
-                official ? 'border-emerald-200 bg-emerald-50' : 'border-amber-300 bg-amber-50',
+                official ? 'border-brass/30 bg-brass/10' : 'border-warn/30 bg-warn/10',
               )}
             >
               <p className="text-[10px] uppercase tracking-wide text-slate-500">
                 {official ? 'ULPIN (Official — Government Source)' : 'Parcel ID (Demo — Not an Official ULPIN)'}
               </p>
-              <p className="mt-0.5 font-mono text-[13px] font-bold text-slate-900 break-all" data-testid="parcel-ulpin">
+              <p className="mt-0.5 data-mono text-[13px] font-bold text-slate-900 break-all" data-testid="parcel-ulpin">
                 {p.ulpin}
               </p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -816,7 +1007,7 @@ function ParcelCard({ query, ulpin, mapApi, onClose, canVerify }) {
                 </p>
               )}
               {prov.disclaimer && (
-                <p className="mt-1 text-[10px] text-amber-700">{prov.disclaimer}</p>
+                <p className="mt-1 text-[10px] text-warn">{prov.disclaimer}</p>
               )}
             </Section>
           </>
@@ -848,8 +1039,23 @@ function ParcelCard({ query, ulpin, mapApi, onClose, canVerify }) {
         >
           <Waypoints size={14} /> View Underground Infrastructure
         </a>
+        {cert && (
+          <button
+            className="btn-primary col-span-2 justify-center"
+            onClick={() => setShowCert(true)}
+            data-testid="open-certificate"
+          >
+            <FileText size={14} /> Download Certificate
+          </button>
+        )}
       </footer>
     </aside>
+    {showCert && cert && (
+      <Suspense fallback={<CertificateModalFallback />}>
+        <PropertyCertificateModal data={cert} onClose={() => setShowCert(false)} />
+      </Suspense>
+    )}
+    </>
   )
 }
 
@@ -874,13 +1080,13 @@ function AiBuildingCard({ query, id, onClose, canReview }) {
 
   return (
     <aside
-      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
+      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col panel"
       data-testid="property-sidebar"
     >
       <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-slate-900">AI-Extracted Building</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-amber-700" data-testid="ai-building-source">
+          <p className="font-display text-sm font-semibold text-slate-900">AI-Extracted Building</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-warn" data-testid="ai-building-source">
             <DemoTag label="AI_DEMO" /> MODEL OUTPUT — not an official record
           </p>
         </div>
@@ -894,8 +1100,8 @@ function AiBuildingCard({ query, id, onClose, canReview }) {
         <ErrorNote error={error} onRetry={reload} />
         {b && (
           <>
-            <div className="rounded-lg border border-amber-300 bg-amber-50 p-2.5">
-              <p className="font-mono text-[13px] font-bold text-slate-900 break-all">{b.aiBuildingId}</p>
+            <div className="rounded-lg border border-warn/30 bg-warn/10 p-2.5">
+              <p className="data-mono text-[13px] font-bold text-slate-900 break-all">{b.aiBuildingId}</p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <DemoTag label="AI / PROTOTYPE" />
                 <Badge>{level}</Badge>
@@ -929,11 +1135,11 @@ function AiBuildingCard({ query, id, onClose, canReview }) {
               {(b.geometryIssues || []).length > 0 && (
                 <ul className="mt-1.5 space-y-1 text-[11px] text-slate-600">
                   {b.geometryIssues.map((m, i) => (
-                    <li key={i}><span className="text-amber-700">•</span> {m}</li>
+                    <li key={i}><span className="text-warn">•</span> {m}</li>
                   ))}
                 </ul>
               )}
-              <p className="mt-1 text-[10px] text-amber-700">Height shown in 3D is an ESTIMATED / DEMO value — not survey / LiDAR / GNSS-derived.</p>
+              <p className="mt-1 text-[10px] text-warn">Height shown in 3D is an ESTIMATED / DEMO value — not survey / LiDAR / GNSS-derived.</p>
             </Section>
 
             <Section title="Parcel Association">
@@ -963,7 +1169,7 @@ function AiBuildingCard({ query, id, onClose, canReview }) {
                 <Badge status={b.reviewStatus === 'ACCEPTED' ? 'Verified' : b.reviewStatus === 'REJECTED' ? 'Disputed' : 'Under Review'}>
                   {b.reviewStatus}
                 </Badge>
-                {b.reviewRequired && <span className="text-[11px] text-amber-700">Requires Review</span>}
+                {b.reviewRequired && <span className="text-[11px] text-warn">Requires Review</span>}
               </div>
               {canReview ? (
                 <div className="mt-2 grid grid-cols-3 gap-1.5">
@@ -974,7 +1180,7 @@ function AiBuildingCard({ query, id, onClose, canReview }) {
               ) : (
                 <p className="mt-1.5 text-[10px] text-slate-500">Review requires the change-detection:review permission.</p>
               )}
-              <p className="mt-1.5 text-[10px] text-amber-700">
+              <p className="mt-1.5 text-[10px] text-warn">
                 An AI prediction is a decision-support candidate only. It creates no ownership, rights or official cadastral record.
               </p>
             </Section>
@@ -1009,13 +1215,13 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
 
   return (
     <aside
-      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
+      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col panel"
       data-testid="property-sidebar"
     >
       <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-slate-900">AI Floor-Plan Unit</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-amber-700" data-testid="ai-floor-unit-source">
+          <p className="font-display text-sm font-semibold text-slate-900">AI Floor-Plan Unit</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-warn" data-testid="ai-floor-unit-source">
             <DemoTag label="AI_DEMO" /> MODEL OUTPUT · DEMO_RESEARCH_DATA — not an official record
           </p>
         </div>
@@ -1029,8 +1235,8 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
         <ErrorNote error={error} onRetry={reload} />
         {u && (
           <>
-            <div className="rounded-lg border border-amber-300 bg-amber-50 p-2.5">
-              <p className="font-mono text-[13px] font-bold text-slate-900 break-all">{u.localUnitId || u.aiFloorUnitId}</p>
+            <div className="rounded-lg border border-warn/30 bg-warn/10 p-2.5">
+              <p className="data-mono text-[13px] font-bold text-slate-900 break-all">{u.localUnitId || u.aiFloorUnitId}</p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <DemoTag label="AI / PROTOTYPE" />
                 <Badge>{level}</Badge>
@@ -1070,7 +1276,7 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
                   {u.roomDetails.map((r) => (
                     <li key={r.roomId}>
                       <span className="font-mono text-slate-500">{r.localRoomId}</span> · {r.roomType || r.class}
-                      {r.reviewRequired && <span className="text-amber-700"> · review</span>}
+                      {r.reviewRequired && <span className="text-warn"> · review</span>}
                     </li>
                   ))}
                 </ul>
@@ -1092,7 +1298,7 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
               {(u.ambiguityReasons || []).length > 0 && (
                 <ul className="mt-1.5 space-y-1 text-[11px] text-slate-600">
                   {u.ambiguityReasons.map((m, i) => (
-                    <li key={i}><span className="text-amber-700">•</span> {m}</li>
+                    <li key={i}><span className="text-warn">•</span> {m}</li>
                   ))}
                 </ul>
               )}
@@ -1100,7 +1306,7 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
 
             {vol && (
               <Section title="3D Volume (Prototype, Phase 2 model)">
-                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] text-amber-700">
+                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] text-warn">
                   <DemoTag label="ESTIMATED / DEMO" /> Reuses the Phase-2 prototype volume model.
                 </p>
                 <KeyValue
@@ -1122,7 +1328,7 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
                     </Badge>
                     {(u.volumeValidation.issues || []).map((it, i) => (
                       <p key={i} className="mt-1 text-[11px] text-slate-600">
-                        <span className={it.status === 'ERROR' ? 'text-danger' : 'text-amber-700'}>{it.status}</span>{' '}
+                        <span className={it.status === 'ERROR' ? 'text-danger' : 'text-warn'}>{it.status}</span>{' '}
                         <span className="font-mono text-slate-500">{it.rule}</span> — {it.message}
                       </p>
                     ))}
@@ -1136,7 +1342,7 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
                 <Badge status={u.reviewStatus === 'ACCEPTED' ? 'Verified' : u.reviewStatus === 'REJECTED' ? 'Disputed' : 'Under Review'}>
                   {u.reviewStatus}
                 </Badge>
-                {u.reviewRequired && <span className="text-[11px] text-amber-700">Requires Review</span>}
+                {u.reviewRequired && <span className="text-[11px] text-warn">Requires Review</span>}
               </div>
               {canReview ? (
                 <div className="mt-2 grid grid-cols-3 gap-1.5">
@@ -1147,7 +1353,7 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
               ) : (
                 <p className="mt-1.5 text-[10px] text-slate-500">Review requires the change-detection:review permission.</p>
               )}
-              <p className="mt-1.5 text-[10px] text-amber-700">
+              <p className="mt-1.5 text-[10px] text-warn">
                 AI-inferred apartment boundary. Human review is required for any authoritative use; it creates no ownership,
                 rights or official cadastral record, and never an official ULPIN.
               </p>
@@ -1179,6 +1385,186 @@ function AiFloorUnitCard({ query, id, onClose, mapApi, canReview }) {
 // government-authoritative survey record, and accuracy is only ever shown
 // when the dataset itself supplied a number.
 // --------------------------------------------------------------------------
+// Coimbatore — the ONE demonstration property. Backed by a real `buildings`
+// document (buildingId COIMBATORE-DEMO-001, see backend/src/data/seed.js)
+// carrying a real, user-supplied official ULPIN and land-record fields —
+// unlike every other Chennai building in this prototype. The 3D
+// reconstruction itself (geometry/volume/height, the DMS/plus-code/model
+// fields below) remains client-only display metadata about the ODM capture,
+// never presented as a surveyed cadastral volume.
+function CoimbatoreDemoCard({ query, onClose, generatedBy, can3dUlpin }) {
+  const p = COIMBATORE_DEMO_PROPERTY
+  const { data, error, loading, reload } = query
+  const b = data?.building
+  const [showCert, setShowCert] = useState(false)
+  const [showGen3D, setShowGen3D] = useState(false)
+  const [gen3DBusy, setGen3DBusy] = useState(false)
+  const cert = b ? buildBuildingCertificate({ buildingData: data, generatedBy }) : null
+
+  const generate3D = async () => {
+    setGen3DBusy(true)
+    try {
+      await api.generateBuildingThreeDUlpin(p.propertyId).catch(() => {})
+      await reload()
+    } finally {
+      setGen3DBusy(false)
+      setShowGen3D(false)
+    }
+  }
+
+  return (
+    <>
+    <aside
+      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col panel"
+      data-testid="property-sidebar"
+    >
+      <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
+        <div className="min-w-0">
+          <p className="font-display text-sm font-semibold text-slate-900">{p.name}</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-warn" data-testid="coimbatore-demo-source">
+            <DemoTag label={p.verification} /> user-provided ODM reconstruction — not a surveyed 3D volume
+          </p>
+        </div>
+        <button className="btn-ghost !px-1.5 !py-1" onClick={onClose} aria-label="Close details">
+          <X size={15} />
+        </button>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-3" data-testid="coimbatore-demo-card">
+        {loading && <Spinner />}
+        <ErrorNote error={error} onRetry={reload} />
+
+        <div className="rounded-lg border border-brass/30 bg-brass/10 p-2.5">
+          <p className="text-[10px] font-extrabold uppercase tracking-wide text-brass">Official ULPIN</p>
+          <p className="data-mono mt-0.5 text-[13px] font-bold text-slate-900 break-all">{p.ulpin}</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <StatusPillInline>{p.status}</StatusPillInline>
+          </div>
+        </div>
+
+        <Section title="Land Record">
+          <KeyValue
+            data={{
+              District: `${p.district} / ${p.districtTamil}`,
+              Taluk: `${p.taluk} / ${p.talukTamil}`,
+              Village: `${p.village} / ${p.villageTamil}`,
+              'Village LGD Code': p.villageLgdCode,
+              'Survey Number': p.surveyNumber,
+              'Sub Division': p.subdivisionNumber,
+              Centroid: `${p.officialCentroid.lat}, ${p.officialCentroid.lon}`,
+            }}
+          />
+        </Section>
+
+        <Section title="3D ULPIN">
+          <div className="flex items-center gap-2 text-[12px] text-slate-600" data-testid="coimbatore-3d-ulpin">
+            <Fingerprint size={12} className="text-primary" /> 3D ULPIN:{' '}
+            {b?.threeDUlpin ? (
+              <span className="inline-flex items-center gap-1">
+                <span className="data-mono text-slate-900" title="System Generated 3D Property Identifier">{b.threeDUlpin}</span>
+                <button
+                  className="text-slate-400 hover:text-slate-700"
+                  onClick={() => navigator.clipboard?.writeText(b.threeDUlpin)}
+                  aria-label="Copy 3D ULPIN"
+                  title="Copy 3D ULPIN"
+                  type="button"
+                >
+                  <Copy size={11} />
+                </button>
+              </span>
+            ) : (
+              <span className="text-slate-500">Not generated</span>
+            )}
+          </div>
+          {can3dUlpin && b && (
+            b.threeDUlpin ? (
+              <p className="mt-1.5 flex items-center justify-center gap-1.5 rounded-md border border-teal/30 bg-teal/10 px-2 py-1.5 text-xs font-semibold text-teal">
+                <Fingerprint size={13} /> Already Generated
+              </p>
+            ) : (
+              <button
+                className="btn-ghost mt-1.5 w-full justify-center"
+                onClick={() => setShowGen3D(true)}
+                data-testid="coimbatore-generate-3d-ulpin"
+              >
+                <Fingerprint size={14} /> Generate 3D ULPIN
+              </button>
+            )
+          )}
+        </Section>
+
+        <Section title="Coordinates">
+          <KeyValue
+            data={{
+              Latitude: p.lat,
+              Longitude: p.lon,
+              DMS: p.dms,
+              'Plus Code': p.plusCode,
+            }}
+          />
+          <p className="mt-1 text-[10px] text-slate-500">
+            Model coordinates locate the 3D reconstruction; the official centroid in Land Record above is the
+            government-sourced parcel centroid.
+          </p>
+        </Section>
+
+        <Section title="3D Source">
+          <KeyValue
+            data={{
+              '3D Source': p.threeDSource,
+              'Model Type': p.modelType,
+              Verification: p.verification,
+              Status: p.status,
+            }}
+          />
+        </Section>
+
+        <div className="mt-2 grid grid-cols-1 gap-1.5">
+          <a
+            href={COIMBATORE_EXPLORER_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="btn-primary justify-center"
+            data-testid="coimbatore-open-explorer"
+          >
+            <Box size={14} /> Open 3D Property Explorer
+          </a>
+          {cert && (
+            <button
+              className="btn-ghost justify-center"
+              onClick={() => setShowCert(true)}
+              data-testid="open-certificate"
+            >
+              <FileText size={14} /> Download Certificate
+            </button>
+          )}
+        </div>
+      </div>
+    </aside>
+    {showCert && cert && (
+      <Suspense fallback={<CertificateModalFallback />}>
+        <PropertyCertificateModal data={cert} onClose={() => setShowCert(false)} />
+      </Suspense>
+    )}
+    <GenerateThreeDUlpinDialog
+      open={showGen3D}
+      onClose={() => setShowGen3D(false)}
+      onConfirm={generate3D}
+      busy={gen3DBusy}
+      building={p.propertyId}
+    />
+    </>
+  )
+}
+
+function StatusPillInline({ children }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-slate-300 bg-surface px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+      {children}
+    </span>
+  )
+}
+
 function GnssPointCard({ query, elevQuery, id, onClose, mapApi, canReview }) {
   const { data: p, error, loading, reload } = query
   const { data: elev } = elevQuery || {}
@@ -1196,13 +1582,13 @@ function GnssPointCard({ query, elevQuery, id, onClose, mapApi, canReview }) {
 
   return (
     <aside
-      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
+      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col panel"
       data-testid="property-sidebar"
     >
       <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-slate-900">GNSS/CORS Control Point</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-amber-700" data-testid="gnss-point-source">
+          <p className="font-display text-sm font-semibold text-slate-900">GNSS/CORS Control Point</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-warn" data-testid="gnss-point-source">
             <DemoTag label="GNSS/CORS DEMO" /> MODEL OUTPUT — not an official survey record
           </p>
         </div>
@@ -1216,8 +1602,8 @@ function GnssPointCard({ query, elevQuery, id, onClose, mapApi, canReview }) {
         <ErrorNote error={error} onRetry={reload} />
         {p && (
           <>
-            <div className="rounded-lg border border-amber-300 bg-amber-50 p-2.5">
-              <p className="font-mono text-[13px] font-bold text-slate-900 break-all">{p.controlPointId}</p>
+            <div className="rounded-lg border border-warn/30 bg-warn/10 p-2.5">
+              <p className="data-mono text-[13px] font-bold text-slate-900 break-all">{p.controlPointId}</p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <DemoTag label={p.source} />
                 <Badge status={vtone}>{p.validationStatus}</Badge>
@@ -1248,7 +1634,7 @@ function GnssPointCard({ query, elevQuery, id, onClose, mapApi, canReview }) {
                   Operator: p.operator || '—',
                 }}
               />
-              <p className="mt-1.5 text-[10px] text-amber-700">
+              <p className="mt-1.5 text-[10px] text-warn">
                 {p.accuracy != null
                   ? `Reported accuracy: ${p.accuracy} ${p.accuracyUnit || 'm'}. Validation status: UNVERIFIED unless independently confirmed.`
                   : 'Reported accuracy: Not available. Survey accuracy is not claimed for this point.'}
@@ -1263,7 +1649,7 @@ function GnssPointCard({ query, elevQuery, id, onClose, mapApi, canReview }) {
                 <ul className="mt-1.5 space-y-1 text-[11px] text-slate-600">
                   {p.validationIssues.map((i, idx) => (
                     <li key={idx}>
-                      <span className={i.status === 'ERROR' ? 'text-danger' : 'text-amber-700'}>{i.status}</span>{' '}
+                      <span className={i.status === 'ERROR' ? 'text-danger' : 'text-warn'}>{i.status}</span>{' '}
                       <span className="font-mono text-slate-500">{i.rule}</span> — {i.message}
                     </li>
                   ))}
@@ -1298,7 +1684,7 @@ function GnssPointCard({ query, elevQuery, id, onClose, mapApi, canReview }) {
                       'Vertical Datum': elev.verticalDatumStatus,
                     }}
                   />
-                  <p className="mt-1.5 text-[10px] text-amber-700">
+                  <p className="mt-1.5 text-[10px] text-warn">
                     Observed difference only — this does not mean the GNSS reading or the DEM/DSM model is "correct".
                     {elev.verticalDatumStatus !== 'MATCHED' && ' Vertical datum is not confirmed matched, which limits comparability.'}
                   </p>
@@ -1324,7 +1710,7 @@ function GnssPointCard({ query, elevQuery, id, onClose, mapApi, canReview }) {
               ) : (
                 <p className="mt-1.5 text-[10px] text-slate-500">Review requires the change-detection:review permission.</p>
               )}
-              <p className="mt-1.5 text-[10px] text-amber-700">
+              <p className="mt-1.5 text-[10px] text-warn">
                 GNSS/CORS DEMO / MODEL OUTPUT — not automatically an official cadastral control point. Existing parcel
                 geometry is never overwritten without explicit authorized review.
               </p>
@@ -1375,7 +1761,7 @@ function DepthDiagram({ p }) {
         <span>crown / invert</span>
         <span>{top != null ? `${top}` : '—'} / {bot != null ? `${bot}` : '—'} m</span>
       </div>
-      <p className="mt-1 text-[10px] text-amber-700">
+      <p className="mt-1 text-[10px] text-warn">
         {demo
           ? 'DEMO DEPTH — illustrative, relative to local ground surface; vertical datum UNKNOWN.'
           : `Reference: ${p.depthReference || 'UNKNOWN'} · Vertical datum: ${p.verticalDatum || 'UNKNOWN'}`}
@@ -1402,14 +1788,14 @@ function InfrastructureCard({ query, relQuery, elevQuery, id, onClose, mapApi, c
 
   return (
     <aside
-      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
+      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col panel"
       data-testid="property-sidebar"
     >
       <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-slate-900">Underground Infrastructure</p>
+          <p className="font-display text-sm font-semibold text-slate-900">Underground Infrastructure</p>
           <p
-            className={clsx('mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold', official ? 'text-emerald-700' : 'text-amber-700')}
+            className={clsx('mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold', official ? 'text-brass' : 'text-warn')}
             data-testid="infra-source"
           >
             {official ? <BadgeCheck size={12} /> : <TriangleAlert size={12} />}
@@ -1426,8 +1812,8 @@ function InfrastructureCard({ query, relQuery, elevQuery, id, onClose, mapApi, c
         <ErrorNote error={error} onRetry={reload} />
         {p && (
           <>
-            <div className={clsx('rounded-lg border p-2.5', official ? 'border-emerald-200 bg-emerald-50' : 'border-amber-300 bg-amber-50')}>
-              <p className="font-mono text-[13px] font-bold text-slate-900 break-all" data-testid="infra-id">{p.infrastructureId}</p>
+            <div className={clsx('rounded-lg border p-2.5', official ? 'border-brass/30 bg-brass/10' : 'border-warn/30 bg-warn/10')}>
+              <p className="data-mono text-[13px] font-bold text-slate-900 break-all" data-testid="infra-id">{p.infrastructureId}</p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {!official && <DemoTag label={p.verificationStatus || 'DEMO'} />}
                 <Badge>{p.type}</Badge>
@@ -1501,7 +1887,7 @@ function InfrastructureCard({ query, relQuery, elevQuery, id, onClose, mapApi, c
             )}
 
             <Section title="Property Relationship">
-              <p className="mb-1.5 text-[10px] text-amber-700">
+              <p className="mb-1.5 text-[10px] text-warn">
                 Spatial and legal relationships are shown separately. A spatial intersection does <strong>not</strong> establish legal ownership.
               </p>
               <KeyValue
@@ -1545,13 +1931,13 @@ function InfrastructureCard({ query, relQuery, elevQuery, id, onClose, mapApi, c
                   <button className="btn-ghost !py-1 justify-center text-[11px]" disabled={busy} onClick={() => review('ACCEPTED')}>Accept</button>
                   <button className="btn-ghost !py-1 justify-center text-[11px]" disabled={busy} onClick={() => review('NEEDS_CORRECTION')}>Correct</button>
                 </div>
-                <p className="mt-1.5 text-[10px] text-amber-700">
+                <p className="mt-1.5 text-[10px] text-warn">
                   A review records that a reviewer looked at this record. It never promotes the source to official and never changes geometry or depth.
                 </p>
               </Section>
             )}
 
-            <p className="mt-2 text-[10px] text-amber-700" data-testid="infra-disclaimer">
+            <p className="mt-2 text-[10px] text-warn" data-testid="infra-disclaimer">
               UNDERGROUND INFRASTRUCTURE DATA. Geometry, depth, elevation, ownership/authority and status are shown only from available
               official, authorized, uploaded, research or demonstration datasets. Spatial intersection does not establish legal ownership.
               Underground depth/elevation is only reported when supported by source data. Demonstration data is clearly labelled DEMO and
@@ -1606,13 +1992,13 @@ function TngisParcelCard({ query, relQuery, id, onClose, mapApi, canValidate }) 
 
   return (
     <aside
-      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-xl panel"
+      className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col panel"
       data-testid="property-sidebar"
     >
       <header className="flex items-start justify-between gap-2 border-b border-slate-200 p-3">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-slate-900">TNGIS / Tamil Nilam Parcel</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700" data-testid="tngis-source">
+          <p className="font-display text-sm font-semibold text-slate-900">TNGIS / Tamil Nilam Parcel</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-brass" data-testid="tngis-source">
             <BadgeCheck size={12} /> {p?.source || 'TNGIS_TAMIL_NILAM'} · OFFICIAL SOURCE · SOURCE-VERIFIED GEOMETRY
           </p>
         </div>
@@ -1626,8 +2012,8 @@ function TngisParcelCard({ query, relQuery, id, onClose, mapApi, canValidate }) 
         <ErrorNote error={error} onRetry={reload} />
         {p && (
           <>
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
-              <p className="font-mono text-[12px] font-bold text-slate-900 break-all" data-testid="tngis-record-id">{p.sourceRecordId}</p>
+            <div className="rounded-lg border border-brass/30 bg-brass/10 p-2.5">
+              <p className="data-mono text-[12px] font-bold text-slate-900 break-all" data-testid="tngis-record-id">{p.sourceRecordId}</p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <Badge status="Verified">{p.verificationStatus}</Badge>
                 <Badge>{p.geometryType || 'no geometry'}</Badge>
@@ -1675,9 +2061,9 @@ function TngisParcelCard({ query, relQuery, id, onClose, mapApi, canValidate }) 
                   'Source Geometry': p.sourceGeometry ? 'Yes' : 'No',
                 }}
               />
-              <div className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-[11px]" data-testid="tngis-ulpin">
-                <p className="font-bold text-amber-800">Official ULPIN</p>
-                <p className="text-amber-700">Unavailable from current public source
+              <div className="mt-2 rounded border border-warn/30 bg-warn/10 p-2 text-[11px]" data-testid="tngis-ulpin">
+                <p className="font-bold text-warn">Official ULPIN</p>
+                <p className="text-warn">Unavailable from current public source
                   ({p.officialULPINStatus || 'UNAVAILABLE_FROM_PUBLIC_TNGIS_SOURCE'}).
                   The public TNGIS endpoints do not expose ULPIN as structured data; it is not fabricated here.
                   Prototype / DEMO ULPIN records are kept entirely separate.</p>
@@ -1685,7 +2071,7 @@ function TngisParcelCard({ query, relQuery, id, onClose, mapApi, canValidate }) 
             </Section>
 
             <Section title="Building Relationship">
-              <p className="mb-1.5 text-[10px] text-amber-700">
+              <p className="mb-1.5 text-[10px] text-warn">
                 A building footprint overlapping this parcel is a <strong>spatial fact only</strong> — not an ownership claim.
               </p>
               {(rel?.buildingRelations || []).length > 0 ? (
@@ -1724,7 +2110,7 @@ function TngisParcelCard({ query, relQuery, id, onClose, mapApi, canValidate }) 
                   <ul className="mt-1 space-y-0.5 text-[11px] text-slate-600">
                     {(topo.findings || []).slice(0, 10).map((f, i) => (
                       <li key={i}>
-                        <span className={f.status === 'ERROR' ? 'text-danger' : f.status === 'VALID' ? 'text-emerald-700' : 'text-amber-700'}>{f.status}</span>{' '}
+                        <span className={f.status === 'ERROR' ? 'text-danger' : f.status === 'VALID' ? 'text-teal' : 'text-warn'}>{f.status}</span>{' '}
                         <span className="font-mono text-slate-500">{f.ruleId || f.rule}</span> — {f.message}
                       </li>
                     ))}
@@ -1733,7 +2119,7 @@ function TngisParcelCard({ query, relQuery, id, onClose, mapApi, canValidate }) 
               )}
             </Section>
 
-            <p className="mt-2 text-[10px] text-amber-700" data-testid="tngis-disclaimer">
+            <p className="mt-2 text-[10px] text-warn" data-testid="tngis-disclaimer">
               {p.disclaimer}
             </p>
           </>

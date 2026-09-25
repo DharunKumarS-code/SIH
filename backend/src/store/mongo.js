@@ -66,10 +66,18 @@ const KEYS = {
   geometryVersions: ['geometryVersionId', 'entityType', 'entityId', 'geometryVersion', 'status'],
 }
 
+// Fields needing a *unique* index (in addition to their plain KEYS index
+// above) — sparse, so documents without the field yet are unaffected.
+const UNIQUE_SPARSE_KEYS = {
+  buildings: ['threeDUlpin'],
+  propertyUnits: ['threeDUlpin'],
+}
+
 function modelFor(name) {
   if (mongoose.models[name]) return mongoose.models[name]
   const schema = new Schema({}, { strict: false, collection: name, timestamps: true })
   for (const k of KEYS[name] || []) schema.index({ [k]: 1 })
+  for (const k of UNIQUE_SPARSE_KEYS[name] || []) schema.index({ [k]: 1 }, { unique: true, sparse: true })
   return mongoose.model(name, schema)
 }
 

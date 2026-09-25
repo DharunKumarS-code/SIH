@@ -15,6 +15,13 @@ export function ExplorerDock() {
   const [floorUnits, setFloorUnits] = useState([])
   const [collapsed, setCollapsed] = useState(false)
 
+  // Coimbatore's demonstration property has no building/floor/unit hierarchy
+  // of its own — this dock always shows the *Chennai* area's blocks (by
+  // design, independent of the 3D scene selection, see below), so it must
+  // stay hidden while Coimbatore is selected or a Chennai building would
+  // visibly appear alongside the one Coimbatore property.
+  const hidden = selection.mode === 'coimbatore-demo'
+
   useEffect(() => {
     if (!areaUlpin) return
     setBuildings([])
@@ -38,10 +45,12 @@ export function ExplorerDock() {
     api.floor(floorId).then((d) => setFloorUnits(d.units || [])).catch(() => setFloorUnits([]))
   }, [selection.buildingId, selection.floorNumber])
 
+  if (hidden) return null
+
   return (
     <div
       className={clsx(
-        'pointer-events-auto absolute bottom-3 left-3 z-10 rounded-xl panel p-3 transition-all',
+        'panel pointer-events-auto absolute bottom-3 left-3 z-10 p-3 transition-all',
         // Shrink away from the right-hand detail sidebar whenever one is shown
         // (building/floor now render the full BuildingCard, not a stub) so the
         // dock — and its floor plan — never sits underneath and swallows clicks.
@@ -54,7 +63,7 @@ export function ExplorerDock() {
     >
       <div className="mb-2 flex items-center justify-between">
         <span className="section-title flex items-center gap-2">
-          <Layers3 size={13} /> Floor &amp; Unit Explorer — {areaUlpin}
+          <Layers3 size={13} /> Floor &amp; Unit Explorer — <span className="data-mono normal-case">{areaUlpin}</span>
         </span>
         <button className="btn-ghost !px-1.5 !py-1" onClick={() => setCollapsed((c) => !c)} aria-label="Toggle explorer">
           {collapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}

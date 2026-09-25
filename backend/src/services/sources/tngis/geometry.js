@@ -14,6 +14,63 @@ import { getGeom, wfsGetFeature } from './client.js'
 
 export const SOURCE_CRS = 'EPSG:4326'
 
+// Chennai revenue district code in the public TNGIS GeoServer (`district_code`
+// on `cadastral_analysis:cadastral_ulpin`; the generic_api uses the 2-digit
+// string '02', LGD 568). Used to keep the viewport loader Chennai-only.
+export const CHENNAI_DISTRICT_CODE = 2
+
+// A single viewport WFS read may never be a whole-district download. GeoServer
+// returns ~74k parcels for Chennai; a viewport with these bounds returns a few
+// hundred at most. Anything wider is refused by the controller.
+export const VIEWPORT_MAX_SPAN_DEG = 0.14 // ~15 km
+export const VIEWPORT_FEATURE_CAP = 400
+
+const r3 = (n) => Number(n).toFixed(3)
+
+/**
+ * Every public Chennai cadastral parcel whose geometry intersects a map
+ * viewport, from the public GeoServer WFS (`cadastral_analysis:cadastral_ulpin`).
+ * Returned VERBATIM — geometry is not simplified, reprojected or rounded.
+ *
+ * This is a bounded VIEWPORT read: one WFS `GetFeature` filtered by
+ * `BBOX(the_geom, …) AND district_code=<Chennai>` and hard-capped at `count`
+ * features. There is deliberately no "fetch the district" path.
+ *
+ * @returns the upstream WFS FeatureCollection (with `numberMatched`).
+ */
+export async function getCadastralParcelsInViewport({
+  minLon, minLat, maxLon, maxLat, count = VIEWPORT_FEATURE_CAP, districtCode = CHENNAI_DISTRICT_CODE,
+}) {
+  // GeoServer BBOX() axis order matches the requested srsName
+  // (urn:ogc:def:crs:EPSG::4326 → lat,lon). Verified against the live service.
+  const cql =
+    `BBOX(the_geom,${minLat},${minLon},${maxLat},${maxLon}) AND district_code=${Number(districtCode)}`
+  const key = `wfs:bbox:${r3(minLon)},${r3(minLat)},${r3(maxLon)},${r3(maxLat)}`
+  const fc = await wfsGetFeature(cql, key, { count })
+  if (!fc || fc.type !== 'FeatureCollection' || !Array.isArray(fc.features)) {
+    return { type: 'FeatureCollection', features: [], numberMatched: 0 }
+  }
+  return fc
+}
+
+/** Ring-average centroid of a Polygon / MultiPolygon (EPSG:4326, lon/lat). */
+export function centroidOfGeometry(geometry) {
+  const rings =
+    geometry?.type === 'MultiPolygon' ? geometry.coordinates.flat()
+      : geometry?.type === 'Polygon' ? geometry.coordinates
+        : []
+  const pts = []
+  for (const ring of rings) for (const c of ring || []) {
+    if (Number.isFinite(c?.[0]) && Number.isFinite(c?.[1])) pts.push(c)
+  }
+  if (!pts.length) return null
+  const s = pts.reduce((a, c) => [a[0] + c[0], a[1] + c[1]], [0, 0])
+  return {
+    longitude: Number((s[0] / pts.length).toFixed(9)),
+    latitude: Number((s[1] / pts.length).toFixed(9)),
+  }
+}
+
 /**
  * Raw parcel geometry for a survey number, from generic_api/v1/get_geom.
  * @returns the upstream FeatureCollection (unaltered) — `{ type, features }`.

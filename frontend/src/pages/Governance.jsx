@@ -38,7 +38,7 @@ export default function Governance() {
         <DemoTag label="READ-ONLY ROLL-UP" />
       </PageHeader>
 
-      <p className="mb-4 rounded-lg border border-slate-200 bg-white p-3 text-[12px] leading-relaxed text-slate-600">
+      <p className="mb-4 rounded-lg border border-slate-200 bg-surface p-3 text-[12px] leading-relaxed text-slate-600">
         {d.disclaimer || 'Governance overview — a read-only roll-up of existing platform records. No live government connectivity; Land Records / Registration / Property Tax integrations are DEMO / MOCK adapters.'}
       </p>
 

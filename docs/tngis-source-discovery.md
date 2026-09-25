@@ -83,6 +83,15 @@ Missing `x-app-name` header → `404 {"success":0,"message":"APP Name Missing"}`
 | `?service=WMS&request=GetFeatureInfo&query_layers=cadastral_analysis:cadastral_ulpin&info_format=application/json&…` | 200, GeoJSON feature (see §7) |
 | `?service=WFS&version=2.0.0&request=DescribeFeatureType&typeNames=cadastral_analysis:cadastral_ulpin&outputFormat=application/json` | 200, full attribute schema |
 | `?service=WFS&version=2.0.0&request=GetFeature&typeNames=cadastral_analysis:cadastral_ulpin&outputFormat=application/json&count=1&CQL_FILTER=survey_number='234' AND village_code='013' AND taluk_code=11` | 200, `numberMatched:4`, GeoJSON |
+| `…&count=250&CQL_FILTER=BBOX(the_geom,<minLat>,<minLon>,<maxLat>,<maxLon>) AND district_code=2` | 200, GeoJSON, `numberMatched` = every Chennai parcel intersecting the viewport (verified live 2026-09-10). `district_code=2` → **74,459** parcels for all of Chennai — hence viewport-bounded loading only. BBOX() axis order is **lat,lon** to match `srsName=urn:ogc:def:crs:EPSG::4326`. `bbox=` and `CQL_FILTER=` **cannot** be combined (GeoServer OWS exception) — put the BBOX inside the CQL filter. |
+
+**Chennai-wide loading (implemented).** The project's Cesium map streams official
+parcel geometry for whatever Chennai extent is in view via
+`GET /api/gis/tngis-parcels/bbox?bbox=minLon,minLat,maxLon,maxLat` →
+`services/sources/tngis/geometry.js#getCadastralParcelsInViewport` → the WFS
+`GetFeature` row above, hard-capped at 400 features and refused above a
+0.14° viewport span. It never downloads the district. `officialULPIN` stays
+`null` (the `cadastral_ulpin` layer still has no `ulpin` column).
 
 Relevant cadastral layers found: `cadastral_analysis:cadastral_ulpin`,
 `cadastral_data_wms:view_cadastral`, `cadastral_analysis:view_cadastral`,

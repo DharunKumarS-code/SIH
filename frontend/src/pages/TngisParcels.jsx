@@ -97,12 +97,12 @@ export default function TngisParcels() {
         title="TNGIS / Tamil Nilam Parcels"
         subtitle="Public-source Tamil Nadu GIS parcel geometry — official geometry, no ULPIN. Rendered inside the one Chennai Cesium viewer."
       >
-        <span className="inline-flex items-center gap-1.5 rounded bg-emerald-100 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-emerald-700">
+        <span className="inline-flex items-center gap-1.5 rounded bg-brass/10 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-brass">
           <ShieldCheck size={12} /> Official Source
         </span>
       </PageHeader>
 
-      <p className="mb-4 flex items-start gap-2 rounded-lg border border-emerald-300 bg-emerald-50 p-2.5 text-[12px] leading-relaxed text-emerald-800">
+      <p className="mb-4 flex items-start gap-2 rounded-lg border border-brass/30 bg-brass/10 p-2.5 text-[12px] leading-relaxed text-brass">
         <Landmark size={16} className="mt-0.5 shrink-0" />
         <span>
           <strong>PUBLIC TNGIS INTEGRATION.</strong> Parcel geometry, the District → Taluk → Village hierarchy and LGD codes are
@@ -115,7 +115,7 @@ export default function TngisParcels() {
       </p>
 
       {sourceUnreachable && (
-        <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[12px] text-amber-800" data-testid="tngis-source-unavailable">
+        <p className="mb-4 rounded-lg border border-warn/30 bg-warn/10 p-2.5 text-[12px] text-warn" data-testid="tngis-source-unavailable">
           TNGIS source temporarily unavailable. Parcels already fetched remain listed below; new lookups will resume when the source responds.
         </p>
       )}
@@ -127,7 +127,7 @@ export default function TngisParcels() {
               value={districtCode}
               onChange={(e) => { setDistrictCode(e.target.value); setTalukCode(''); setVillageCode(''); setSurveyNumber('') }}
               data-testid="tngis-district"
-              className="input mt-1 !py-1 [&>option]:bg-white"
+              className="input mt-1 !py-1 [&>option]:bg-surface"
             >
               <option value="">Select District</option>
               {districts.map((d) => <option key={d.districtCode} value={d.districtCode}>{d.name} ({d.districtCode})</option>)}
@@ -139,7 +139,7 @@ export default function TngisParcels() {
               onChange={(e) => { setTalukCode(e.target.value); setVillageCode(''); setSurveyNumber('') }}
               disabled={!districtCode || taluksQ.loading}
               data-testid="tngis-taluk"
-              className="input mt-1 !py-1 [&>option]:bg-white"
+              className="input mt-1 !py-1 [&>option]:bg-surface"
             >
               <option value="">{taluksQ.loading ? 'Loading…' : 'Select Taluk'}</option>
               {taluks.map((t) => <option key={t.talukCode} value={t.talukCode}>{t.name} · LGD {t.lgdTalukCode}</option>)}
@@ -151,7 +151,7 @@ export default function TngisParcels() {
               onChange={(e) => { setVillageCode(e.target.value); setSurveyNumber('') }}
               disabled={!talukCode || villagesQ.loading}
               data-testid="tngis-village"
-              className="input mt-1 !py-1 [&>option]:bg-white"
+              className="input mt-1 !py-1 [&>option]:bg-surface"
             >
               <option value="">{villagesQ.loading ? 'Loading…' : 'Select Village'}</option>
               {villages.map((v) => <option key={v.villageCode} value={v.villageCode}>{v.name} · LGD {v.lgdVillageCode}</option>)}
@@ -163,7 +163,7 @@ export default function TngisParcels() {
               onChange={(e) => setSurveyNumber(e.target.value)}
               disabled={!villageCode || surveysQ.loading}
               data-testid="tngis-survey"
-              className="input mt-1 !py-1 [&>option]:bg-white"
+              className="input mt-1 !py-1 [&>option]:bg-surface"
             >
               <option value="">{surveysQ.loading ? 'Loading…' : 'Select Survey Number'}</option>
               {surveys.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -198,7 +198,7 @@ export default function TngisParcels() {
               { key: 'village', header: 'Village (LGD)', render: (r) => `${r.villageName || r.villageCode} · ${r.lgdVillageCode || '—'}` },
               { key: 'taluk', header: 'Taluk', render: (r) => r.talukName || r.talukCode },
               { key: 'crs', header: 'CRS', render: (r) => <Badge>{r.sourceCRS}</Badge> },
-              { key: 'ulpin', header: 'Official ULPIN', render: () => <span className="text-[11px] text-amber-700">Unavailable (public source)</span> },
+              { key: 'ulpin', header: 'Official ULPIN', render: () => <span className="text-[11px] text-warn">Unavailable (public source)</span> },
               { key: 'prov', header: 'Provenance', render: (r) => <Badge status="Verified">{r.provenance}</Badge> },
             ]}
             rows={rows}

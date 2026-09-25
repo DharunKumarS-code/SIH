@@ -334,9 +334,9 @@ export const search = asyncHandler(async (req, res) => {
         { village: rx }, { ward: rx }, { district: rx }, { taluk: rx }, { locality: rx },
       ],
     }, { limit: 6 }),
-    db.collection('buildings').find({ $or: [{ buildingId: rx }, { name: rx }, { shortName: rx }] }, { limit: 6 }),
+    db.collection('buildings').find({ $or: [{ buildingId: rx }, { name: rx }, { shortName: rx }, { threeDUlpin: rx }] }, { limit: 6 }),
     db.collection('floors').find({ $or: [{ floorId: rx }] }, { limit: 6 }),
-    db.collection('propertyUnits').find({ $or: [{ propertyId: rx }, { apartmentNumber: rx }, { unitId: rx }] }, { limit: 8 }),
+    db.collection('propertyUnits').find({ $or: [{ propertyId: rx }, { apartmentNumber: rx }, { unitId: rx }, { threeDUlpin: rx }] }, { limit: 8 }),
     db.collection('propertyUnits').find({ 'owner.name': rx }, { limit: 8 }),
   ])
 

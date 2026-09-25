@@ -10,13 +10,14 @@ import { PARCEL_ULPIN } from '../lib/constants.js'
 const CONFIG = {
   ror: {
     title: 'Land Records (Record of Rights)',
-    subtitle: 'Parcel-level RoR from the Land Records demo adapter',
+    subtitle: 'Parcel-level Record of Rights and land record information',
     load: (ulpin) => api.ror(ulpin),
     render: (d) => <KeyValue data={d.recordOfRights} />,
   },
   registration: {
     title: 'Registration Records',
     subtitle: 'Sub-Registrar deed registrations (parcel + apartment level)',
+    demoTag: 'DEMO / MOCK INTEGRATION',
     load: (ulpin) => api.registration(ulpin),
     render: (rows) => (
       <DataTable
@@ -36,6 +37,7 @@ const CONFIG = {
   approval: {
     title: 'Building Permissions',
     subtitle: 'CMDA building plan approvals for each block',
+    demoTag: 'DEMO / MOCK INTEGRATION',
     load: async () => {
       const { buildings } = await api.parcel(PARCEL_ULPIN)
       return Promise.all(buildings.map((b) => api.buildingApproval(b.buildingId).catch(() => null)))
@@ -58,6 +60,7 @@ const CONFIG = {
   tax: {
     title: 'Property Tax',
     subtitle: 'Greater Chennai Corporation assessments (parcel + apartment level)',
+    demoTag: 'DEMO / MOCK INTEGRATION',
     load: (ulpin) => api.propertyTax(ulpin),
     render: (d) => (
       <>
@@ -89,7 +92,7 @@ export default function GovernanceTable({ kind }) {
   return (
     <PageScroll>
       <PageHeader title={cfg.title} subtitle={cfg.subtitle}>
-        <DemoTag label="DEMO / MOCK INTEGRATION" />
+        {cfg.demoTag && <DemoTag label={cfg.demoTag} />}
       </PageHeader>
       <div className="mb-3 flex gap-2">
         <input className="input max-w-xs" value={ulpin} onChange={(e) => setUlpin(e.target.value)} placeholder="ULPIN" />

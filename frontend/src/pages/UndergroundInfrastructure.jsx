@@ -170,7 +170,7 @@ export default function UndergroundInfrastructure() {
         <DemoTag label="DEMO / MODEL OUTPUT" />
       </PageHeader>
 
-      <p className="mb-4 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[12px] leading-relaxed text-amber-700" data-testid="infra-page-disclaimer">
+      <p className="mb-4 flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/10 p-2.5 text-[12px] leading-relaxed text-warn" data-testid="infra-page-disclaimer">
         <ShieldAlert size={16} className="mt-0.5 shrink-0" />
         <span>
           <strong>UNDERGROUND INFRASTRUCTURE DATA.</strong> Infrastructure geometry, depth, elevation, ownership/authority and status are
@@ -189,33 +189,33 @@ export default function UndergroundInfrastructure() {
       </div>
 
       <Card className="mt-4" title="Filters" right={
-        <select value={locality} onChange={(e) => setLocality(e.target.value)} data-testid="infra-locality" className="input !py-1 [&>option]:bg-white">
+        <select value={locality} onChange={(e) => setLocality(e.target.value)} data-testid="infra-locality" className="input !py-1 [&>option]:bg-surface">
           {AREAS.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
       }>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
           <label className="text-[11px] text-slate-500">Type
-            <select value={filters.type} onChange={(e) => setFilters((f) => ({ ...f, type: e.target.value }))} data-testid="infra-filter-type" className="input mt-1 !py-1 [&>option]:bg-white">
+            <select value={filters.type} onChange={(e) => setFilters((f) => ({ ...f, type: e.target.value }))} data-testid="infra-filter-type" className="input mt-1 !py-1 [&>option]:bg-surface">
               <option value="">All</option>{TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
           <label className="text-[11px] text-slate-500">Status
-            <select value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} data-testid="infra-filter-status" className="input mt-1 !py-1 [&>option]:bg-white">
+            <select value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} data-testid="infra-filter-status" className="input mt-1 !py-1 [&>option]:bg-surface">
               <option value="">All</option>{STATUSES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
           <label className="text-[11px] text-slate-500">Source
-            <select value={filters.source} onChange={(e) => setFilters((f) => ({ ...f, source: e.target.value }))} data-testid="infra-filter-source" className="input mt-1 !py-1 [&>option]:bg-white">
+            <select value={filters.source} onChange={(e) => setFilters((f) => ({ ...f, source: e.target.value }))} data-testid="infra-filter-source" className="input mt-1 !py-1 [&>option]:bg-surface">
               <option value="">All</option>{SOURCES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
           <label className="text-[11px] text-slate-500">Verification
-            <select value={filters.verificationStatus} onChange={(e) => setFilters((f) => ({ ...f, verificationStatus: e.target.value }))} data-testid="infra-filter-verification" className="input mt-1 !py-1 [&>option]:bg-white">
+            <select value={filters.verificationStatus} onChange={(e) => setFilters((f) => ({ ...f, verificationStatus: e.target.value }))} data-testid="infra-filter-verification" className="input mt-1 !py-1 [&>option]:bg-surface">
               <option value="">All</option>{VERIFICATIONS.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
           <label className="text-[11px] text-slate-500">Depth
-            <select value={filters.depth} onChange={(e) => setFilters((f) => ({ ...f, depth: e.target.value }))} data-testid="infra-filter-depth" className="input mt-1 !py-1 [&>option]:bg-white">
+            <select value={filters.depth} onChange={(e) => setFilters((f) => ({ ...f, depth: e.target.value }))} data-testid="infra-filter-depth" className="input mt-1 !py-1 [&>option]:bg-surface">
               {DEPTHS.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
             </select>
           </label>
@@ -231,7 +231,7 @@ export default function UndergroundInfrastructure() {
               rowKey={(r) => r.infrastructureId}
               onRowClick={openOnMap}
               columns={[
-                { key: 'infrastructureId', header: 'ID', render: (r) => <span className="font-mono text-xs">{r.infrastructureId}</span> },
+                { key: 'infrastructureId', header: 'ID', render: (r) => <span className="data-mono text-xs">{r.infrastructureId}</span> },
                 { key: 'type', header: 'Type', render: (r) => <Badge>{r.type}</Badge> },
                 { key: 'ownerAuthority', header: 'Owner / Authority', render: (r) => r.ownerAuthority || '—' },
                 { key: 'depthBelowSurfaceM', header: 'Depth', render: (r) => (r.depthBelowSurfaceM != null ? `${r.depthBelowSurfaceM} m` : (r.verticalStatus === 'UNKNOWN' ? 'DEPTH UNKNOWN' : '—')) },
@@ -283,7 +283,7 @@ export default function UndergroundInfrastructure() {
                 {collisions.pairs.map((p, i) => (
                   <li key={i} className="rounded border border-slate-200 p-1.5">
                     <span className={p.relationship === '3D_COLLISION' ? 'text-danger' : 'text-slate-600'}>{p.relationship}</span>{' '}
-                    <span className="font-mono text-slate-500">{p.a} × {p.b}</span>
+                    <span className="data-mono text-slate-500">{p.a} × {p.b}</span>
                     <span className="text-slate-500"> · vert sep {p.verticalSeparationM ?? '—'} m · {p.clearanceStatus}</span>
                   </li>
                 ))}
@@ -313,12 +313,12 @@ export default function UndergroundInfrastructure() {
               <ul className="mt-2 max-h-52 space-y-1 overflow-y-auto text-[11px]">
                 {(validationRun.findings || []).slice(0, 40).map((f) => (
                   <li key={f.validationId}>
-                    <span className={f.status === 'ERROR' ? 'text-danger' : f.status === 'VALID' ? 'text-emerald-700' : 'text-amber-700'}>{f.status}</span>{' '}
-                    <span className="font-mono text-slate-500">{f.ruleId}</span> — {f.message}
+                    <span className={f.status === 'ERROR' ? 'text-danger' : f.status === 'VALID' ? 'text-teal' : 'text-warn'}>{f.status}</span>{' '}
+                    <span className="data-mono text-slate-500">{f.ruleId}</span> — {f.message}
                   </li>
                 ))}
               </ul>
-              <p className="mt-1 text-[10px] text-amber-700">{validationRun.disclaimer}</p>
+              <p className="mt-1 text-[10px] text-warn">{validationRun.disclaimer}</p>
             </div>
           )}
         </Card>
@@ -330,7 +330,7 @@ export default function UndergroundInfrastructure() {
             <FilePicker file={file} onPick={setFile} />
             <div className="mt-3 grid grid-cols-2 gap-2">
               <label className="text-[12px] text-slate-500">Provenance / source
-                <select value={sourceLabel} onChange={(e) => setSourceLabel(e.target.value)} data-testid="infra-source-label" className="input mt-1 !py-1 [&>option]:bg-white">
+                <select value={sourceLabel} onChange={(e) => setSourceLabel(e.target.value)} data-testid="infra-source-label" className="input mt-1 !py-1 [&>option]:bg-surface">
                   {SOURCES.map((sv) => <option key={sv} value={sv}>{sv}</option>)}
                 </select>
               </label>
@@ -356,7 +356,7 @@ export default function UndergroundInfrastructure() {
                 <div className="mt-1 max-h-56 overflow-y-auto rounded border border-slate-200">
                   {(preview.records || []).map((r) => (
                     <div key={r.index} className="flex items-center justify-between gap-2 border-b border-slate-200 px-2 py-1 text-[11px] last:border-0">
-                      <span className="font-mono text-slate-600">{r.infrastructureId}</span>
+                      <span className="data-mono text-slate-600">{r.infrastructureId}</span>
                       <span className="text-slate-500">{r.type} · {r.crsStatus} · {r.spatialRelation}</span>
                       <Badge status={statusTone(r.validationStatus)}>{r.validationStatus}</Badge>
                     </div>
@@ -365,7 +365,7 @@ export default function UndergroundInfrastructure() {
               </div>
             )}
             {importResult && (
-              <p className="mt-2 text-[11px] text-emerald-700" data-testid="infra-import-result">
+              <p className="mt-2 text-[11px] text-teal" data-testid="infra-import-result">
                 Imported {importResult.summary?.total ?? 0} record(s) into {importResult.locality}. {importResult.disclaimer}
               </p>
             )}

@@ -82,7 +82,7 @@ export default function Reports() {
             </div>
           }
         >
-          <p className="mb-3 text-[11px] text-amber-700">{state.report.disclaimer}</p>
+          <p className="mb-3 text-[11px] text-warn">{state.report.disclaimer}</p>
           {state.report.sections.map((s) => (
             <div key={s.heading} className="mb-3">
               <p className="section-title mb-1">{s.heading}</p>

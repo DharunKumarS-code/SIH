@@ -121,7 +121,7 @@ export default function AiFloorPlanSegmentation() {
         <DemoTag label="AI / DEMO_RESEARCH_DATA — MODEL OUTPUT" />
       </PageHeader>
 
-      <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[12px] leading-relaxed text-amber-700">
+      <p className="mb-4 rounded-lg border border-warn/30 bg-warn/10 p-2.5 text-[12px] leading-relaxed text-warn">
         <strong>AI_DEMO / MODEL OUTPUT / DEMO_RESEARCH_DATA (dataset: CubiCasa5K).</strong> Floor-plan geometry, room
         labels and apartment/unit boundaries are produced by an automated model. They are <strong>not</strong> official
         Tamil Nadu cadastral, Chennai building-approval, ULPIN, ownership or legally authoritative apartment-boundary
@@ -145,7 +145,7 @@ export default function AiFloorPlanSegmentation() {
             onChange={(e) => onPick(e.target.files?.[0])}
           />
           <button
-            className="flex w-full flex-col items-center gap-2 rounded-lg border border-dashed border-slate-300 p-6 text-slate-600 hover:bg-slate-100"
+            className="flex w-full flex-col items-center gap-2 rounded-lg border border-dashed border-slate-300 p-6 text-slate-600 hover:bg-surface-2"
             onClick={() => fileRef.current?.click()}
           >
             <UploadCloud size={22} className="text-primary" />
@@ -162,7 +162,7 @@ export default function AiFloorPlanSegmentation() {
                 onChange={(e) => setBuildingId(e.target.value)}
                 placeholder="TN-CHN-123456789-B01"
                 data-testid="fp-building"
-                className="input mt-1 w-full"
+                className="input data-mono mt-1 w-full"
               />
             </label>
             <label className="text-[12px] text-slate-500">
@@ -172,7 +172,7 @@ export default function AiFloorPlanSegmentation() {
                 onChange={(e) => setFloorId(e.target.value)}
                 placeholder="TN-CHN-123456789-B01-F02"
                 data-testid="fp-floor"
-                className="input mt-1 w-full"
+                className="input data-mono mt-1 w-full"
               />
             </label>
             <label className="text-[12px] text-slate-500 sm:col-span-2">
@@ -202,7 +202,7 @@ export default function AiFloorPlanSegmentation() {
           <ol className="space-y-1.5 text-[12px] text-slate-600">
             {PIPELINE.map((step, i) => (
               <li key={step} className="flex items-center gap-2">
-                <span className="grid h-5 w-5 place-items-center rounded-full bg-slate-100 text-[10px]">{i + 1}</span>
+                <span className="grid h-5 w-5 place-items-center rounded-full bg-surface-2 text-[10px]">{i + 1}</span>
                 {step}
               </li>
             ))}
@@ -222,7 +222,7 @@ export default function AiFloorPlanSegmentation() {
             right={<Badge status={unavailable ? 'Under Review' : 'Verified'}>{result.status}</Badge>}
           >
             {unavailable ? (
-              <p className="text-sm text-amber-700" data-testid="fp-unavailable">
+              <p className="text-sm text-warn" data-testid="fp-unavailable">
                 {result.status} — {result.reason || 'the AI service is not reachable. The rest of the app is unaffected.'}
               </p>
             ) : (
@@ -256,7 +256,7 @@ export default function AiFloorPlanSegmentation() {
                   <ul className="mt-1.5 max-h-40 space-y-1 overflow-y-auto text-[11px]">
                     {v.issues.map((it, idx) => (
                       <li key={`${it.rule}-${idx}`} className="text-slate-600">
-                        <span className={it.status === 'ERROR' ? 'text-danger' : it.status === 'WARNING' ? 'text-amber-700' : 'text-slate-500'}>
+                        <span className={it.status === 'ERROR' ? 'text-danger' : it.status === 'WARNING' ? 'text-warn' : 'text-slate-500'}>
                           {it.status}
                         </span>{' '}
                         <span className="font-mono text-slate-500">{it.rule}</span> — {it.message}
@@ -270,7 +270,7 @@ export default function AiFloorPlanSegmentation() {
                   <DataTable
                     rowKey={(r) => r.roomId}
                     columns={[
-                      { key: 'roomId', header: 'Room', render: (r) => <span className="font-mono text-[11px]">{r.localRoomId}</span> },
+                      { key: 'roomId', header: 'Room', render: (r) => <span className="data-mono text-[11px]">{r.localRoomId}</span> },
                       { key: 'class', header: 'Type', render: (r) => <Badge>{r.roomType || r.class}</Badge> },
                       { key: 'area', header: 'Area', render: (r) => (r.area != null ? `${r.area} ${r.areaUnit === 'M2' ? 'm²' : 'px²'}` : '—') },
                       { key: 'confidenceLevel', header: 'Confidence' },
@@ -288,7 +288,7 @@ export default function AiFloorPlanSegmentation() {
                     rowKey={(r) => r.aiFloorUnitId}
                     onRowClick={result.georeferenced ? openUnitOnMap : undefined}
                     columns={[
-                      { key: 'aiFloorUnitId', header: 'Unit', render: (r) => <span className="font-mono text-[11px]">{r.localUnitId}</span> },
+                      { key: 'aiFloorUnitId', header: 'Unit', render: (r) => <span className="data-mono text-[11px]">{r.localUnitId}</span> },
                       { key: 'rooms', header: 'Rooms', render: (r) => (r.rooms || []).length },
                       { key: 'roomTypes', header: 'Composition', render: (r) => (r.roomTypes || []).join(', ') || '—' },
                       { key: 'area', header: 'Area', render: (r) => (r.area != null ? `${r.area} ${r.areaUnit === 'M2' ? 'm²' : 'px²'}` : '—') },
@@ -300,7 +300,7 @@ export default function AiFloorPlanSegmentation() {
                     empty="No apartment/unit boundaries inferred."
                   />
                   <p className="mt-1 text-[10px] text-slate-500">
-                    Unit IDs are prototype identifiers (<span className="font-mono">AI-UNIT-nnn</span>) — never official ULPINs.
+                    Unit IDs are prototype identifiers (<span className="data-mono">AI-UNIT-nnn</span>) — never official ULPINs.
                     {result.parentULPIN
                       ? ` Associated to existing parcel ULPIN ${result.parentULPIN} (${result.ulpinStatus}).`
                       : ' Not associated to a parcel (no building reference).'}
@@ -325,7 +325,7 @@ export default function AiFloorPlanSegmentation() {
                     </div>
                   )}
                 </div>
-                <p className="mt-2 text-[10px] text-amber-700">{result.disclaimer}</p>
+                <p className="mt-2 text-[10px] text-warn">{result.disclaimer}</p>
               </>
             )}
           </Card>

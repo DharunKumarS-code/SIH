@@ -4,19 +4,116 @@
 
 /* ---------------------------------------------------------------------------
    PROPERTY 3D ULPIN — Chennai 3D Cadastre
-   Government land-information portal — LIGHT design system (Phase 10).
-   Restrained, document-like. One consistent spacing + colour scale.
+   "Cadastral Instrument" design system — a precise, document-grade GovTech
+   surface. Light by default; .dark on <html> switches every token below.
+   All values are "R G B" triplets so Tailwind can apply them with
+   rgb(var(--x) / <alpha-value>) and still support opacity modifiers.
    --------------------------------------------------------------------------- */
 
 :root {
   color-scheme: light;
-  --gov-bg: #f5f7fa;
-  --gov-surface: #ffffff;
-  --gov-border: #e2e8f0;
-  --gov-border-strong: #cbd5e1;
-  --gov-text: #1f2937;
-  --gov-text-muted: #64748b;
-  --gov-primary: #1e5fa8;
+
+  /* Surfaces */
+  --color-paper: 245 247 249; /* app background */
+  --color-surface: 255 255 255; /* cards / panels */
+  --color-surface-2: 248 250 252; /* subtle inset / hover */
+  --color-border: 226 232 240;
+  --color-border-strong: 203 213 225;
+
+  /* Text */
+  --color-ink: 15 23 42;
+  --color-ink-muted: 71 85 105;
+
+  /* Brand */
+  --color-primary: 20 67 130; /* deep indigo-navy */
+  --color-primary-hover: 16 56 110;
+  --color-brass: 150 106 27; /* muted brass — official / seal marks */
+  --color-teal: 15 118 110; /* verified accent */
+  --color-ok: 21 128 61;
+  --color-warn: 180 83 9;
+  --color-danger: 185 28 28;
+
+  /* Neutral scale (drives every slate-* utility class in the app) */
+  --slate-50: 248 250 252;
+  --slate-100: 241 245 249;
+  --slate-200: 226 232 240;
+  --slate-300: 203 213 225;
+  --slate-400: 148 163 184;
+  --slate-500: 100 116 139;
+  --slate-600: 71 85 105;
+  --slate-700: 51 65 85;
+  --slate-800: 30 41 59;
+  --slate-900: 15 23 42;
+  --slate-950: 8 12 22;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --color-paper: 10 18 31; /* #0A121F */
+  --color-surface: 16 27 44; /* #101B2C */
+  --color-surface-2: 22 36 58; /* #16243A */
+  --color-border: 37 52 73; /* #253449 */
+  --color-border-strong: 58 78 105;
+
+  --color-ink: 232 236 242; /* #E8ECF2 */
+  --color-ink-muted: 147 161 181; /* #93A1B5 */
+
+  --color-primary: 106 156 224;
+  --color-primary-hover: 134 176 232;
+  --color-brass: 199 154 74;
+  --color-teal: 62 190 172;
+  --color-ok: 74 190 122;
+  --color-warn: 217 145 66;
+  --color-danger: 224 100 100;
+
+  /* Neutral scale inverted in lightness, role preserved: slate-900 is always
+     the strongest ink, slate-50 always the most subtle surface tint. */
+  --slate-50: 22 36 58;
+  --slate-100: 30 46 71;
+  --slate-200: 37 52 73;
+  --slate-300: 58 78 105;
+  --slate-400: 110 128 153;
+  --slate-500: 147 161 181;
+  --slate-600: 170 182 199;
+  --slate-700: 196 206 219;
+  --slate-800: 219 227 236;
+  --slate-900: 232 236 242;
+  --slate-950: 245 247 250;
+}
+
+/* Forces the light-mode token values regardless of the app-wide theme, for
+   surfaces that represent a printable/exportable document (e.g. the property
+   certificate preview) rather than app UI — a "document" should read the
+   same whether the viewer's app theme is light or dark, like a page of paper
+   inside a dark-mode-aware document editor. */
+.doc-light {
+  color-scheme: light;
+  --color-paper: 245 247 249;
+  --color-surface: 255 255 255;
+  --color-surface-2: 248 250 252;
+  --color-border: 226 232 240;
+  --color-border-strong: 203 213 225;
+  --color-ink: 15 23 42;
+  --color-ink-muted: 71 85 105;
+  --color-primary: 20 67 130;
+  --color-primary-hover: 16 56 110;
+  --color-brass: 150 106 27;
+  --color-teal: 15 118 110;
+  --color-ok: 21 128 61;
+  --color-warn: 180 83 9;
+  --color-danger: 185 28 28;
+  --slate-50: 248 250 252;
+  --slate-100: 241 245 249;
+  --slate-200: 226 232 240;
+  --slate-300: 203 213 225;
+  --slate-400: 148 163 184;
+  --slate-500: 100 116 139;
+  --slate-600: 71 85 105;
+  --slate-700: 51 65 85;
+  --slate-800: 30 41 59;
+  --slate-900: 15 23 42;
+  --slate-950: 8 12 22;
 }
 
 html,
@@ -27,21 +124,76 @@ body,
 }
 
 body {
-  background: var(--gov-bg);
-  color: var(--gov-text);
+  background: rgb(var(--color-paper));
+  color: rgb(var(--color-ink));
   font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Login-page Earth photo (public/planet-earth-background.jpg) — a subtle,
+   bounded forward pitch/tilt, never a spin. The photo is a flat plane the
+   whole time (no sphere, no reprojection), so this can never expose a "back
+   side" or reconstruct a full globe; it only ever tilts the same flat image
+   a few degrees around a point near its visible horizon. */
+@keyframes earth-roll {
+  0%,
+  100% {
+    transform: rotateX(0deg);
+  }
+  50% {
+    transform: rotateX(-6deg);
+  }
+}
+.earth-roll {
+  transform-origin: 50% 55%;
+  animation: earth-roll 11s ease-in-out infinite;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .earth-roll {
+    animation: none;
+  }
+}
+
+/* Feathers the photo's own rectangular edges to transparent so the page's
+   dark background/starfield shows through at the boundary instead of a
+   visible image edge. The ellipse is centred slightly below the frame's
+   middle (near the earth disc) and sized so the fade only eats into the
+   empty starfield margin around the planet, never the earth disc itself. */
+.earth-mask {
+  -webkit-mask-image: radial-gradient(
+    ellipse 58% 56% at 50% 62%,
+    #000 0%,
+    #000 48%,
+    transparent 88%
+  );
+  mask-image: radial-gradient(
+    ellipse 58% 56% at 50% 62%,
+    #000 0%,
+    #000 48%,
+    transparent 88%
+  );
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
 }
 
 @layer components {
-  /* Floating overlay over the map — light, thin border, minimal shadow */
+  /* Floating overlay over the map — crisp instrument panel: sharp-ish
+     corners, hairline border, a 2px brand hairline along the top edge. */
   .panel {
-    @apply bg-white/95 border border-slate-200 backdrop-blur-sm shadow-panel;
+    @apply relative bg-surface/95 border border-slate-200 backdrop-blur-sm shadow-panel rounded-lg;
+  }
+  .panel::before {
+    content: '';
+    @apply pointer-events-none absolute inset-x-0 top-0 h-[2px] rounded-t-lg bg-primary/70;
   }
   /* Content card */
   .card {
-    @apply bg-white border border-slate-200 rounded-lg shadow-card;
+    @apply bg-surface border border-slate-200 rounded-lg shadow-card;
   }
   .btn {
     @apply inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-semibold transition-colors
@@ -51,17 +203,17 @@ body {
     @apply btn bg-primary hover:bg-primary-hover text-white;
   }
   .btn-ghost {
-    @apply btn bg-white hover:bg-slate-100 text-slate-700 border border-slate-300;
+    @apply btn bg-surface hover:bg-slate-100 text-slate-700 border border-slate-300;
   }
   .btn-danger {
     @apply btn bg-danger hover:bg-red-800 text-white;
   }
   .input {
-    @apply w-full rounded-md bg-white border border-slate-300 px-3 py-2 text-sm text-slate-900
+    @apply w-full rounded-md bg-surface border border-slate-300 px-3 py-2 text-sm text-slate-900
       placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary;
   }
   .nav-link {
-    @apply flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors;
+    @apply flex items-center gap-3 rounded-md border-l-2 border-transparent px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors;
   }
   .nav-link-active {
     @apply bg-primary/10 text-primary font-semibold border-l-2 border-primary;
@@ -76,7 +228,11 @@ body {
     @apply text-slate-900 text-right break-words;
   }
   .section-title {
-    @apply text-xs font-bold uppercase tracking-wider text-slate-500;
+    @apply font-display text-xs font-bold uppercase tracking-wider text-slate-500;
+  }
+  /* Monospace figures for ULPIN / survey numbers / coordinates / areas / IDs */
+  .data-mono {
+    @apply font-mono tabular-nums;
   }
 }
 
@@ -94,16 +250,16 @@ body {
 /* Thin, neutral scrollbars */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-color: rgb(var(--slate-300)) transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: rgb(var(--slate-300));
   border-radius: 999px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: rgb(var(--slate-400));
 }

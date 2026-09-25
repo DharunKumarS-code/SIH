@@ -41,6 +41,7 @@ export const PERMISSIONS = {
     'topology:read', // Phase 7 — view-only
     'infrastructure:read', // Phase 8 — view-only
     '3didentifier:read', // Phase 9 — view-only
+    '3dulpin:create', // system-generated 3D property identifier (Land Officer only)
   ],
   'Survey Officer': [
     'parcel:search',

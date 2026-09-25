@@ -38,7 +38,7 @@ function Field({ label, children, mono }) {
   return (
     <div className="flex items-start justify-between gap-3 border-b border-slate-100 py-1.5 text-[12px] last:border-0">
       <span className="shrink-0 text-slate-500">{label}</span>
-      <span className={`text-right font-medium text-slate-900 break-words ${mono ? 'font-mono' : ''}`}>{children ?? '—'}</span>
+      <span className={`text-right font-medium text-slate-900 break-words ${mono ? 'data-mono' : ''}`}>{children ?? '—'}</span>
     </div>
   )
 }
@@ -46,7 +46,7 @@ function Field({ label, children, mono }) {
 function DemoBadge() {
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded border border-amber-300 bg-amber-100 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-amber-800"
+      className="inline-flex items-center gap-1.5 rounded border border-warn/30 bg-warn/10 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-warn"
       data-testid="underground-demo-badge"
     >
       <ShieldAlert size={12} /> DEMO DATA — Not Authoritative
@@ -139,40 +139,40 @@ function ExplorerBody({ params }) {
   const noData = !infraQ.loading && !listError && allRows.length === 0
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#f5f7fa] text-slate-800">
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-paper text-slate-800">
       {/* Masthead */}
-      <header className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-200 bg-white px-4 py-2.5">
+      <header className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-200 bg-surface px-4 py-2.5">
         <div className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded bg-primary/10 text-primary">
+          <span className="grid h-8 w-8 place-items-center rounded-md border border-primary/25 bg-primary/10 text-primary">
             <Waypoints size={17} />
           </span>
           <div className="leading-tight">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
               Chennai 3D Land Governance · Prototype
             </p>
-            <h1 className="text-[15px] font-bold text-slate-900">Underground Infrastructure Explorer</h1>
+            <h1 className="font-display text-[15px] font-semibold text-slate-900">Underground Infrastructure Explorer</h1>
           </div>
         </div>
 
         <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1 text-[11px] text-slate-500">
           <span>Chennai</span><span>›</span>
           <span className="font-semibold text-slate-700">{areaLabel}</span>
-          {ulpinParam && (<><span>›</span><span className="font-mono">{ulpinParam}</span></>)}
-          {selected && (<><span>›</span><span className="font-mono">{selected.infrastructureId}</span></>)}
+          {ulpinParam && (<><span>›</span><span className="data-mono">{ulpinParam}</span></>)}
+          {selected && (<><span>›</span><span className="data-mono">{selected.infrastructureId}</span></>)}
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
           <DemoBadge />
           <a
             href="/underground"
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-100"
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-surface px-2.5 py-1.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-100"
           >
             <ArrowLeft size={13} /> Underground page
           </a>
           {canClose && (
             <button
               onClick={() => window.close()}
-              className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-100"
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-surface px-2.5 py-1.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-100"
               data-testid="underground-explorer-close"
             >
               <X size={13} /> Close explorer
@@ -183,21 +183,21 @@ function ExplorerBody({ params }) {
 
       <div className="flex min-h-0 flex-1">
         {/* LEFT — layer panel + search + area selector */}
-        <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-r border-slate-200 bg-white p-3">
+        <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-r border-slate-200 bg-surface p-3">
           <section>
-            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">Area / Locality</label>
+            <label className="mb-1 block font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Area / Locality</label>
             <select
               value={area}
               onChange={(e) => { setArea(e.target.value); setSelectedId(null) }}
               data-testid="underground-area-select"
-              className="input !py-1 [&>option]:bg-white"
+              className="input !py-1 [&>option]:bg-surface"
             >
               {localities.map((l) => <option key={l.id} value={l.id}>{l.name || l.label}</option>)}
             </select>
           </section>
 
           <section>
-            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">Search infrastructure…</label>
+            <label className="mb-1 block font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Search infrastructure…</label>
             <div className="flex items-center gap-1.5 rounded-md border border-slate-300 px-2">
               <Search size={13} className="text-slate-400" />
               <input
@@ -211,7 +211,7 @@ function ExplorerBody({ params }) {
           </section>
 
           <section>
-            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">Underground Layers</p>
+            <p className="mb-1.5 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Underground Layers</p>
             <ul className="space-y-1" data-testid="underground-layer-panel">
               {grouped.map(({ layer, items }) => {
                 const on = visibleLayers.has(layer.key)
@@ -234,7 +234,7 @@ function ExplorerBody({ params }) {
                       >
                         {layer.label}
                       </button>
-                      <span className="rounded bg-slate-100 px-1.5 text-[11px] font-mono text-slate-600" data-testid={`underground-count-${layer.key}`}>
+                      <span className="rounded bg-slate-100 px-1.5 text-[11px] data-mono text-slate-600" data-testid={`underground-count-${layer.key}`}>
                         {items.length}
                       </span>
                     </div>
@@ -251,10 +251,10 @@ function ExplorerBody({ params }) {
                               onClick={() => focusInfra(r.infrastructureId)}
                               data-testid={`underground-item-${r.infrastructureId}`}
                               className={`flex w-full items-center justify-between gap-2 px-2 py-1 text-left text-[11px] hover:bg-slate-50 ${
-                                r.infrastructureId === selectedId ? 'bg-amber-50 font-semibold text-amber-800' : 'text-slate-600'
+                                r.infrastructureId === selectedId ? 'bg-warn/10 font-semibold text-warn' : 'text-slate-600'
                               }`}
                             >
-                              <span className="font-mono truncate">{r.infrastructureId}</span>
+                              <span className="data-mono truncate">{r.infrastructureId}</span>
                               <span className="shrink-0 text-slate-400">
                                 {(() => { const d = drawDepth(r); return d.known ? `−${d.value} m` : 'depth n/a' })()}
                               </span>
@@ -270,20 +270,20 @@ function ExplorerBody({ params }) {
             </ul>
           </section>
 
-          <section className="rounded-md border border-amber-300 bg-amber-50 p-2 text-[10px] leading-relaxed text-amber-800">
+          <section className="rounded-md border border-warn/30 bg-warn/10 p-2 text-[10px] leading-relaxed text-warn">
             <p className="font-bold">DEMO DATA</p>
             <p>Not authoritative utility infrastructure information. Synthetic demonstration geometry, depths and dimensions — never surveyed, never official.</p>
           </section>
         </aside>
 
         {/* CENTER — the 3D scene */}
-        <main className="relative min-w-0 flex-1 bg-[#f5f7fa]">
+        <main className="relative min-w-0 flex-1 bg-paper">
           {(infraQ.loading || locQ.loading) && (
             <div className="absolute inset-0 z-10 grid place-items-center text-[13px] text-slate-500">Loading underground scene…</div>
           )}
           {listError && (
             <div className="absolute inset-0 z-10 grid place-items-center">
-              <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-center text-[13px] text-red-700">
+              <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-center text-[13px] text-danger">
                 <p className="font-semibold">Unable to load underground infrastructure.</p>
                 <button className="btn-ghost mt-2" onClick={() => { infraQ.reload() }}>Retry</button>
               </div>
@@ -291,7 +291,7 @@ function ExplorerBody({ params }) {
           )}
           {noData && (
             <div className="absolute inset-0 z-10 grid place-items-center">
-              <div className="rounded-lg border border-slate-200 bg-white p-4 text-center text-[13px] text-slate-600">
+              <div className="rounded-lg border border-slate-200 bg-surface p-4 text-center text-[13px] text-slate-600">
                 No underground infrastructure data available for this area.
               </div>
             </div>
@@ -325,7 +325,7 @@ function ExplorerBody({ params }) {
                 onClick={() => fireCommand(kind)}
                 disabled={kind === 'fit' && !selectedId}
                 data-testid={`underground-cam-${kind}`}
-                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white/95 px-2 py-1.5 text-[11px] font-semibold text-slate-700 shadow-sm hover:bg-slate-100 disabled:opacity-40"
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-surface/95 px-2 py-1.5 text-[11px] font-semibold text-slate-700 shadow-card backdrop-blur-sm hover:bg-slate-100 disabled:opacity-40"
               >
                 <Icon size={12} /> {label}
               </button>
@@ -333,8 +333,8 @@ function ExplorerBody({ params }) {
           </div>
 
           {/* legend — icons + labels + shape names, not colour alone */}
-          <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg border border-slate-200 bg-white/95 p-2.5 text-[10px] text-slate-600 shadow-sm">
-            <p className="mb-1 font-bold uppercase tracking-wider text-slate-500">Underground Infrastructure</p>
+          <div className="panel pointer-events-none absolute bottom-3 left-3 p-2.5 text-[10px] text-slate-600">
+            <p className="mb-1 font-display font-bold uppercase tracking-wider text-slate-500">Underground Infrastructure</p>
             <ul className="grid grid-cols-2 gap-x-3 gap-y-0.5">
               {UNDERGROUND_LAYERS.map((l) => (
                 <li key={l.key} className="flex items-center gap-1.5">
@@ -348,11 +348,11 @@ function ExplorerBody({ params }) {
         </main>
 
         {/* RIGHT — selected infrastructure + depth view + property context */}
-        <aside className="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto border-l border-slate-200 bg-white p-3">
+        <aside className="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto border-l border-slate-200 bg-surface p-3">
           <section className="rounded-md border border-primary/25 bg-primary/[0.06] p-2.5">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Selected Infrastructure</p>
+            <p className="font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Selected Infrastructure</p>
             {selected ? (
-              <p className="mt-0.5 font-mono text-[13px] font-bold text-slate-900 break-all" data-testid="underground-selected-id">
+              <p className="mt-0.5 data-mono text-[13px] font-bold text-slate-900 break-all" data-testid="underground-selected-id">
                 {selected.infrastructureId}
               </p>
             ) : (
@@ -364,11 +364,11 @@ function ExplorerBody({ params }) {
 
           {/* Depth view — allowed ONLY because every value shown is DEMO / synthetic */}
           <section data-testid="underground-depth-view">
-            <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Depth View</p>
-            <p className="mb-1.5 rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-700">
+            <p className="mb-1 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Depth View</p>
+            <p className="mb-1.5 rounded bg-warn/10 px-2 py-1 text-[10px] text-warn">
               Synthetic demonstration depths only — not authoritative Chennai engineering depths.
             </p>
-            <div className="space-y-1 font-mono text-[11px]">
+            <div className="space-y-1 data-mono text-[11px]">
               <div className="flex items-center justify-between text-slate-500"><span>Ground level</span><span>0 m</span></div>
               {grouped.filter((g) => g.items.length).map(({ layer, items }) => {
                 const depths = items.map((r) => drawDepth(r)).filter((d) => d.known).map((d) => d.value)
@@ -390,7 +390,7 @@ function ExplorerBody({ params }) {
       </div>
 
       {/* BOTTOM — depth slider + modes + view mode */}
-      <footer className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-slate-200 bg-white px-4 py-2 text-[12px]">
+      <footer className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-slate-200 bg-surface px-4 py-2 text-[12px]">
         <div className="flex items-center gap-2">
           <span className="font-semibold text-slate-600">Depth</span>
           <input
@@ -403,7 +403,7 @@ function ExplorerBody({ params }) {
             data-testid="underground-depth-slider"
             className="w-40"
           />
-          <span className="w-14 font-mono text-slate-700">−{sliceDepth} m</span>
+          <span className="w-14 data-mono text-slate-700">−{sliceDepth} m</span>
         </div>
 
         <div className="flex items-center gap-1.5" data-testid="underground-depth-modes">
@@ -455,13 +455,13 @@ function SelectedPanel({ rec, rel, loading }) {
   return (
     <>
       <section data-testid="underground-info-panel">
-        <p className="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+        <p className="mb-1 flex items-center gap-1.5 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">
           <Info size={12} /> {layer.label}
         </p>
         <div className="mb-1.5 flex flex-wrap gap-1.5">
           <span className="rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{rec.type}</span>
           {prov.demo && (
-            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-amber-700" data-testid="underground-info-provenance">
+            <span className="rounded bg-warn/10 px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-warn" data-testid="underground-info-provenance">
               {prov.verificationStatus || 'DEMO'}
             </span>
           )}
@@ -486,15 +486,15 @@ function SelectedPanel({ rec, rel, loading }) {
         <Field label="Verification">{prov.verificationStatus}</Field>
         <Field label="Timestamp" mono>{prov.timestamp ? String(prov.timestamp).slice(0, 19).replace('T', ' ') : 'Unavailable'}</Field>
         {isMetro && (
-          <p className="mt-1.5 text-[10px] text-amber-700">
+          <p className="mt-1.5 text-[10px] text-warn">
             Demonstration geometry — authoritative infrastructure geometry unavailable.
           </p>
         )}
       </section>
 
       <section data-testid="underground-property-context">
-        <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Property Relationship</p>
-        <p className="mb-1.5 text-[10px] text-amber-700">
+        <p className="mb-1 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Property Relationship</p>
+        <p className="mb-1.5 text-[10px] text-warn">
           A spatial intersection does <strong>not</strong> establish legal ownership.
         </p>
         <Field label="Associated Parcel" mono>{rec.parentParcelULPIN || rec.parentParcel || 'Unavailable'}</Field>
@@ -507,7 +507,7 @@ function SelectedPanel({ rec, rel, loading }) {
             {parcelRelations.slice(0, 6).map((r) => (
               <li key={r.parcelId || r.ulpin} className="flex items-center gap-1.5">
                 <MapPin size={10} className="text-primary" />
-                <span className="font-mono">{r.ulpin || r.parcelId}</span>
+                <span className="data-mono">{r.ulpin || r.parcelId}</span>
                 <span className="text-slate-400">· {r.spatialRelation}</span>
               </li>
             ))}
