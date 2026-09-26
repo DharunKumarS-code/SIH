@@ -17,6 +17,38 @@ import { formatUlpinDisplay } from './format.js'
 
 export const NA = 'Not Available'
 
+// The shared app-wide verification vocabulary (lib/provenance.js) uses the
+// word "Demo" in its badge text and raw status codes — accurate everywhere
+// else it's used, but the Smart Property Card is held to a stricter
+// no-"Demo" wording rule. This maps ONLY the card's own display text; it
+// never touches provenance.js or the verificationStatus value itself (still
+// used for badge colour / logic), so nothing else in the app is affected.
+const CARD_STATUS_WORD = {
+  OFFICIAL: 'Official',
+  DEMO: 'Prototype',
+  UNVERIFIED: 'Unverified',
+  UNAVAILABLE: 'Unavailable',
+  AI_DEMO: 'AI Generated',
+}
+
+const CARD_STATUS_LABEL = {
+  OFFICIAL: 'Official ULPIN — Government Source',
+  DEMO: 'Prototype Identifier — Not an Official ULPIN',
+  UNVERIFIED: 'Unverified — not confirmed against a government system',
+  UNAVAILABLE: 'Official data unavailable via public channels',
+  AI_DEMO: 'AI Generated — Not an Official ULPIN',
+}
+
+/** Display-safe verification status word (e.g. "Verification: Prototype"). */
+export function cardStatusWord(status) {
+  return CARD_STATUS_WORD[status] || status || NA
+}
+
+/** Display-safe verification badge sentence for the card's Verification panel. */
+export function cardStatusLabel(status, fallbackLabel) {
+  return CARD_STATUS_LABEL[status] || fallbackLabel || NA
+}
+
 const finite = (n) => typeof n === 'number' && Number.isFinite(n)
 
 function ringOf(geometry) {
@@ -65,6 +97,30 @@ function currentUserLine(generatedBy) {
   const { name, role } = generatedBy
   return [name, role].filter(Boolean).join(' — ') || null
 }
+
+/** One stage of the ULPIN → Parcel → Building → Floor → Unit → 3D Volume
+ * chain shown on the Smart Property Card. `id` is left null (rendered as
+ * "Not Available") rather than guessed when a record doesn't reach that
+ * stage — e.g. a parcel-level card has no Floor/Unit stage. */
+function stage(key, label, id) {
+  return { key, label, id: id || null }
+}
+
+function hierarchyChainFor({ ulpin, parcelId, buildingId, floorId, unitId, volumeId }) {
+  return [
+    stage('ulpin', 'ULPIN', ulpin),
+    stage('parcel', 'Parcel', parcelId),
+    stage('building', 'Building', buildingId),
+    stage('floor', 'Floor', floorId),
+    stage('unit', 'Unit', unitId),
+    stage('volume', '3D Volume', volumeId),
+  ]
+}
+
+const UDS_NOT_APPLICABLE_NOTE =
+  'Undivided Share of Land (UDS) applies to an individual unit within a subdivided building, not to this record as a whole.'
+const UDS_UNIT_NOTE =
+  'Ownership share is a recorded attribute of this unit record. A certified Undivided Share of Land computation against surveyed parcel area is not implemented in this prototype.'
 
 function baseEnvelope({ kind, generatedBy }) {
   return {
@@ -154,6 +210,13 @@ export function buildParcelCertificate({ parcelData, generatedBy }) {
       verificationStatus: prov.verificationStatus || 'UNVERIFIED',
       recordVersion: null,
       disclaimer: prov.disclaimer || null,
+    },
+    hierarchyChain: hierarchyChainFor({ ulpin: p.ulpin, parcelId: p.parcelId }),
+    uds: {
+      available: false,
+      sharePct: null,
+      associatedParcel: p.ulpin ? formatUlpinDisplay(p.ulpin) : NA,
+      note: UDS_NOT_APPLICABLE_NOTE,
     },
     qrUrl: certificateDeepLink({ ulpin: p.ulpin }),
   }
@@ -257,6 +320,18 @@ export function buildBuildingCertificate({ buildingData, generatedBy }) {
       recordVersion: null,
       disclaimer: 'Synthetic prototype geometry — height and footprint are system-generated, not surveyed values.',
     },
+    hierarchyChain: hierarchyChainFor({
+      ulpin: officialLand ? b.officialUlpin : b.ulpin,
+      parcelId: b.parcelId,
+      buildingId: b.buildingId,
+      volumeId: b.volume?.volumeId,
+    }),
+    uds: {
+      available: false,
+      sharePct: null,
+      associatedParcel: (officialLand ? b.officialUlpin : b.ulpin) ? formatUlpinDisplay(officialLand ? b.officialUlpin : b.ulpin) : NA,
+      note: UDS_NOT_APPLICABLE_NOTE,
+    },
     qrUrl: certificateDeepLink({ ulpin: b.ulpin, buildingId: b.buildingId }),
   }
 }
@@ -328,6 +403,8 @@ export function buildUnitCertificate({ unitData, generatedBy }) {
       unitCount: null,
       threeDUlpin: u.threeDUlpin || null,
       buildingId: h.building?.id || NA,
+      totalFloors: unitData.building?.totalFloors ?? unitData.building?.floorsAboveGround ?? null,
+      floorNumber: finite(h.floor?.number) ? h.floor.number : null,
       floorId: h.floor?.segment || (h.floor?.label ?? NA),
       unitId: h.unit?.id || NA,
       volumeId: vol?.volumeId || NA,
@@ -342,6 +419,20 @@ export function buildUnitCertificate({ unitData, generatedBy }) {
       verificationStatus: 'DEMO',
       recordVersion: vol?.geometryVersion ?? null,
       disclaimer: 'Synthetic prototype 3D volume — not an official cadastral volume.',
+    },
+    hierarchyChain: hierarchyChainFor({
+      ulpin: h.ulpin,
+      parcelId: unitData.building?.parcelId,
+      buildingId: h.building?.id,
+      floorId: h.floor?.segment || h.floor?.label,
+      unitId: h.unit?.id,
+      volumeId: vol?.volumeId,
+    }),
+    uds: {
+      available: finite(u.owner?.sharePct),
+      sharePct: finite(u.owner?.sharePct) ? u.owner.sharePct : null,
+      associatedParcel: h.ulpin ? formatUlpinDisplay(h.ulpin) : NA,
+      note: UDS_UNIT_NOTE,
     },
     qrUrl: certificateDeepLink({ ulpin: h.ulpin, buildingId: h.building?.id, propertyId: u.propertyId }),
   }

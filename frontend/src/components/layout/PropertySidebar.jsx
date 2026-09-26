@@ -32,7 +32,7 @@ function CertificateModalFallback() {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60">
       <div className="rounded-lg bg-surface px-4 py-3 shadow-xl">
-        <Spinner label="Preparing certificate…" />
+        <Spinner label="Preparing Smart Property Card…" />
       </div>
     </div>
   )
@@ -524,7 +524,7 @@ export function PropertySidebar() {
             onClick={() => setShowCert(true)}
             data-testid="open-certificate"
           >
-            <FileText size={14} /> Download Certificate
+            <FileText size={14} /> Smart Property Card
           </button>
         )}
         {note !== '' && (
@@ -798,7 +798,7 @@ function BuildingCard({ query, elevQuery, mode, buildingId, mapApi, onClose, onS
                   onClick={() => setShowCert(true)}
                   data-testid="open-certificate"
                 >
-                  <FileText size={14} /> Download Certificate
+                  <FileText size={14} /> Smart Property Card
                 </button>
               )}
             </div>
@@ -1045,7 +1045,7 @@ function ParcelCard({ query, ulpin, mapApi, onClose, canVerify, generatedBy }) {
             onClick={() => setShowCert(true)}
             data-testid="open-certificate"
           >
-            <FileText size={14} /> Download Certificate
+            <FileText size={14} /> Smart Property Card
           </button>
         )}
       </footer>
@@ -1535,7 +1535,7 @@ function CoimbatoreDemoCard({ query, onClose, generatedBy, can3dUlpin }) {
               onClick={() => setShowCert(true)}
               data-testid="open-certificate"
             >
-              <FileText size={14} /> Download Certificate
+              <FileText size={14} /> Smart Property Card
             </button>
           )}
         </div>
