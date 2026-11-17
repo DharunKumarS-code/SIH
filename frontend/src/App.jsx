@@ -21,11 +21,15 @@ const UndergroundExplorer3D = lazyWithRetry(() => import('./pages/UndergroundExp
 // startup never pays for it, and the main Cesium viewer never loads it either.
 const CoimbatoreExplorer3D = lazyWithRetry(() => import('./pages/CoimbatoreExplorer3D.jsx'), 'CoimbatoreExplorer3D')
 
+// 3D Map — lazy-loaded so CesiumJS (the bulk of the bundle) is fetched only
+// when /map is opened, not on login/dashboard. Same single-viewer component;
+// only its loading is deferred.
+const Map3D = lazyWithRetry(() => import('./pages/Map3D.jsx'), 'Map3D')
+
 import Login from './pages/Login.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import LandParcels from './pages/LandParcels.jsx'
 import UlpinSearch from './pages/UlpinSearch.jsx'
-import Map3D from './pages/Map3D.jsx'
 import Buildings from './pages/Buildings.jsx'
 import FloorUnitExplorer from './pages/FloorUnitExplorer.jsx'
 import GovernanceTable from './pages/GovernanceTable.jsx'
@@ -100,7 +104,14 @@ export default function App() {
                 <Route path="parcels" element={<LandParcels />} />
                 <Route path="parcels/:ulpin" element={<LandParcels />} />
                 <Route path="ulpin-search" element={<UlpinSearch />} />
-                <Route path="map" element={<Map3D />} />
+                <Route
+                  path="map"
+                  element={
+                    <Suspense fallback={<div className="grid h-full place-items-center"><Spinner label="Loading 3D Map…" /></div>}>
+                      <Map3D />
+                    </Suspense>
+                  }
+                />
                 <Route path="buildings" element={<Buildings />} />
                 <Route path="explorer" element={<FloorUnitExplorer />} />
                 <Route path="land-records" element={<GovernanceTable kind="ror" />} />

@@ -10,9 +10,20 @@ import { Badge } from '../ui/primitives.jsx'
 export function ExplorerDock() {
   const { selection, area, selectBuilding, selectFloor, selectUnit } = useSelection()
   const areaUlpin = area?.ulpin
-  const [buildings, setBuildings] = useState([])
-  const [floors, setFloors] = useState([])
-  const [floorUnits, setFloorUnits] = useState([])
+  // Each fetch result is stored with the key it was requested for and only
+  // shown while that key is still current — so a slow response for a
+  // previously selected parcel/building/floor can never overwrite (or be
+  // displayed for) the current selection.
+  const floorKey =
+    selection.buildingId && selection.floorNumber != null
+      ? `${selection.buildingId}-F${String(selection.floorNumber).padStart(2, '0')}`
+      : null
+  const [buildingsRes, setBuildingsRes] = useState({ key: null, data: [] })
+  const [floorsRes, setFloorsRes] = useState({ key: null, data: [] })
+  const [unitsRes, setUnitsRes] = useState({ key: null, data: [] })
+  const buildings = areaUlpin && buildingsRes.key === areaUlpin ? buildingsRes.data : []
+  const floors = selection.buildingId && floorsRes.key === selection.buildingId ? floorsRes.data : []
+  const floorUnits = floorKey && unitsRes.key === floorKey ? unitsRes.data : []
   const [collapsed, setCollapsed] = useState(false)
 
   // Coimbatore's demonstration property has no building/floor/unit hierarchy
@@ -24,26 +35,25 @@ export function ExplorerDock() {
 
   useEffect(() => {
     if (!areaUlpin) return
-    setBuildings([])
-    api.parcel(areaUlpin).then((d) => setBuildings(d.buildings || [])).catch(() => {})
+    api.parcel(areaUlpin)
+      .then((d) => setBuildingsRes({ key: areaUlpin, data: d.buildings || [] }))
+      .catch(() => setBuildingsRes({ key: areaUlpin, data: [] }))
   }, [areaUlpin])
 
   useEffect(() => {
-    if (!selection.buildingId) {
-      setFloors([])
-      return
-    }
-    api.buildingFloors(selection.buildingId).then(setFloors).catch(() => setFloors([]))
+    const buildingId = selection.buildingId
+    if (!buildingId) return
+    api.buildingFloors(buildingId)
+      .then((data) => setFloorsRes({ key: buildingId, data: data || [] }))
+      .catch(() => setFloorsRes({ key: buildingId, data: [] }))
   }, [selection.buildingId])
 
   useEffect(() => {
-    if (!selection.buildingId || selection.floorNumber == null) {
-      setFloorUnits([])
-      return
-    }
-    const floorId = `${selection.buildingId}-F${String(selection.floorNumber).padStart(2, '0')}`
-    api.floor(floorId).then((d) => setFloorUnits(d.units || [])).catch(() => setFloorUnits([]))
-  }, [selection.buildingId, selection.floorNumber])
+    if (!floorKey) return
+    api.floor(floorKey)
+      .then((d) => setUnitsRes({ key: floorKey, data: d.units || [] }))
+      .catch(() => setUnitsRes({ key: floorKey, data: [] }))
+  }, [floorKey])
 
   if (hidden) return null
 

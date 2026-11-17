@@ -29,10 +29,23 @@ export function createApp() {
   app.use(express.json({ limit: '1mb' }))
   app.use(morgan(env.nodeEnv === 'production' ? 'combined' : 'dev'))
 
-  // Rate-limit mutating auth endpoints a little; keep GETs generous for the demo.
+  // Brute-force protection for auth: at most 30 FAILED auth attempts per minute
+  // per IP. Successful logins/registrations don't consume the quota
+  // (skipSuccessfulRequests), and GETs (the /auth/me session check that runs on
+  // every page load) are not counted at all — they still require a valid token
+  // and remain under the general /api limit below. Once the quota is exhausted,
+  // every auth POST from that IP — including a correct password — gets 429
+  // until the window resets.
   app.use(
     '/api/auth',
-    rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false }),
+    rateLimit({
+      windowMs: 60_000,
+      max: 30,
+      standardHeaders: true,
+      legacyHeaders: false,
+      skip: (req) => req.method === 'GET',
+      skipSuccessfulRequests: true,
+    }),
   )
   app.use('/api', rateLimit({ windowMs: 60_000, max: 600, standardHeaders: true, legacyHeaders: false }))
 

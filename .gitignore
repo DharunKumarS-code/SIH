@@ -33,3 +33,5 @@ ai-service/data/
 .DS_Store
 .vscode/*
 !.vscode/extensions.json
+# demo-video production assets (large media; kept locally only)
+video/

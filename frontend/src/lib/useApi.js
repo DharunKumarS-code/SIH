@@ -13,6 +13,10 @@ export function useApi(fn, deps = []) {
 
   useEffect(() => {
     let alive = true
+    // Intentional: re-enter the loading state whenever deps/reload change so
+    // every consumer shows its spinner for the new request (stale results are
+    // discarded via `alive`). This is the hook's contract, not a derived value.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setState((s) => ({ ...s, loading: true, error: null }))
     Promise.resolve()
       .then(() => fn())

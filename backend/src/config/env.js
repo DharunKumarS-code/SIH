@@ -51,6 +51,11 @@ export const env = {
   infraMaxUploadMb: Number(process.env.INFRA_MAX_UPLOAD_MB) || 6,
   seedOnBoot: bool(process.env.SEED_ON_BOOT, true),
   nodeEnv: process.env.NODE_ENV || 'development',
+  exposeDemoCredentials: bool(process.env.EXPOSE_DEMO_CREDENTIALS, process.env.NODE_ENV !== 'production'),
 }
 
 export const isProd = env.nodeEnv === 'production'
+
+if (isProd && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'change-me-to-a-long-random-string')) {
+  console.warn('[security] JWT_SECRET is unset or the example placeholder in production — tokens can be forged. Set a long random JWT_SECRET.')
+}

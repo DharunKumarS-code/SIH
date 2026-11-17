@@ -123,8 +123,24 @@ export async function runInference(feature, payload = {}) {
   }
 }
 
+// The ai-service exposes `GET /health` only (POST returns 405), so the
+// liveness probe must not go through the POST-based tryRemote().
+async function probeHealth() {
+  if (!env.aiServiceUrl) return null
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), 2500)
+  try {
+    const res = await fetch(`${env.aiServiceUrl}/health`, { signal: ctrl.signal })
+    return res.ok ? await res.json() : null
+  } catch {
+    return null // unreachable -> reported as demo mode below
+  } finally {
+    clearTimeout(t)
+  }
+}
+
 export async function aiStatus() {
-  const remote = await tryRemote('/health', {})
+  const remote = await probeHealth()
   return {
     mode: remote ? 'connected' : 'demo',
     remote: Boolean(remote),

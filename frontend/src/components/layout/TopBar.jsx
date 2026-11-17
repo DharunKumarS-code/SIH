@@ -17,7 +17,10 @@ export function TopBar({ onToggleNav }) {
   const { selectParcel, selectBuilding, selectFloor, selectUnit, selectInfrastructure, selectTngisParcel, setLayerGroup, localities, area, selectArea, cityView, flyToRegion, regions, selectCoimbatoreDemo, selection } = useSelection()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
-  const [results, setResults] = useState([])
+  // Results are stored with the query that produced them and shown only while
+  // that query is still current, so a slow response for an earlier keystroke
+  // can never replace the results for what the user has typed since.
+  const [searchRes, setSearchRes] = useState({ query: '', results: [] })
   const [open, setOpen] = useState(false)
   const boxRef = useRef(null)
 
@@ -29,22 +32,23 @@ export function TopBar({ onToggleNav }) {
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
 
+  const query = q.trim()
+  const results = query.length >= 2 && searchRes.query === query ? searchRes.results : []
+  const searching = query.length >= 2 && searchRes.query !== query
+
   useEffect(() => {
-    if (q.trim().length < 2) {
-      setResults([])
-      return
-    }
+    if (query.length < 2) return
     const t = setTimeout(async () => {
       try {
-        const { results: r } = await api.search(q.trim())
-        setResults(r)
+        const { results: r } = await api.search(query)
+        setSearchRes({ query, results: r })
         setOpen(true)
       } catch {
-        setResults([])
+        setSearchRes({ query, results: [] }) // typeahead: a failed lookup shows "no results"
       }
     }, 200)
     return () => clearTimeout(t)
-  }, [q])
+  }, [query])
 
   const choose = (r) => {
     setOpen(false)
@@ -107,7 +111,9 @@ export function TopBar({ onToggleNav }) {
             className="panel absolute left-0 right-0 top-11 z-40 max-h-80 overflow-y-auto p-1"
             data-testid="search-results"
           >
-            {results.length === 0 ? (
+            {searching ? (
+              <li className="px-3 py-2 text-xs text-slate-500">Searching…</li>
+            ) : results.length === 0 ? (
               <li className="px-3 py-2 text-xs text-slate-500">No matches for &ldquo;{q}&rdquo;.</li>
             ) : (
               results.map((r, i) => {

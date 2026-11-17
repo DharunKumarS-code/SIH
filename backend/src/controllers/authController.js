@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { db } from '../store/index.js'
-import { asyncHandler, ok, badRequest, unauthorized } from '../utils/http.js'
+import { asyncHandler, ok, badRequest, unauthorized, forbidden } from '../utils/http.js'
 import { hashPassword, verifyPassword, signToken, publicUser } from '../services/authService.js'
 import { permissionsFor, ROLES } from '../config/rbac.js'
 import { recordAudit } from '../services/auditService.js'
@@ -24,6 +24,11 @@ export const loginSchema = {
 
 export const register = asyncHandler(async (req, res) => {
   const { username, name, email, password, role } = req.body
+  // Public self-registration may only create Citizen accounts. Any privileged
+  // role requires an authenticated Administrator (req.user via optionalAuth).
+  if (role !== 'Citizen' && req.user?.role !== 'Administrator') {
+    throw forbidden('Only an Administrator can create accounts with a privileged role')
+  }
   const existing = await db.collection('users').findOne({ username })
   if (existing) throw badRequest('Username already taken')
   const id = `usr-${Date.now().toString(36)}`

@@ -20,32 +20,32 @@ function decodeJwt(token) {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
-  const [permissions, setPermissions] = useState([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    let alive = true
+  // Restore the session synchronously from the stored token so a reload
+  // renders the app immediately (optimistic — the backend still enforces auth
+  // on every request). Computed once as initial state, not set in an effect.
+  const [initial] = useState(() => {
     let token = null
     try {
       token = localStorage.getItem('landstack.token')
     } catch {
-      /* storage unavailable */
+      /* storage unavailable -> no session to restore */
     }
-    if (!token) {
-      setLoading(false)
+    return { token, claims: token ? decodeJwt(token) : null }
+  })
+  const { claims } = initial
+  const [user, setUser] = useState(() =>
+    claims ? { id: claims.sub, username: claims.username, name: claims.name, role: claims.role } : null,
+  )
+  const [permissions, setPermissions] = useState(() => (claims ? permissionsFor(claims.role) : []))
+  // Only a token we could not decode needs to wait for /auth/me.
+  const [loading, setLoading] = useState(Boolean(initial.token && !claims))
+
+  useEffect(() => {
+    let alive = true
+    if (!initial.token) {
       return () => {
         alive = false
       }
-    }
-
-    // Optimistic session from the token payload so a reload renders the app
-    // immediately; the backend still enforces auth on every request.
-    const claims = decodeJwt(token)
-    if (claims && alive) {
-      setUser({ id: claims.sub, username: claims.username, name: claims.name, role: claims.role })
-      setPermissions(permissionsFor(claims.role))
-      setLoading(false)
     }
 
     // Refresh from the server (and retry through transient blips). A real 401
@@ -78,7 +78,7 @@ export function AuthProvider({ children }) {
     return () => {
       alive = false
     }
-  }, [])
+  }, [initial.token, claims]) // both come from the one-time initial state -> runs once
 
   const login = useCallback(async (username, password) => {
     const { token, user: u, permissions: p } = await api.login(username, password)

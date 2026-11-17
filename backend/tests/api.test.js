@@ -928,3 +928,21 @@ test('3D ULPIN: non-Land-Officer roles cannot generate one', async () => {
   const res = await post('/api/buildings/COIMBATORE-DEMO-001/generate-3d-ulpin', {}, citizen.body.data.token)
   assert.equal(res.status, 403)
 })
+
+test('uploads: multer errors are client errors (413 oversized / 400 unexpected field), not 500', async () => {
+  const login = await post('/api/auth/login', { username: 'survey01', password: 'Officer@123' })
+  const tok = login.body.data.token
+  const send = async (field, bytes) => {
+    const fd = new FormData()
+    fd.append(field, new Blob([bytes], { type: 'image/png' }), 'x.png')
+    const res = await fetch(base + '/api/ai/buildings/infer', { method: 'POST', headers: { authorization: `Bearer ${tok}` }, body: fd })
+    return { status: res.status, body: await res.json() }
+  }
+  const big = await send('image', new Uint8Array(13 * 1024 * 1024))
+  assert.equal(big.status, 413)
+  assert.equal(big.body.error.details.code, 'LIMIT_FILE_SIZE')
+  assert.equal(big.body.error.stack, undefined)
+  const wrong = await send('notTheImageField', new Uint8Array(16))
+  assert.equal(wrong.status, 400)
+  assert.equal(wrong.body.error.details.code, 'LIMIT_UNEXPECTED_FILE')
+})

@@ -65,6 +65,16 @@ test.describe('TNGIS / Tamil Nilam — public-source parcel integration', () => 
 
     // the parcel polygons are in the scene, and the first drawn vertex equals
     // the first coordinate of the public get_geom response (geometry preserved).
+    // Entities are added asynchronously after the layer's data request returns,
+    // so wait for them (same condition as the toggle test below) before reading.
+    await expect.poll(() => page.evaluate(() => {
+      let n = 0
+      for (const e of window.viewer.entities.values) {
+        const k = e.properties?.kind?.getValue?.() ?? e.properties?.kind
+        if (k === 'tngis-parcel' && e.show) n += 1
+      }
+      return n
+    }), { timeout: 15_000 }).toBeGreaterThan(0)
     const scene = await page.evaluate(() => {
       const v = window.viewer
       let shown = 0

@@ -29,6 +29,8 @@ export default defineConfig({
   // lazy-loading architecture — the routes stay lazy(() => import(...)).)
   optimizeDeps: {
     include: [
+      // /map (CesiumJS) is lazy-loaded too — pre-bundle it for the same reason.
+      'cesium',
       'three',
       'three/examples/jsm/controls/OrbitControls.js',
       // Coimbatore 3D Property Explorer (/coimbatore-explorer) — same
@@ -57,5 +59,12 @@ export default defineConfig({
   preview: {
     port: 4173,
     strictPort: true,
+    // Same API proxy as the dev server — without it `npm run start:frontend`
+    // (vite preview) serves a build whose relative /api calls 404.
+    proxy: {
+      '/api': { target: 'http://localhost:4000', changeOrigin: true },
+      '/health': { target: 'http://localhost:4000', changeOrigin: true },
+      '/demo-docs': { target: 'http://localhost:4000', changeOrigin: true },
+    },
   },
 })

@@ -51,7 +51,8 @@ test.describe('Underground Infrastructure 3D Explorer (new tab, Three.js)', () =
     await panel.getByRole('button', { name: 'Water Pipelines' }).click()
     const firstWater = explorer.locator('[data-testid^="underground-item-INF"]').first()
     await expect(firstWater).toBeVisible({ timeout: 15_000 })
-    const infraId = (await firstWater.locator('span.font-mono').first().innerText()).trim()
+    // the row's id <span> is styled with `data-mono` (was `font-mono` before 9dcf0f0)
+    const infraId = (await firstWater.locator('span.data-mono').first().innerText()).trim()
     await firstWater.click()
 
     const info = explorer.getByTestId('underground-info-panel')

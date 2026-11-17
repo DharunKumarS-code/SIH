@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { db } from '../store/index.js'
+import { env } from '../config/env.js'
 import { asyncHandler, ok, list, notFoundError, badRequest } from '../utils/http.js'
 import { dashboardStats, analyticsStats } from '../services/statsService.js'
 import { runInference, aiStatus, AI_FEATURES } from '../services/aiService.js'
@@ -208,6 +209,7 @@ export const getSystemStatus = asyncHandler(async (_req, res) => {
 })
 
 export const getDemoCredentials = asyncHandler(async (_req, res) => {
+  if (!env.exposeDemoCredentials) throw notFoundError('Demo credentials are disabled on this deployment')
   const users = await db.collection('users').find({})
   ok(res, {
     note: 'Prototype demo accounts only.',

@@ -22,7 +22,7 @@ const r = Router()
 const ulpinParam = { params: z.object({ ulpin: z.string().min(3) }) }
 
 /* ------------------------------------------------------------------- auth */
-r.post('/auth/register', validate(auth.registerSchema), auth.register)
+r.post('/auth/register', optionalAuth, validate(auth.registerSchema), auth.register)
 r.post('/auth/login', validate(auth.loginSchema), auth.login)
 r.get('/auth/me', requireAuth, auth.me)
 
