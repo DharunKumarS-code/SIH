@@ -97,7 +97,7 @@ export default function TngisParcels() {
         title="TNGIS / Tamil Nilam Parcels"
         subtitle="Public-source Tamil Nadu GIS parcel geometry — official geometry, no ULPIN. Rendered inside the one Chennai Cesium viewer."
       >
-        <span className="inline-flex items-center gap-1.5 rounded bg-brass/10 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-brass">
+        <span className="inline-flex items-center gap-1.5 rounded bg-brass/10 px-2 py-1 text-[11px] font-extrabold uppercase tracking-wide text-brass">
           <ShieldCheck size={12} /> Official Source
         </span>
       </PageHeader>
@@ -178,7 +178,7 @@ export default function TngisParcels() {
         </div>
         <ErrorNote error={fetchError} />
         {cfg && (
-          <p className="mt-2 text-[10px] text-slate-500">
+          <p className="mt-2 text-[11px] text-slate-500">
             Source CRS <b>{cfg.sourceCRS}</b> · official ULPIN <b>{cfg.officialUlpin}</b> ·
             live <b>{String(cfg.live)}</b> · min interval {cfg.rateLimit?.minIntervalMsBetweenLiveCalls} ms
           </p>

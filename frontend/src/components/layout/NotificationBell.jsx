@@ -49,7 +49,7 @@ export function NotificationBell() {
   return (
     <div ref={ref} className="relative">
       <button
-        className="btn-ghost relative"
+        className="btn-ghost relative shrink-0"
         onClick={() => setOpen((v) => !v)}
         aria-label={`Notifications (${unread} unread)`}
         data-testid="notif-bell"
@@ -76,7 +76,7 @@ export function NotificationBell() {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className={`text-xs font-semibold ${n.read ? 'text-slate-500' : 'text-slate-900'}`}>{n.kind}</span>
-                    <span className="text-[10px] text-slate-500">{dateShort(n.createdAt)}</span>
+                    <span className="text-[11px] text-slate-500">{dateShort(n.createdAt)}</span>
                   </div>
                   <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{n.message}</p>
                 </button>

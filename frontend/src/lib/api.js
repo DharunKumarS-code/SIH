@@ -34,7 +34,50 @@ const unwrap = (p) =>
     throw e
   })
 
-const get = (url, params, config) => unwrap(http.get(url, { params, ...config }))
+// In-flight de-duplication for plain GETs: when two components ask for the
+// exact same resource at the same moment (e.g. the app-wide locality registry
+// and a page fetching it too), they share ONE network request. This is not a
+// cache — the entry is dropped as soon as the request settles, so the next call
+// always hits the server. Joiners get their own structuredClone, so no caller
+// can mutate another's data; errors reach every caller unchanged. Requests with
+// a config (e.g. an AbortSignal) are never shared.
+const inflight = new Map()
+const stableKey = (url, params) =>
+  params ? `${url}?${JSON.stringify(Object.keys(params).sort().map((k) => [k, params[k]]))}` : url
+const cloneData = (d) => {
+  try {
+    return structuredClone(d)
+  } catch {
+    return d
+  }
+}
+
+const get = (url, params, config) => {
+  if (config) return unwrap(http.get(url, { params, ...config }))
+  const key = stableKey(url, params)
+  const existing = inflight.get(key)
+  if (existing) return existing.then(cloneData)
+  const p = unwrap(http.get(url, { params }))
+  inflight.set(key, p)
+  const clear = () => {
+    if (inflight.get(key) === p) inflight.delete(key)
+  }
+  p.then(clear, clear)
+  return p
+}
+// The locality registry is static reference data that several components
+// request at mount, a few hundred ms apart (too far apart for the in-flight
+// share above). A successful response is reused for a few seconds only, so a
+// page still sees fresh data on any later navigation.
+const recent = new Map()
+const getRecent = (url, ttlMs) => {
+  const hit = recent.get(url)
+  if (hit && Date.now() - hit.at < ttlMs) return Promise.resolve(cloneData(hit.data))
+  return get(url).then((data) => {
+    recent.set(url, { at: Date.now(), data: cloneData(data) })
+    return data
+  })
+}
 const post = (url, body) => unwrap(http.post(url, body))
 
 export const api = {
@@ -75,7 +118,7 @@ export const api = {
   interop: (ulpin, propertyId) => get(`/interop/${encodeURIComponent(ulpin)}`, { propertyId }),
 
   // gis
-  gisLocalities: () => get('/gis/localities'),
+  gisLocalities: () => getRecent('/gis/localities', 5000),
   gisParcels: (params) => get('/gis/parcels', params),
   gisBuildings: (params) => get('/gis/buildings', params),
   gisUnits: (params) => get('/gis/units', params),

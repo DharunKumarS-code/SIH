@@ -23,7 +23,7 @@ export function DemoTag({ className, label = 'DEMO' }) {
   return (
     <span
       className={clsx(
-        'inline-flex items-center rounded border border-warn/30 bg-warn/10 px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-warn',
+        'inline-flex items-center rounded border border-warn/30 bg-warn/10 px-1.5 py-0.5 text-[11px] font-extrabold tracking-wide text-warn',
         className,
       )}
     >

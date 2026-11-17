@@ -1,4 +1,4 @@
-import { lazy } from 'react'
+import { createElement, lazy, useState } from 'react'
 
 // ---------------------------------------------------------------------------
 // lazyWithRetry — React.lazy() that survives a transient dynamic-import failure.
@@ -15,18 +15,29 @@ import { lazy } from 'react'
 // a short delay, then — once per module, guarded by sessionStorage so we never
 // loop — a single hard reload to pull the fresh module graph.
 // ---------------------------------------------------------------------------
+//
+// The returned component also has `preload()`. Once its module has loaded
+// (via preload or a first render) it renders the module directly — no
+// suspension, so no Suspense fallback flash and no React reveal throttle.
+// ---------------------------------------------------------------------------
 export function lazyWithRetry(factory, key = factory.toString().slice(0, 120)) {
-  return lazy(async () => {
+  let Loaded = null
+  const load = () =>
+    factory().then((mod) => {
+      Loaded = mod.default
+      return mod
+    })
+  const Lazy = lazy(async () => {
     const storageKey = `lazy-retry:${key}`
     try {
-      const mod = await factory()
+      const mod = await load()
       try { window.sessionStorage?.removeItem(storageKey) } catch { /* ignore */ }
       return mod
     } catch (err) {
       // one in-place retry — covers a dep re-optimize that has since settled
       await new Promise((r) => setTimeout(r, 600))
       try {
-        return await factory()
+        return await load()
       } catch (err2) {
         let alreadyReloaded = false
         try { alreadyReloaded = window.sessionStorage?.getItem(storageKey) === '1' } catch { /* ignore */ }
@@ -41,4 +52,15 @@ export function lazyWithRetry(factory, key = factory.toString().slice(0, 120)) {
       }
     }
   })
+  function LazyWithRetry(props) {
+    // The type is fixed per mounted instance: an instance that mounted via
+    // Lazy keeps rendering Lazy (already resolved => synchronous), so a later
+    // re-render never swaps the element type and remounts the subtree.
+    const [Type] = useState(() => Loaded || Lazy)
+    return createElement(Type, props)
+  }
+  // Resolves when the module is loaded; never rejects (a failed preload just
+  // leaves the normal lazy path, with its retry/reload handling, in charge).
+  LazyWithRetry.preload = () => (Loaded ? Promise.resolve() : load().then(() => {}, () => {}))
+  return LazyWithRetry
 }

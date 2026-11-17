@@ -59,7 +59,7 @@ const CAMERA_PRESET_KEYS = ['front', 'street', 'aerial', 'top']
 const MODE_COPY = {
   exterior: {
     heading: 'ODM Textured Reconstruction',
-    sizeLabel: 'ODM geometry (37 MB) and 21 textures (62 MB)',
+    sizeLabel: 'ODM geometry (37 MB) and 21 textures (18 MB)',
     errorHint: 'Check that the ODM assets are present under /models/coimbatore-demo/ and reload.',
     provenance:
       'This is the actual user-provided ODM textured 3D reconstruction of the property exterior — a 2.5D draped mesh, not a closed volumetric building — staged inside a reproduced exterior environment (ground/road context, an illustrative cadastral parcel volume, illustrative underground utility routing). Parcel and utility geometry are illustrative only, not a surveyed cadastral boundary or a surveyed utility record.',
@@ -105,7 +105,7 @@ export default function CoimbatoreExplorer3D() {
             <Box size={17} />
           </span>
           <div className="leading-tight">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Chennai 3D Cadastre · Prototype
             </p>
             <h1 className="font-display text-[15px] font-semibold text-slate-900">3D Property Explorer · {p.name}</h1>
@@ -121,7 +121,7 @@ export default function CoimbatoreExplorer3D() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded border border-warn/30 bg-warn/10 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-warn">
+          <span className="inline-flex items-center gap-1 rounded border border-warn/30 bg-warn/10 px-2 py-1 text-[11px] font-extrabold uppercase tracking-wide text-warn">
             <ShieldAlert size={12} /> Prototype 3D Model — Not a Surveyed Volume
           </span>
           <button
@@ -150,7 +150,7 @@ export default function CoimbatoreExplorer3D() {
             <p className="data-mono mt-0.5 text-[12px] font-bold text-slate-900 break-all">{p.propertyId}</p>
           </section>
           <section className="rounded-md border border-brass/30 bg-brass/10 p-2.5">
-            <p className="text-[10px] font-extrabold uppercase tracking-wide text-brass">Official ULPIN</p>
+            <p className="text-[11px] font-extrabold uppercase tracking-wide text-brass">Official ULPIN</p>
             <p className="data-mono mt-0.5 text-[13px] font-bold text-slate-900 break-all">{p.ulpin}</p>
           </section>
           <section>
@@ -175,7 +175,7 @@ export default function CoimbatoreExplorer3D() {
             <p className="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
               <MapPin size={12} /> Provenance
             </p>
-            <p className="text-[10px] leading-relaxed text-slate-500">
+            <p className="text-[11px] leading-relaxed text-slate-500">
               {copy.provenance} The ULPIN and land-record fields above are official government-sourced data for this
               property; no owner, patta or tax record is attached, and the 3D reconstruction itself remains a
               synthetic, unsurveyed model.
@@ -184,7 +184,9 @@ export default function CoimbatoreExplorer3D() {
         </aside>
 
         {/* CENTER — the walkthrough (Exterior ODM or Interior scan) */}
-        <main className="relative min-w-0 flex-1 bg-[#151922]">
+        {/* on-dark: the walkthrough canvas is always dark, so its overlay text
+            uses the dark-theme tokens in either app theme (index.css). */}
+        <main className="on-dark relative min-w-0 flex-1 bg-[#151922]">
           {/* Mode switch — top-left, always clickable (even through the
               click-to-start blocker below), never covers the property panel. */}
           <div
@@ -198,7 +200,7 @@ export default function CoimbatoreExplorer3D() {
                 data-testid={`coimbatore-mode-${m.key}`}
                 className={
                   mode === m.key
-                    ? 'rounded px-2.5 py-1 text-[12px] font-semibold bg-primary text-white'
+                    ? 'rounded px-2.5 py-1 text-[12px] font-semibold bg-primary text-paper'
                     : 'rounded px-2.5 py-1 text-[12px] font-semibold text-slate-300 hover:bg-white/10'
                 }
               >

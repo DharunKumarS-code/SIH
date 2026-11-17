@@ -24,26 +24,26 @@ export const dateShort = (d) => {
 
 // Status -> badge style (spec section 37)
 export const STATUS_STYLES = {
-  Verified: 'bg-ok/15 text-ok border-ok/30',
-  Registered: 'bg-ok/15 text-ok border-ok/30',
-  Approved: 'bg-ok/15 text-ok border-ok/30',
-  Paid: 'bg-ok/15 text-ok border-ok/30',
-  Clear: 'bg-ok/15 text-ok border-ok/30',
-  Completed: 'bg-ok/15 text-ok border-ok/30',
-  Pending: 'bg-warn/15 text-warn border-warn/30',
-  Due: 'bg-warn/15 text-warn border-warn/30',
-  'Partially Paid': 'bg-warn/15 text-warn border-warn/30',
-  Conditional: 'bg-warn/15 text-warn border-warn/30',
-  'Under Review': 'bg-info/15 text-info border-info/30',
-  'Under Construction': 'bg-info/15 text-info border-info/30',
-  'Under Mediation': 'bg-info/15 text-info border-info/30',
-  Submitted: 'bg-info/15 text-info border-info/30',
-  Open: 'bg-danger/15 text-danger border-danger/30',
-  Rejected: 'bg-danger/15 text-danger border-danger/30',
-  Disputed: 'bg-danger/15 text-danger border-danger/30',
-  'In Court': 'bg-danger/15 text-danger border-danger/30',
-  Encumbered: 'bg-danger/15 text-danger border-danger/30',
-  Active: 'bg-danger/15 text-danger border-danger/30',
+  Verified: 'bg-ok/10 text-ok border-ok/30',
+  Registered: 'bg-ok/10 text-ok border-ok/30',
+  Approved: 'bg-ok/10 text-ok border-ok/30',
+  Paid: 'bg-ok/10 text-ok border-ok/30',
+  Clear: 'bg-ok/10 text-ok border-ok/30',
+  Completed: 'bg-ok/10 text-ok border-ok/30',
+  Pending: 'bg-warn/10 text-warn border-warn/30',
+  Due: 'bg-warn/10 text-warn border-warn/30',
+  'Partially Paid': 'bg-warn/10 text-warn border-warn/30',
+  Conditional: 'bg-warn/10 text-warn border-warn/30',
+  'Under Review': 'bg-info/10 text-info border-info/30',
+  'Under Construction': 'bg-info/10 text-info border-info/30',
+  'Under Mediation': 'bg-info/10 text-info border-info/30',
+  Submitted: 'bg-info/10 text-info border-info/30',
+  Open: 'bg-danger/10 text-danger border-danger/30',
+  Rejected: 'bg-danger/10 text-danger border-danger/30',
+  Disputed: 'bg-danger/10 text-danger border-danger/30',
+  'In Court': 'bg-danger/10 text-danger border-danger/30',
+  Encumbered: 'bg-danger/10 text-danger border-danger/30',
+  Active: 'bg-danger/10 text-danger border-danger/30',
 }
 export const statusStyle = (s) => STATUS_STYLES[s] || 'bg-slate-50 text-slate-600 border-slate-300'
 
@@ -57,3 +57,5 @@ export const LAND_USE_COLORS = {
 
 // Restrained, print-friendly chart palette for a government portal.
 export const CHART_COLORS = ['#144382', '#0f766e', '#b45309', '#6b21a8', '#15803d', '#b91c1c', '#64748b']
+// Same hues, lightened for the dark theme (each >= 4.5:1 on the dark surface).
+export const CHART_COLORS_DARK = ['#6a9ce0', '#3ebeac', '#d99142', '#b48ee0', '#4abe7a', '#e06464', '#93a1b5']

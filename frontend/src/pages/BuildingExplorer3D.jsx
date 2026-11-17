@@ -161,7 +161,7 @@ function ExplorerBody({ params }) {
             <Box size={17} />
           </span>
           <div className="leading-tight">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Chennai 3D Cadastre · Prototype
             </p>
             <h1 className="font-display text-[15px] font-semibold text-slate-900">3D Building Explorer</h1>
@@ -181,7 +181,7 @@ function ExplorerBody({ params }) {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded border border-warn/30 bg-warn/10 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-warn">
+          <span className="inline-flex items-center gap-1 rounded border border-warn/30 bg-warn/10 px-2 py-1 text-[11px] font-extrabold uppercase tracking-wide text-warn">
             <ShieldAlert size={12} /> Prototype · Not an Official ULPIN
           </span>
           <button
@@ -234,12 +234,12 @@ function ExplorerBody({ params }) {
                   >
                     <Layers size={12} />
                     <span>{f.label}</span>
-                    <span className="ml-auto text-[10px] text-slate-400">{f.unitCount ?? 0}u</span>
+                    <span className="ml-auto text-[11px] text-slate-600">{f.unitCount ?? 0}u</span>
                   </button>
                 </li>
               ))}
               {!floors.length && buildingQ.loading && (
-                <li className="text-[12px] text-slate-400">Loading floors…</li>
+                <li className="text-[12px] text-slate-500">Loading floors…</li>
               )}
               {floorsUnavailable && (
                 <li className="text-[12px] font-medium text-warn" data-testid="explorer-floors-unavailable">
@@ -270,12 +270,12 @@ function ExplorerBody({ params }) {
                     >
                       <Home size={10} className="text-primary" />
                       <span className="data-mono">{u.unitId}</span>
-                      <span className="ml-auto text-slate-400">{u.bedrooms || u.usage?.[0]}</span>
+                      <span className="ml-auto text-slate-500">{u.bedrooms || u.usage?.[0]}</span>
                     </button>
                   </li>
                 )
               })}
-              {!units.length && <li className="col-span-2 text-[12px] text-slate-400">No units listed.</li>}
+              {!units.length && <li className="col-span-2 text-[12px] text-slate-500">No units listed.</li>}
             </ul>
           </section>
         </aside>
@@ -291,7 +291,7 @@ function ExplorerBody({ params }) {
                 data-testid={`explorer-mode-${m.key}`}
                 className={
                   viewMode === m.key
-                    ? 'rounded px-2.5 py-1 text-[12px] font-semibold bg-primary text-white'
+                    ? 'rounded px-2.5 py-1 text-[12px] font-semibold bg-primary text-white dark:text-paper'
                     : 'rounded px-2.5 py-1 text-[12px] font-semibold text-slate-600 hover:bg-slate-100'
                 }
               >
@@ -402,7 +402,7 @@ function ExplorerBody({ params }) {
             <p className="mb-1 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">
               Proposed 3D Property Identifier
             </p>
-            {idQ.loading && <p className="text-[12px] text-slate-400">Loading…</p>}
+            {idQ.loading && <p className="text-[12px] text-slate-500">Loading…</p>}
             {!idQ.loading && identifiers.length === 0 && (
               <div data-testid="explorer-identifier-unavailable">
                 <p className="text-[12px] font-semibold text-slate-700">3D Property Identifier: Unavailable</p>
@@ -413,7 +413,7 @@ function ExplorerBody({ params }) {
             )}
             {identifiers.length > 0 && (
               <div data-testid="explorer-identifier">
-                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] text-warn">
+                <p className="mb-1.5 flex items-center gap-1.5 text-[11px] text-warn">
                   <ShieldAlert size={11} /> Proposed / research reference — not an Official 3D ULPIN, not a
                   government-approved 3D cadastral standard.
                 </p>
@@ -442,7 +442,7 @@ function ExplorerBody({ params }) {
             <p className="mb-1 flex items-center gap-1.5 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">
               <Box size={12} /> 3D volume information
             </p>
-            <p className="mb-1.5 rounded bg-warn/10 px-2 py-1 text-[10px] text-warn">
+            <p className="mb-1.5 rounded bg-warn/10 px-2 py-1 text-[11px] text-warn">
               Prototype 3D geometry — synthetic, not an official cadastral volume.
             </p>
             {shownVol ? (
@@ -456,7 +456,7 @@ function ExplorerBody({ params }) {
                 <Labelled label="Geometry version">{shownVol.geometryVersion ?? 1}</Labelled>
               </>
             ) : (
-              <p className="text-[12px] text-slate-400">No prototype volume for this selection.</p>
+              <p className="text-[12px] text-slate-500">No prototype volume for this selection.</p>
             )}
           </section>
 
@@ -498,7 +498,7 @@ function ExplorerBody({ params }) {
               <StatusPill tone="muted">UNVERIFIED</StatusPill>
             </Labelled>
             <Labelled label="Source">{shownVol?.source || 'DEMO'}</Labelled>
-            <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
+            <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
               Coordinates are realistic Chennai positions but represent no real parcel, building, person
               or government record. The combined building/floor/unit identifier is a
               <b> Proposed 3D Property Identifier</b> — it is not an official ULPIN and not a
@@ -518,7 +518,7 @@ function ExplorerBody({ params }) {
               </Labelled>
               <Labelled label="Encumbrance">{governance.encumbrance?.type || 'Nil'}</Labelled>
               <Labelled label="Property tax">{governance.propertyTax?.status || 'Not available'}</Labelled>
-              <p className="mt-1 text-[10px] text-slate-500">
+              <p className="mt-1 text-[11px] text-slate-500">
                 Land Records / Registration / Property Tax are DEMO / MOCK adapters — no live government connectivity.
               </p>
             </section>

@@ -96,10 +96,10 @@ function HierarchyRail({ chain, activeKey }) {
                     : 'border-slate-200 bg-slate-50 opacity-60',
               )}
             >
-              <Icon size={13} className={active ? 'text-teal' : reached ? 'text-primary' : 'text-slate-400'} />
+              <Icon size={13} className={active ? 'text-teal' : reached ? 'text-primary' : 'text-slate-500'} />
               <div className="leading-tight">
                 <div className="text-[8.5px] font-bold uppercase tracking-wide text-slate-500">{s.label}</div>
-                <div className={clsx('data-mono text-[10.5px] font-bold', reached ? 'text-slate-900' : 'text-slate-400')}>
+                <div className={clsx('data-mono text-[10.5px] font-bold', reached ? 'text-slate-900' : 'text-slate-500')}>
                   {s.id ? String(s.id) : NA}
                 </div>
               </div>
@@ -191,14 +191,14 @@ export function PropertyCertificateModal({ data, onClose }) {
                   <Landmark size={22} />
                 </span>
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Chennai 3D Cadastre</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Chennai 3D Cadastre</p>
                   <p className="text-[13px] font-semibold text-slate-100">3D Property Mapping Platform</p>
                 </div>
               </div>
 
               <div className="text-center">
                 <h1 className="font-display text-[22px] font-bold tracking-tight text-white">SMART PROPERTY CARD</h1>
-                <p className="text-[11px] text-slate-400">Unified 3D property record from parcel to unit</p>
+                <p className="text-[11px] text-slate-500">Unified 3D property record from parcel to unit</p>
               </div>
 
               <div className="flex items-center gap-3">
@@ -206,7 +206,7 @@ export function PropertyCertificateModal({ data, onClose }) {
                   <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-400/15 px-2.5 py-1 text-[10px] font-bold tracking-wide text-amber-300">
                     SYSTEM-GENERATED PROTOTYPE
                   </span>
-                  <p className="mt-1 max-w-[220px] text-[9px] leading-tight text-slate-400">
+                  <p className="mt-1 max-w-[220px] text-[9px] leading-tight text-slate-500">
                     Not an official government certificate or government-issued digital identity.
                   </p>
                 </div>
@@ -214,7 +214,7 @@ export function PropertyCertificateModal({ data, onClose }) {
                   {qrDataUrl ? (
                     <img src={qrDataUrl} alt="Deep link QR code" className="h-full w-full" />
                   ) : (
-                    <span className="text-[8px] text-slate-400">QR…</span>
+                    <span className="text-[8px] text-slate-500">QR…</span>
                   )}
                 </div>
               </div>
@@ -382,7 +382,7 @@ export function PropertyCertificateModal({ data, onClose }) {
                   official government certificate or government-issued digital identity.
                 </span>
               </div>
-              <div className="shrink-0 text-right text-[9.5px] text-slate-400">
+              <div className="shrink-0 text-right text-[9.5px] text-slate-500">
                 <p>Generated {dateShort(data.generatedAtISO)}</p>
                 <p className="data-mono">{data.identity.recordId}</p>
               </div>

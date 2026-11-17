@@ -47,7 +47,7 @@ function Finding({ f, canReview, onFocus, onReview, reviewBusy, expanded, onTogg
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge status={statusTone(f.status)}>{f.status}</Badge>
-            <span className={`text-[10px] font-bold uppercase ${severityTone(f.severity)}`}>{f.severity}</span>
+            <span className={`text-[11px] font-bold uppercase ${severityTone(f.severity)}`}>{f.severity}</span>
             <span className="data-mono text-[11px] text-slate-500">{f.ruleId}</span>
             <Badge>{f.entityType}</Badge>
           </div>
@@ -302,7 +302,7 @@ export default function TopologyValidation() {
               />
             ))}
           </div>
-          <p className="mt-2 text-[10px] text-warn">{run.disclaimer}</p>
+          <p className="mt-2 text-[11px] text-warn">{run.disclaimer}</p>
         </Card>
       )}
     </PageScroll>
