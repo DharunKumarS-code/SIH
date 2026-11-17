@@ -290,7 +290,7 @@ const MODEL_CONFIGS = {
     mtlFile: 'odm_textured_model_geo.mtl',
     applyTransform: applyExteriorTransform,
     getStartPose: exteriorStartPose,
-    sizeLabel: '37 MB geometry + 62 MB / 21 textures',
+    sizeLabel: '37 MB geometry + 18 MB / 21 textures',
   },
   interior: {
     label: 'Interior',

@@ -52,7 +52,7 @@ function FilePicker({ file, onPick }) {
       >
         <UploadCloud size={18} className="text-primary" />
         <span className="text-[13px]">{file ? file.name : 'Upload infrastructure file (GeoJSON / CSV / JSON)'}</span>
-        <span className="text-[10px] text-slate-500">Max {MAX_MB} MB — see docs/20-underground-infrastructure.md</span>
+        <span className="text-[11px] text-slate-500">Max {MAX_MB} MB — see docs/20-underground-infrastructure.md</span>
       </button>
     </div>
   )
@@ -247,7 +247,8 @@ export default function UndergroundInfrastructure() {
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="text-primary hover:underline"
+                      className="inline-flex min-h-[24px] items-center text-primary hover:underline"
+                      aria-label={`Explore ${r.infrastructureId} in 3D (opens in a new tab)`}
                       data-testid={`infra-explorer-${r.infrastructureId}`}
                     >
                       Explore
@@ -318,7 +319,7 @@ export default function UndergroundInfrastructure() {
                   </li>
                 ))}
               </ul>
-              <p className="mt-1 text-[10px] text-warn">{validationRun.disclaimer}</p>
+              <p className="mt-1 text-[11px] text-warn">{validationRun.disclaimer}</p>
             </div>
           )}
         </Card>
@@ -343,7 +344,7 @@ export default function UndergroundInfrastructure() {
                 </button>
               </div>
             </div>
-            <p className="mt-2 text-[10px] text-slate-500">
+            <p className="mt-2 text-[11px] text-slate-500">
               A source is never automatically promoted to official. DEMO / RESEARCH / UNVERIFIED / UPLOADED_SURVEY stay non-official until an
               authorized review. Depth/elevation is stored only when the file supplies it — never invented.
             </p>
@@ -379,7 +380,7 @@ export default function UndergroundInfrastructure() {
         <ol className="space-y-1.5 text-[12px] text-slate-600">
           {(config?.pipeline || []).map((step, i) => (
             <li key={step} className="flex items-center gap-2">
-              <span className="grid h-5 w-5 place-items-center rounded-full bg-slate-100 text-[10px]">{i + 1}</span>{step}
+              <span className="grid h-5 w-5 place-items-center rounded-full bg-slate-100 text-[11px]">{i + 1}</span>{step}
             </li>
           ))}
         </ol>

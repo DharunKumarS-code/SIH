@@ -138,7 +138,7 @@ export default function Login() {
             <Landmark size={19} />
           </div>
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-white/50">Government · Land Governance Portal</div>
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-white/50">Government · Land Governance Portal</div>
             <div className="font-display text-lg font-semibold tracking-tight text-white">PROPERTY 3D ULPIN</div>
             <div className="text-xs text-white/45">Chennai 3D Cadastre</div>
           </div>
@@ -236,7 +236,7 @@ export default function Login() {
                 <div className="mt-6">
                   <p className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white/50">
                     Demo accounts{' '}
-                    <span className="inline-flex items-center rounded border border-[#d99142]/35 bg-[#d99142]/10 px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-[#d99142]">
+                    <span className="inline-flex items-center rounded border border-[#d99142]/35 bg-[#d99142]/10 px-1.5 py-0.5 text-[11px] font-extrabold tracking-wide text-[#d99142]">
                       DEMO
                     </span>
                   </p>
@@ -260,7 +260,7 @@ export default function Login() {
           </div>
         </div>
 
-        <p className="relative mx-auto max-w-3xl pb-4 text-center text-[11px] leading-relaxed text-white/40">
+        <p className="relative mx-auto max-w-3xl pb-4 text-center text-[11px] leading-relaxed text-white/60">
           {APP_DISCLAIMER}
         </p>
       </div>

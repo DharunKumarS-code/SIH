@@ -104,14 +104,14 @@ export default function Settings() {
           </div>
 
           {land.localities?.length > 0 && (
-            <p className="mt-2 text-[10px] text-slate-500">
+            <p className="mt-2 text-[11px] text-slate-500">
               Admin hierarchy:{' '}
               {land.localities.map((l) => `${l.name} (${l.adminLevel || '—'}, ${l.recordType || '—'})`).join(' · ')}.
               Chennai urban parcels are recorded in the Town Survey Land Register (TSLR), keyed by
               District → Taluk → Village/Town-Survey block → Survey No → Sub-Division.
             </p>
           )}
-          <p className="mt-2 text-[10px] text-slate-600">
+          <p className="mt-2 text-[11px] text-slate-600">
             See <code>docs/13-official-ulpin-data-investigation.md</code> for the full investigation.
           </p>
         </Card>

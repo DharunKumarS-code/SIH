@@ -46,7 +46,7 @@ function Field({ label, children, mono }) {
 function DemoBadge() {
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded border border-warn/30 bg-warn/10 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-warn"
+      className="inline-flex items-center gap-1.5 rounded border border-warn/30 bg-warn/10 px-2 py-1 text-[11px] font-extrabold uppercase tracking-wide text-warn"
       data-testid="underground-demo-badge"
     >
       <ShieldAlert size={12} /> DEMO DATA — Not Authoritative
@@ -147,7 +147,7 @@ function ExplorerBody({ params }) {
             <Waypoints size={17} />
           </span>
           <div className="leading-tight">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Chennai 3D Land Governance · Prototype
             </p>
             <h1 className="font-display text-[15px] font-semibold text-slate-900">Underground Infrastructure Explorer</h1>
@@ -181,9 +181,11 @@ function ExplorerBody({ params }) {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
+      {/* Below 1024px the three columns stack (3D view first, panels below,
+          page scrolls); from lg up it is the side-by-side workstation layout. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
         {/* LEFT — layer panel + search + area selector */}
-        <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-r border-slate-200 bg-surface p-3">
+        <aside className="flex w-full shrink-0 flex-col gap-3 border-t border-slate-200 bg-surface p-3 lg:w-72 lg:overflow-y-auto lg:border-r lg:border-t-0">
           <section>
             <label className="mb-1 block font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Area / Locality</label>
             <select
@@ -199,7 +201,7 @@ function ExplorerBody({ params }) {
           <section>
             <label className="mb-1 block font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Search infrastructure…</label>
             <div className="flex items-center gap-1.5 rounded-md border border-slate-300 px-2">
-              <Search size={13} className="text-slate-400" />
+              <Search size={13} className="text-slate-500" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -229,7 +231,8 @@ function ExplorerBody({ params }) {
                       />
                       <span className="h-3 w-3 shrink-0 rounded-sm border border-slate-300" style={{ background: layer.color }} />
                       <button
-                        className="flex-1 text-left text-[12px] font-semibold text-slate-700"
+                        className="min-h-[24px] flex-1 text-left text-[12px] font-semibold text-slate-700"
+                        aria-expanded={isOpen}
                         onClick={() => setExpanded(isOpen ? null : layer.key)}
                       >
                         {layer.label}
@@ -238,7 +241,7 @@ function ExplorerBody({ params }) {
                         {items.length}
                       </span>
                     </div>
-                    <p className="px-2 pb-1 text-[10px] text-slate-400">
+                    <p className="px-2 pb-1 text-[11px] text-slate-500">
                       {items.length === 0
                         ? 'Data unavailable'
                         : `${layer.form} · ${items.every((r) => provenanceView(r).demo) ? 'DEMO' : 'MIXED'} provenance`}
@@ -255,13 +258,13 @@ function ExplorerBody({ params }) {
                               }`}
                             >
                               <span className="data-mono truncate">{r.infrastructureId}</span>
-                              <span className="shrink-0 text-slate-400">
+                              <span className="shrink-0 text-slate-500">
                                 {(() => { const d = drawDepth(r); return d.known ? `−${d.value} m` : 'depth n/a' })()}
                               </span>
                             </button>
                           </li>
                         ))}
-                        {shown.length === 0 && <li className="px-2 py-1 text-[11px] text-slate-400">No match in this layer.</li>}
+                        {shown.length === 0 && <li className="px-2 py-1 text-[11px] text-slate-500">No match in this layer.</li>}
                       </ul>
                     )}
                   </li>
@@ -270,14 +273,14 @@ function ExplorerBody({ params }) {
             </ul>
           </section>
 
-          <section className="rounded-md border border-warn/30 bg-warn/10 p-2 text-[10px] leading-relaxed text-warn">
+          <section className="rounded-md border border-warn/30 bg-warn/10 p-2 text-[11px] leading-relaxed text-warn">
             <p className="font-bold">DEMO DATA</p>
             <p>Not authoritative utility infrastructure information. Synthetic demonstration geometry, depths and dimensions — never surveyed, never official.</p>
           </section>
         </aside>
 
         {/* CENTER — the 3D scene */}
-        <main className="relative min-w-0 flex-1 bg-paper">
+        <main className="relative order-first h-[60vh] min-h-[360px] min-w-0 shrink-0 bg-paper lg:order-none lg:h-auto lg:min-h-0 lg:flex-1 lg:shrink">
           {(infraQ.loading || locQ.loading) && (
             <div className="absolute inset-0 z-10 grid place-items-center text-[13px] text-slate-500">Loading underground scene…</div>
           )}
@@ -333,14 +336,14 @@ function ExplorerBody({ params }) {
           </div>
 
           {/* legend — icons + labels + shape names, not colour alone */}
-          <div className="panel pointer-events-none absolute bottom-3 left-3 p-2.5 text-[10px] text-slate-600">
+          <div className="panel pointer-events-none absolute bottom-3 left-3 max-w-[calc(100%-1.5rem)] p-2.5 text-[11px] text-slate-600">
             <p className="mb-1 font-display font-bold uppercase tracking-wider text-slate-500">Underground Infrastructure</p>
-            <ul className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+            <ul className="grid grid-cols-1 gap-x-3 gap-y-0.5 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
               {UNDERGROUND_LAYERS.map((l) => (
-                <li key={l.key} className="flex items-center gap-1.5">
+                <li key={l.key} className="flex items-center gap-1.5 whitespace-nowrap">
                   <span className="h-2.5 w-2.5 shrink-0 rounded-sm border border-slate-400" style={{ background: l.color }} />
                   <span>{l.label}</span>
-                  <span className="text-slate-400">· {l.shape}</span>
+                  <span className="text-slate-500">· {l.shape}</span>
                 </li>
               ))}
             </ul>
@@ -348,7 +351,7 @@ function ExplorerBody({ params }) {
         </main>
 
         {/* RIGHT — selected infrastructure + depth view + property context */}
-        <aside className="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto border-l border-slate-200 bg-surface p-3">
+        <aside className="flex w-full shrink-0 flex-col gap-3 border-t border-slate-200 bg-surface p-3 lg:w-80 lg:overflow-y-auto lg:border-l lg:border-t-0">
           <section className="rounded-md border border-primary/25 bg-primary/[0.06] p-2.5">
             <p className="font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Selected Infrastructure</p>
             {selected ? (
@@ -365,7 +368,7 @@ function ExplorerBody({ params }) {
           {/* Depth view — allowed ONLY because every value shown is DEMO / synthetic */}
           <section data-testid="underground-depth-view">
             <p className="mb-1 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Depth View</p>
-            <p className="mb-1.5 rounded bg-warn/10 px-2 py-1 text-[10px] text-warn">
+            <p className="mb-1.5 rounded bg-warn/10 px-2 py-1 text-[11px] text-warn">
               Synthetic demonstration depths only — not authoritative Chennai engineering depths.
             </p>
             <div className="space-y-1 data-mono text-[11px]">
@@ -401,7 +404,9 @@ function ExplorerBody({ params }) {
             value={sliceDepth}
             onChange={(e) => setSliceDepth(Number(e.target.value))}
             data-testid="underground-depth-slider"
-            className="w-40"
+            aria-label="Slice depth in metres"
+            aria-valuetext={`${sliceDepth} metres below ground`}
+            className="h-6 w-40"
           />
           <span className="w-14 data-mono text-slate-700">−{sliceDepth} m</span>
         </div>
@@ -436,7 +441,7 @@ function ExplorerBody({ params }) {
           ))}
         </div>
 
-        <span className="ml-auto flex items-center gap-1.5 text-[10px] text-slate-500">
+        <span className="ml-auto flex items-center gap-1.5 text-[11px] text-slate-500">
           <Layers3 size={12} /> ONE Three.js scene · the Chennai-wide map stays in the single Cesium viewer
         </span>
       </footer>
@@ -461,12 +466,12 @@ function SelectedPanel({ rec, rel, loading }) {
         <div className="mb-1.5 flex flex-wrap gap-1.5">
           <span className="rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{rec.type}</span>
           {prov.demo && (
-            <span className="rounded bg-warn/10 px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-warn" data-testid="underground-info-provenance">
+            <span className="rounded bg-warn/10 px-1.5 py-0.5 text-[11px] font-extrabold tracking-wide text-warn" data-testid="underground-info-provenance">
               {prov.verificationStatus || 'DEMO'}
             </span>
           )}
         </div>
-        {loading && <p className="text-[11px] text-slate-400">Loading detail…</p>}
+        {loading && <p className="text-[11px] text-slate-500">Loading detail…</p>}
         <Field label="Infrastructure ID" mono>{rec.infrastructureId}</Field>
         <Field label="Type">{rec.type}</Field>
         <Field label="Subtype">{rec.subtype || 'Unavailable'}</Field>
@@ -486,7 +491,7 @@ function SelectedPanel({ rec, rel, loading }) {
         <Field label="Verification">{prov.verificationStatus}</Field>
         <Field label="Timestamp" mono>{prov.timestamp ? String(prov.timestamp).slice(0, 19).replace('T', ' ') : 'Unavailable'}</Field>
         {isMetro && (
-          <p className="mt-1.5 text-[10px] text-warn">
+          <p className="mt-1.5 text-[11px] text-warn">
             Demonstration geometry — authoritative infrastructure geometry unavailable.
           </p>
         )}
@@ -494,7 +499,7 @@ function SelectedPanel({ rec, rel, loading }) {
 
       <section data-testid="underground-property-context">
         <p className="mb-1 font-display text-[11px] font-bold uppercase tracking-wider text-slate-500">Property Relationship</p>
-        <p className="mb-1.5 text-[10px] text-warn">
+        <p className="mb-1.5 text-[11px] text-warn">
           A spatial intersection does <strong>not</strong> establish legal ownership.
         </p>
         <Field label="Associated Parcel" mono>{rec.parentParcelULPIN || rec.parentParcel || 'Unavailable'}</Field>
@@ -508,12 +513,12 @@ function SelectedPanel({ rec, rel, loading }) {
               <li key={r.parcelId || r.ulpin} className="flex items-center gap-1.5">
                 <MapPin size={10} className="text-primary" />
                 <span className="data-mono">{r.ulpin || r.parcelId}</span>
-                <span className="text-slate-400">· {r.spatialRelation}</span>
+                <span className="text-slate-500">· {r.spatialRelation}</span>
               </li>
             ))}
           </ul>
         )}
-        <p className="mt-1 text-[10px] text-slate-500">
+        <p className="mt-1 text-[11px] text-slate-500">
           {rel?.ownershipNote || 'Legal ownership is only shown when authoritative data supplies it.'}
         </p>
       </section>

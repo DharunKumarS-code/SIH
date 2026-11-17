@@ -2,22 +2,25 @@ import { useState } from 'react'
 import clsx from 'clsx'
 import { MapPin, ChevronRight, ChevronLeft, Building2, Layers, Home } from 'lucide-react'
 import { useSelection } from '../../context/SelectionContext.jsx'
+import { mediaMatches } from '../../lib/media.js'
 
 // ONE Chennai-wide Cesium environment. This panel is the area selector +
 // area information panel: it never swaps maps — it flies the SAME camera
 // between localities and shows the active locality's context.
 export function AreaSelector() {
   const { localities, area, selectArea, cityView, selection } = useSelection()
-  const [open, setOpen] = useState(true)
+  // Open by default from tablet width up; on phones start collapsed so the map stays visible.
+  const [open, setOpen] = useState(() => mediaMatches('(min-width: 768px)'))
 
   const active = (localities || []).find((l) => l.id === area?.id)
 
   return (
     <div
       className={clsx(
-        'panel pointer-events-auto absolute top-3 z-10 transition-all',
-        ['unit', 'parcel', 'ai-building', 'ai-floor-unit'].includes(selection.mode) ? 'right-3 xl:right-[21.5rem]' : 'right-3',
-        open ? 'w-64' : 'w-11',
+        'panel pointer-events-auto flex min-h-0 shrink-0 flex-col',
+        // Shares the right-hand column with the property sidebar (Map3D grid);
+        // open it never exceeds half the column, scrolling its own list.
+        open ? 'max-h-[50%] w-full' : 'w-11 self-end',
       )}
       data-testid="area-selector"
     >
@@ -37,7 +40,7 @@ export function AreaSelector() {
       </div>
 
       {open && (
-        <div className="space-y-2 px-3 pb-3">
+        <div className="min-h-0 space-y-2 overflow-y-auto px-3 pb-3">
           <button
             onClick={cityView}
             className="flex w-full items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[12px] text-slate-700 hover:bg-slate-200"
@@ -63,9 +66,9 @@ export function AreaSelector() {
                 >
                   <span className="flex items-center justify-between font-semibold">
                     {l.name}
-                    {on && <span className="text-[10px] uppercase text-primary">active</span>}
+                    {on && <span className="text-[11px] uppercase text-primary">active</span>}
                   </span>
-                  <span className="mt-0.5 flex items-center gap-3 text-[10px] text-slate-500">
+                  <span className="mt-0.5 flex items-center gap-3 text-[11px] text-slate-600">
                     <span className="flex items-center gap-1">
                       <Layers size={10} /> {l.counts?.parcels ?? '—'}
                     </span>
@@ -83,7 +86,7 @@ export function AreaSelector() {
             <div className="rounded-md border border-slate-200 bg-surface-2 p-2 text-[11px] text-slate-600">
               <p className="font-semibold text-slate-900">{active.label || active.name}</p>
               {active.zone && <p className="text-slate-500">{active.zone}</p>}
-              <p className="data-mono mt-1 text-[10px] text-teal">{active.ulpinPrimary}</p>
+              <p className="data-mono mt-1 text-[11px] text-teal">{active.ulpinPrimary}</p>
               <p className="mt-1 text-slate-500">
                 {selection.mode === 'overview'
                   ? 'Select a building to drill into floors and units.'

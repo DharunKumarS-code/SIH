@@ -32,7 +32,7 @@ export default function Analytics() {
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
               {data.heatmap.map((h) => (
                 <div key={h.buildingId} className="rounded bg-slate-50 p-2 text-xs">
-                  <div className="font-mono text-[10px] text-slate-500">{h.buildingId.split('-').pop()}</div>
+                  <div className="font-mono text-[11px] text-slate-500">{h.buildingId.split('-').pop()}</div>
                   <div className="text-lg font-bold text-slate-900">{h.weight}</div>
                   <div className="text-slate-500">units</div>
                 </div>

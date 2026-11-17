@@ -89,7 +89,7 @@ export default function Governance() {
                     { key: 'dataset', header: 'Dataset', render: (r) => <span className="text-[12px]">{r.dataset}</span> },
                     { key: 'chennaiAvailability', header: 'Chennai', render: (r) => <Badge status={r.chennaiAvailability === 'UNAVAILABLE' ? 'Under Review' : 'Verified'}>{r.chennaiAvailability}</Badge> },
                     { key: 'accessBarrier', header: 'Access barrier', render: (r) => <span className="text-[11px] text-slate-500">{r.accessBarrier}</span> },
-                    { key: 'url', header: '', render: (r) => (r.url ? <a href={r.url} target="_blank" rel="noreferrer" className="text-primary"><ExternalLink size={13} /></a> : null) },
+                    { key: 'url', header: '', render: (r) => (r.url ? <a href={r.url} target="_blank" rel="noreferrer" aria-label={`Open ${r.organization} source (opens in a new tab)`} title={`Open ${r.organization} source`} className="inline-flex h-7 w-7 items-center justify-center rounded-md text-primary hover:bg-primary/10"><ExternalLink size={13} aria-hidden="true" /></a> : null) },
                   ]}
                   rows={d.dataSources?.sources || []}
                   empty="No registered sources."

@@ -5,6 +5,7 @@ import { useSelection } from '../../context/SelectionContext.jsx'
 import { api } from '../../lib/api.js'
 import { FloorPlan } from '../map/FloorPlan.jsx'
 import { Badge } from '../ui/primitives.jsx'
+import { mediaMatches } from '../../lib/media.js'
 
 // Bottom dock: Building Blocks (section 10) + Floors (section 11) + Floor Plan (section 12)
 export function ExplorerDock() {
@@ -24,7 +25,8 @@ export function ExplorerDock() {
   const buildings = areaUlpin && buildingsRes.key === areaUlpin ? buildingsRes.data : []
   const floors = selection.buildingId && floorsRes.key === selection.buildingId ? floorsRes.data : []
   const floorUnits = floorKey && unitsRes.key === floorKey ? unitsRes.data : []
-  const [collapsed, setCollapsed] = useState(false)
+  // Phones start with the dock collapsed to its header so the map stays visible.
+  const [collapsed, setCollapsed] = useState(() => !mediaMatches('(min-width: 768px)'))
 
   // Coimbatore's demonstration property has no building/floor/unit hierarchy
   // of its own — this dock always shows the *Chennai* area's blocks (by
@@ -60,19 +62,15 @@ export function ExplorerDock() {
   return (
     <div
       className={clsx(
-        'panel pointer-events-auto absolute bottom-3 left-3 z-10 p-3 transition-all',
-        // Shrink away from the right-hand detail sidebar whenever one is shown
-        // (building/floor now render the full BuildingCard, not a stub) so the
-        // dock — and its floor plan — never sits underneath and swallows clicks.
-        ['building', 'floor', 'unit', 'parcel', 'ai-building', 'ai-floor-unit', 'infrastructure', 'gnss-point'].includes(selection.mode)
-          ? 'right-3 xl:right-[21.5rem]'
-          : 'right-3',
-        collapsed ? 'max-h-12 overflow-hidden' : 'max-h-[46vh]',
+        // Placed by the Map3D overlay grid along the bottom, below the layer and
+        // details columns, so it never sits on top of (or under) another panel.
+        'panel pointer-events-auto w-full p-3',
+        collapsed ? 'max-h-12 overflow-hidden' : 'max-h-[46vh] overflow-y-auto',
       )}
       data-testid="explorer-dock"
     >
-      <div className="mb-2 flex items-center justify-between">
-        <span className="section-title flex items-center gap-2">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="section-title flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap">
           <Layers3 size={13} /> Floor &amp; Unit Explorer — <span className="data-mono normal-case">{areaUlpin}</span>
         </span>
         <button className="btn-ghost !px-1.5 !py-1" onClick={() => setCollapsed((c) => !c)} aria-label="Toggle explorer">

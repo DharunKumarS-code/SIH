@@ -77,25 +77,27 @@ export function TopBar({ onToggleNav }) {
 
   return (
     <header className="z-30 flex h-16 shrink-0 items-center gap-3 border-b border-slate-200 bg-surface px-3">
-      <button className="btn-ghost lg:hidden !px-2" onClick={onToggleNav} aria-label="Toggle navigation">
+      <button className="btn-ghost shrink-0 lg:hidden !px-2" onClick={onToggleNav} aria-label="Toggle navigation">
         <Menu size={18} />
       </button>
 
       {/* Government masthead */}
-      <div className="flex items-center gap-2.5 pr-2">
+      {/* Each line stays on one line; the long portal tagline only shows where
+          there is room for it, so the masthead never wraps out of the 64px bar. */}
+      <div className="flex shrink-0 items-center gap-2.5 pr-2">
         <div className="grid h-9 w-9 place-items-center rounded-md border border-primary/25 bg-primary/10 text-primary">
           <Landmark size={17} />
         </div>
-        <div className="hidden leading-tight sm:block">
-          <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+        <div className="hidden whitespace-nowrap leading-tight md:block">
+          <div className="hidden text-[11px] font-semibold uppercase tracking-wider text-slate-500 xl:block">
             Government &middot; Land Governance Portal
           </div>
           <div className="font-display text-sm font-semibold tracking-tight text-slate-900">PROPERTY 3D ULPIN</div>
-          <div className="text-[10px] text-slate-500">Chennai 3D Cadastre</div>
+          <div className="text-[11px] text-slate-500">Chennai 3D Cadastre</div>
         </div>
       </div>
 
-      <div ref={boxRef} className="relative mx-auto w-full max-w-xl">
+      <div ref={boxRef} className="relative mx-auto w-full min-w-0 max-w-xl">
         <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
         <input
           value={q}
@@ -133,7 +135,7 @@ export function TopBar({ onToggleNav }) {
                       {r.kind === 'parcel' && r.verification && (
                         <span
                           className={clsx(
-                            'rounded px-1.5 py-0.5 text-[10px] font-bold uppercase',
+                            'rounded px-1.5 py-0.5 text-[11px] font-bold uppercase',
                             r.verification === 'OFFICIAL'
                               ? 'bg-brass/10 text-brass'
                               : 'bg-warn/10 text-warn',
@@ -142,7 +144,7 @@ export function TopBar({ onToggleNav }) {
                           {r.verification}
                         </span>
                       )}
-                      <span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] uppercase text-slate-500">{r.kind}</span>
+                      <span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] uppercase text-slate-500">{r.kind}</span>
                     </button>
                   </li>
                 )
@@ -152,9 +154,9 @@ export function TopBar({ onToggleNav }) {
         )}
       </div>
 
-      <div className="hidden items-center gap-1 rounded-md border border-slate-200 bg-slate-50 pl-2 pr-1 py-1 text-xs text-slate-600 md:flex">
-        <MapPin size={13} className="text-teal" />
-        <span className="text-slate-500">
+      <div className="hidden shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-slate-50 pl-2 pr-1 py-1 text-xs text-slate-600 lg:flex">
+        <MapPin size={13} className="shrink-0 text-teal" />
+        <span className="whitespace-nowrap text-slate-500">
           {selection?.mode === 'coimbatore-demo' ? 'Coimbatore' : 'Chennai'} &middot;
         </span>
         <select
@@ -167,7 +169,7 @@ export function TopBar({ onToggleNav }) {
             else if (v.startsWith('region:')) flyToRegion?.(v.slice(7))
             else selectArea(v)
           }}
-          className="bg-transparent pr-1 font-semibold text-slate-900 outline-none"
+          className="h-7 bg-transparent pr-1 font-semibold text-slate-900 outline-none"
           aria-label="Location"
           data-testid="area-select"
         >
@@ -193,7 +195,7 @@ export function TopBar({ onToggleNav }) {
       </div>
 
       <button
-        className="btn-ghost !px-2"
+        className="btn-ghost shrink-0 !px-2"
         onClick={toggleTheme}
         aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
         title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
@@ -203,10 +205,10 @@ export function TopBar({ onToggleNav }) {
 
       <NotificationBell />
 
-      <div className="flex items-center gap-2 border-l border-slate-200 pl-2">
-        <div className="hidden text-right sm:block">
+      <div className="flex shrink-0 items-center gap-2 border-l border-slate-200 pl-2">
+        <div className="hidden whitespace-nowrap text-right lg:block">
           <div className="text-xs font-semibold text-slate-900">{user?.name}</div>
-          <div className="text-[10px] text-slate-500">{user?.role}</div>
+          <div className="text-[11px] text-slate-500">{user?.role}</div>
         </div>
         <button className="btn-ghost !px-2" onClick={logout} aria-label="Sign out" title="Sign out">
           <LogOut size={16} />

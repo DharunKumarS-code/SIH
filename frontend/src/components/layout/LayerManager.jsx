@@ -3,6 +3,7 @@ import clsx from 'clsx'
 import { Layers, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useSelection } from '../../context/SelectionContext.jsx'
 import { DemoTag } from '../ui/primitives.jsx'
+import { mediaMatches } from '../../lib/media.js'
 
 const GROUPS = [
   {
@@ -110,7 +111,7 @@ const GROUPS = [
 
 function OfficialTag() {
   return (
-    <span className="inline-flex items-center rounded border border-brass/30 bg-brass/10 px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-brass">
+    <span className="inline-flex items-center rounded border border-brass/30 bg-brass/10 px-1.5 py-0.5 text-[11px] font-extrabold tracking-wide text-brass">
       OFFICIAL SOURCE
     </span>
   )
@@ -118,12 +119,14 @@ function OfficialTag() {
 
 export function LayerManager() {
   const { layers, toggleLayer } = useSelection()
-  const [open, setOpen] = useState(true)
+  // Open by default on wide screens; below 1280px it starts as an icon so the
+  // camera toolbar and details column have room (Map3D overlay grid).
+  const [open, setOpen] = useState(() => mediaMatches('(min-width: 1280px)'))
 
   return (
     <div
       className={clsx(
-        'panel pointer-events-auto absolute left-3 top-3 z-10 transition-all',
+        'panel pointer-events-auto flex max-h-full min-h-0 flex-col',
         open ? 'w-64' : 'w-11',
       )}
       data-testid="layer-manager"
@@ -139,10 +142,10 @@ export function LayerManager() {
         </button>
       </div>
       {open && (
-        <div className="max-h-[62vh] space-y-3 overflow-y-auto px-3 pb-3">
+        <div className="min-h-0 space-y-3 overflow-y-auto px-3 pb-3">
           {GROUPS.map((g) => (
             <div key={g.title}>
-              <p className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              <p className="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 {g.title} {g.demo && <DemoTag label="DEMO" />} {g.official && <OfficialTag />}
               </p>
               <div className="space-y-0.5">

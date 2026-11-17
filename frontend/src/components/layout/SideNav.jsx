@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { preloadMap3D } from '../../lib/preloadMap.js'
 import clsx from 'clsx'
 import { X } from 'lucide-react'
 import { NAV_GROUPS } from '../../lib/nav.js'
@@ -24,7 +25,8 @@ export function SideNav({ open, onClose }) {
       <nav
         className={clsx(
           'z-30 flex w-60 shrink-0 flex-col border-r border-slate-200 bg-surface',
-          'max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:top-14 max-lg:shadow-lg max-lg:transition-transform',
+          // top-16 = the 64px TopBar (h-16), so the drawer starts exactly below it.
+          'max-lg:fixed max-lg:bottom-0 max-lg:left-0 max-lg:top-16 max-lg:shadow-lg max-lg:transition-transform',
           open ? 'max-lg:translate-x-0' : 'max-lg:-translate-x-full',
         )}
         aria-label="Main navigation"
@@ -38,13 +40,16 @@ export function SideNav({ open, onClose }) {
         <div className="flex-1 overflow-y-auto px-2 py-3">
           {groups.map((g, gi) => (
             <div key={g.group} className={clsx(gi > 0 && 'mt-4')}>
-              <p className="px-3 pb-1.5 font-display text-[10px] font-semibold uppercase tracking-widest text-slate-400">{g.group}</p>
+              <p className="px-3 pb-1.5 font-display text-[11px] font-semibold uppercase tracking-wider text-slate-500">{g.group}</p>
               <div className="space-y-0.5">
                 {g.items.map(({ to, label, icon: Icon }) => (
                   <NavLink
                     key={to}
                     to={to}
                     onClick={onClose}
+                    // Intent to open the 3D map (hover, keyboard focus, touch)
+                    // starts its code download early; other links unchanged.
+                    {...(to === '/map' && { onMouseEnter: preloadMap3D, onFocus: preloadMap3D, onTouchStart: preloadMap3D })}
                     className={({ isActive }) => clsx('nav-link', isActive && 'nav-link-active')}
                   >
                     <Icon size={15} className="shrink-0" />

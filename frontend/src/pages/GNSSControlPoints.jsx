@@ -42,7 +42,7 @@ function FilePicker({ file, onPick }) {
       >
         <UploadCloud size={18} className="text-primary" />
         <span className="text-[13px]">{file ? file.name : 'Upload control-point file (CSV / JSON / GeoJSON)'}</span>
-        <span className="text-[10px] text-slate-500">Max {MAX_MB} MB — see docs/18-gnss-cors-spatial-control.md</span>
+        <span className="text-[11px] text-slate-500">Max {MAX_MB} MB — see docs/18-gnss-cors-spatial-control.md</span>
       </button>
     </div>
   )
@@ -245,7 +245,7 @@ export default function GNSSControlPoints() {
               'Storage (gnssControlPoints)',
             ]).map((step, i) => (
               <li key={step} className="flex items-center gap-2">
-                <span className="grid h-5 w-5 place-items-center rounded-full bg-slate-100 text-[10px]">{i + 1}</span>
+                <span className="grid h-5 w-5 place-items-center rounded-full bg-slate-100 text-[11px]">{i + 1}</span>
                 {step}
               </li>
             ))}
@@ -303,7 +303,7 @@ export default function GNSSControlPoints() {
                 empty="No control points imported."
               />
             </div>
-            <p className="mt-2 flex items-center gap-1.5 text-[10px] text-warn">
+            <p className="mt-2 flex items-center gap-1.5 text-[11px] text-warn">
               <Satellite size={11} /> {result.disclaimer}
             </p>
           </Card>
@@ -313,8 +313,8 @@ export default function GNSSControlPoints() {
       <Card className="mt-4" title="4 · Boundary verification">
         <div className="flex flex-wrap items-end gap-2">
           <div>
-            <label className="text-[12px] text-slate-500">Parcel ULPIN</label>
-            <input value={ulpin} onChange={(e) => setUlpin(e.target.value)} data-testid="gnss-boundary-ulpin" className="input mt-1 w-64 !py-1 font-mono text-[12px]" />
+            <label htmlFor="gnss-boundary-ulpin" className="text-[12px] text-slate-500">Parcel ULPIN</label>
+            <input id="gnss-boundary-ulpin" value={ulpin} onChange={(e) => setUlpin(e.target.value)} data-testid="gnss-boundary-ulpin" className="input mt-1 w-64 !py-1 font-mono text-[12px]" />
           </div>
           <button className="btn-primary justify-center" data-testid="gnss-run-boundary" disabled={boundaryBusy} onClick={runBoundaryAnalysis}>
             {boundaryBusy ? <Spinner label="Analysing…" /> : <><MapPinned size={14} /> Run boundary analysis</>}

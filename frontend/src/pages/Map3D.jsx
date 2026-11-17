@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import {
   RotateCw, RotateCcw, ArrowUpToLine, Home, ZoomIn, ZoomOut, MoveVertical,
 } from 'lucide-react'
@@ -53,36 +53,55 @@ export default function Map3D() {
   }, [])
 
   const m = () => mapApi.current
+  // Status slot (building / TNGIS coverage) — Cesium3DMap portals its live
+  // counters into it so they sit in the overlay grid instead of under the dock.
+  const [statusSlot, setStatusSlot] = useState(null)
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <Cesium3DMap />
-      <LayerManager />
-      <AreaSelector />
-      <PropertySidebar />
-      <ExplorerDock />
+      <Cesium3DMap statusSlot={statusSlot} />
 
-      {/* Camera + view-level controls (spec section 30) — top-centre strip */}
-      <div className="panel pointer-events-auto absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-1 p-1.5">
-        <CamButton onClick={() => m().zoomBy?.(-0.25)} title="Zoom in"><ZoomIn size={15} /></CamButton>
-        <CamButton onClick={() => m().zoomBy?.(0.4)} title="Zoom out"><ZoomOut size={15} /></CamButton>
-        <CamButton onClick={() => m().rotateBy?.(-20)} title="Rotate left"><RotateCcw size={15} /></CamButton>
-        <CamButton onClick={() => m().rotateBy?.(20)} title="Rotate right"><RotateCw size={15} /></CamButton>
-        <CamButton onClick={() => m().tiltBy?.(8)} title="Tilt"><MoveVertical size={15} /></CamButton>
-        <CamButton onClick={() => m().topView?.()} title="Top view"><ArrowUpToLine size={15} /></CamButton>
-        <CamButton onClick={reset} title="Reset view"><Home size={15} /></CamButton>
-        <div className="mx-1 h-5 w-px bg-slate-200" />
-        <button
-          className="btn-primary !py-1.5"
-          data-testid="focus-selected"
-          onClick={() => {
-            if (selection.mode === 'unit') m().flyToUnit?.(selection.propertyId)
-            else if (selection.buildingId) m().flyToBuilding?.(selection.buildingId)
-            else m().flyToParcel?.(selection.ulpin)
-          }}
-        >
-          Focus Selected
-        </button>
+      {/* Overlay grid (see .map-overlay-grid in index.css): every floating panel
+          gets its own grid area, so panels shrink + scroll instead of
+          overlapping at any viewport size. No z-index here on purpose — the
+          sidebar's fixed-position dialogs must still stack above the TopBar. */}
+      <div className="map-overlay-grid pointer-events-none absolute inset-0" data-testid="map-overlay">
+        <div className="flex min-h-0 flex-col items-start [grid-area:left]">
+          <LayerManager />
+        </div>
+        <div className="flex min-h-0 min-w-0 flex-col gap-2 [grid-area:right] md:w-72 xl:w-80">
+          <PropertySidebar />
+          <AreaSelector />
+        </div>
+        <div ref={setStatusSlot} className="flex min-w-0 flex-col items-center justify-end gap-2 [grid-area:status]" />
+        <div className="min-w-0 [grid-area:dock]">
+          <ExplorerDock />
+        </div>
+
+        {/* Camera + view-level controls (spec section 30) — top-centre strip */}
+        <div className="flex min-w-0 justify-center [grid-area:tool]">
+          <div className="panel pointer-events-auto flex flex-wrap items-center justify-center gap-1 p-1.5">
+            <CamButton onClick={() => m().zoomBy?.(-0.25)} title="Zoom in"><ZoomIn size={15} /></CamButton>
+            <CamButton onClick={() => m().zoomBy?.(0.4)} title="Zoom out"><ZoomOut size={15} /></CamButton>
+            <CamButton onClick={() => m().rotateBy?.(-20)} title="Rotate left"><RotateCcw size={15} /></CamButton>
+            <CamButton onClick={() => m().rotateBy?.(20)} title="Rotate right"><RotateCw size={15} /></CamButton>
+            <CamButton onClick={() => m().tiltBy?.(8)} title="Tilt"><MoveVertical size={15} /></CamButton>
+            <CamButton onClick={() => m().topView?.()} title="Top view"><ArrowUpToLine size={15} /></CamButton>
+            <CamButton onClick={reset} title="Reset view"><Home size={15} /></CamButton>
+            <div className="mx-1 h-5 w-px bg-slate-200" />
+            <button
+              className="btn-primary !py-1.5"
+              data-testid="focus-selected"
+              onClick={() => {
+                if (selection.mode === 'unit') m().flyToUnit?.(selection.propertyId)
+                else if (selection.buildingId) m().flyToBuilding?.(selection.buildingId)
+                else m().flyToParcel?.(selection.ulpin)
+              }}
+            >
+              Focus Selected
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

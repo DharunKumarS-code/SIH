@@ -36,7 +36,7 @@ function FilePicker({ label, hint, accept, file, onPick, testId }) {
       >
         <UploadCloud size={18} className="text-primary" />
         <span className="text-[13px]">{file ? file.name : label}</span>
-        <span className="text-[10px] text-slate-500">{hint}</span>
+        <span className="text-[11px] text-slate-500">{hint}</span>
       </button>
     </div>
   )
@@ -169,7 +169,7 @@ export default function ElevationLiDAR() {
                 <div key={type} className="flex items-center justify-between rounded border border-slate-200 px-2 py-1 text-[12px]">
                   <span className="text-slate-600">{type}</span>
                   <Badge status={v.status === 'VALIDATED' ? 'Verified' : v.status === 'FAILED' ? 'Disputed' : 'Under Review'}>{v.status}</Badge>
-                  <span className="font-mono text-[10px] text-slate-500">{v.metadata?.crs || v.metadata?.crsStatus || '—'}</span>
+                  <span className="font-mono text-[11px] text-slate-500">{v.metadata?.crs || v.metadata?.crsStatus || '—'}</span>
                 </div>
               ))}
             </div>
@@ -217,7 +217,7 @@ export default function ElevationLiDAR() {
               'Quality & confidence', 'Building height results',
             ]).map((step, i) => (
               <li key={step} className="flex items-center gap-2">
-                <span className="grid h-5 w-5 place-items-center rounded-full bg-slate-100 text-[10px]">{i + 1}</span>
+                <span className="grid h-5 w-5 place-items-center rounded-full bg-slate-100 text-[11px]">{i + 1}</span>
                 {step}
               </li>
             ))}
@@ -283,7 +283,7 @@ export default function ElevationLiDAR() {
                     empty="No building height results."
                   />
                 </div>
-                <p className="mt-2 flex items-center gap-1.5 text-[10px] text-warn">
+                <p className="mt-2 flex items-center gap-1.5 text-[11px] text-warn">
                   <Mountain size={11} /> {result.disclaimer}
                 </p>
               </>

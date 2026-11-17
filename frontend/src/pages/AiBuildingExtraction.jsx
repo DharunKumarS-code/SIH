@@ -108,7 +108,7 @@ export default function AiBuildingExtraction() {
         automated model. It is <strong>not</strong> official cadastral, survey, ULPIN, building-approval or ownership
         data, and it never overwrites the existing demo buildings. Every result requires human review.
         {status && (
-          <span className="ml-1 text-slate-500">
+          <span className="ml-1 text-slate-600">
             AI service: {status.buildingExtraction?.aiServiceConfigured ? 'configured' : 'not configured (results will be INFERENCE_UNAVAILABLE)'}.
           </span>
         )}
@@ -159,7 +159,7 @@ export default function AiBuildingExtraction() {
           <ol className="space-y-1.5 text-[12px] text-slate-600">
             {PIPELINE.map((step, i) => (
               <li key={step} className="flex items-center gap-2">
-                <span className="grid h-5 w-5 place-items-center rounded-full bg-slate-100 text-[10px]">{i + 1}</span>
+                <span className="grid h-5 w-5 place-items-center rounded-full bg-slate-100 text-[11px]">{i + 1}</span>
                 {step}
               </li>
             ))}
@@ -220,7 +220,7 @@ export default function AiBuildingExtraction() {
                   <MapIcon size={15} /> View on Cesium (same Chennai viewer)
                 </button>
               )}
-              <p className="mt-2 text-[10px] text-warn">{result.disclaimer}</p>
+              <p className="mt-2 text-[11px] text-warn">{result.disclaimer}</p>
             </>
           )}
         </Card>

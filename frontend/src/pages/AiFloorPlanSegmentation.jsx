@@ -128,7 +128,7 @@ export default function AiFloorPlanSegmentation() {
         data. A floor-plan image has <strong>no coordinates</strong> — geographic placement in the Chennai viewer needs a
         valid building/floor reference. Every result requires human review.
         {status && (
-          <span className="ml-1 text-slate-500">
+          <span className="ml-1 text-slate-600">
             AI service: {status.floorPlanSegmentation?.aiServiceConfigured ? 'configured' : 'not configured (results will be INFERENCE_UNAVAILABLE)'}.
           </span>
         )}
@@ -202,7 +202,7 @@ export default function AiFloorPlanSegmentation() {
           <ol className="space-y-1.5 text-[12px] text-slate-600">
             {PIPELINE.map((step, i) => (
               <li key={step} className="flex items-center gap-2">
-                <span className="grid h-5 w-5 place-items-center rounded-full bg-surface-2 text-[10px]">{i + 1}</span>
+                <span className="grid h-5 w-5 place-items-center rounded-full bg-surface-2 text-[11px]">{i + 1}</span>
                 {step}
               </li>
             ))}
@@ -299,7 +299,7 @@ export default function AiFloorPlanSegmentation() {
                     rows={result.units || []}
                     empty="No apartment/unit boundaries inferred."
                   />
-                  <p className="mt-1 text-[10px] text-slate-500">
+                  <p className="mt-1 text-[11px] text-slate-500">
                     Unit IDs are prototype identifiers (<span className="data-mono">AI-UNIT-nnn</span>) — never official ULPINs.
                     {result.parentULPIN
                       ? ` Associated to existing parcel ULPIN ${result.parentULPIN} (${result.ulpinStatus}).`
@@ -325,7 +325,7 @@ export default function AiFloorPlanSegmentation() {
                     </div>
                   )}
                 </div>
-                <p className="mt-2 text-[10px] text-warn">{result.disclaimer}</p>
+                <p className="mt-2 text-[11px] text-warn">{result.disclaimer}</p>
               </>
             )}
           </Card>

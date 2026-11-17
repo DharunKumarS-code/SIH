@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 import { useSelection } from '../../context/SelectionContext.jsx'
@@ -142,7 +143,9 @@ const ESTIMATED_AI_UNIT_HEIGHT_M = 3
 // persisted or presented as a certified building/cadastral volume.
 const TNGIS_DEMO_VISUAL_HEIGHT_M = 8
 
-export function Cesium3DMap() {
+// `statusSlot` (optional): a DOM node in the page's overlay layout to render the
+// coverage counters into. Without one they fall back to the map's bottom-left.
+export function Cesium3DMap({ statusSlot = null } = {}) {
   const hostRef = useRef(null)
   const viewerRef = useRef(null)
   const gradingCleanupRef = useRef(null)
@@ -155,6 +158,8 @@ export function Cesium3DMap() {
   const loadedBuildingsRef = useRef(new Set())
   const loadedAreasRef = useRef(new Set()) // areaId that has parcels+shells loaded
   const loadedBuildingAreasRef = useRef(new Set()) // areaId whose city-wide 3D buildings are loaded
+  const allBuildingsInFlightRef = useRef(null) // shared promise of a running ensureAllBuildings()
+  const justLoadedAreasRef = useRef(new Set()) // areas whose layers ensureAreaLayers() fetched moments ago
   const buildingShellRef = useRef(new Map()) // buildingId -> Entity
   const parcelEntityRef = useRef(new Map()) // ulpin -> Entity
   const selectedParcelExtrusionRef = useRef(null) // the ONE temporary ash-gray DEMO_VISUALIZATION extrusion, for whichever parcel is currently selected
@@ -180,7 +185,11 @@ export function Cesium3DMap() {
   const cityViewRef = useRef(false) // true while the camera is parked at the Chennai overview
 
   const [error, setError] = useState('')
-  const [ready, setReady] = useState(false)
+  const [ready, setReady] = useState(false) // usable: essentials (imagery, terrain, parcels, buildings) are in
+  const [stage, setStage] = useState('Starting 3D engine…')
+  // Per-area GIS layer progress: { done, total, failed: [label…], complete }
+  const [layerProgress, setLayerProgress] = useState(null)
+  const [imageryPending, setImageryPending] = useState(false)
   // City-wide 3D building coverage counters — computed from ACTUAL entity state,
   // never a fabricated number (spec section 26).
   const [buildingStats, setBuildingStats] = useState({ available: 0, loaded: 0, visible: 0 })
@@ -246,6 +255,7 @@ export function Cesium3DMap() {
         return
       }
       Cesium.Ion.defaultAccessToken = CESIUM_TOKEN
+      setStage('Starting 3D engine…')
 
       try {
         viewer = new Cesium.Viewer(hostRef.current, {
@@ -281,7 +291,29 @@ export function Cesium3DMap() {
         /* grading is optional */
       }
 
+      // Point the camera at the start area right away (same view flyToArea()
+      // settles on later), so its imagery + terrain tiles stream in while the
+      // GIS layers download instead of after them. A pending deep-link
+      // selection keeps owning the camera, exactly as before.
+      const presetAtStart = selRef.current.selection?.mode
+      if (!['parcel', 'building', 'floor', 'unit', 'infrastructure'].includes(presetAtStart)) {
+        const loc = localityOf(selRef.current.area?.id || DEFAULT_AREA_ID)
+        if (loc?.base) {
+          const h = loc.cameraHeightM || 1500
+          viewer.camera.setView({
+            destination: Cesium.Cartesian3.fromDegrees(loc.base.lon, loc.base.lat - h * 6e-6, h),
+            orientation: { heading: Cesium.Math.toRadians(15), pitch: Cesium.Math.toRadians(-40), roll: 0 },
+          })
+        }
+      }
+
+      // In requestRenderMode the globe only requests tiles while frames are
+      // drawn, so keep rendering from now on (not just after the GIS data) —
+      // the view's terrain + imagery then download alongside the layers.
+      const globeVisible = waitForGlobeVisible(viewer, 120000)
+
       // terrain (non-fatal)
+      setStage('Loading terrain…')
       try {
         viewer.terrainProvider = await Cesium.createWorldTerrainAsync()
       } catch {
@@ -313,11 +345,17 @@ export function Cesium3DMap() {
       // ONE Chennai-wide scene: a cheap city-overview layer that is always
       // resident, then demand-load the starting locality's detail.
       buildCityOverview(viewer)
-      await buildCoimbatoreDemoProperty(viewer)
+      buildCoimbatoreDemoProperty(viewer) // synchronous add; terrain height refines in the background
       if (cancelled) return
       const startArea = selRef.current.area?.id || DEFAULT_AREA_ID
       activeAreaRef.current = startArea
-      await ensureAreaLayers(startArea)
+      // The map becomes usable as soon as parcels + buildings are drawn; the
+      // other 11 layers keep loading in the background (progress pill below).
+      setStage('Loading parcels and buildings…')
+      let essentialsReady
+      const essentials = new Promise((resolve) => { essentialsReady = resolve })
+      const allLayers = ensureAreaLayers(startArea, { onEssential: essentialsReady })
+      await Promise.race([essentials, allLayers])
       if (cancelled) return
       // City-wide: every available building in every locality becomes a 3D
       // structure in THIS viewer (lightweight massing). Non-blocking.
@@ -329,13 +367,30 @@ export function Cesium3DMap() {
       // race applySelection and snap the camera to the start-locality overview.
       const presetMode = selRef.current.selection?.mode
       if (['parcel', 'building', 'floor', 'unit', 'infrastructure'].includes(presetMode)) {
+        // no loadArea() follows here, so later visits must refresh normally
+        justLoadedAreasRef.current.delete(startArea)
         lodRef.current = 'area'
         applyLayerVisibility()
       } else {
         flyToArea(startArea, 0)
       }
+      // Usable also means the globe is actually drawn (imagery + terrain for
+      // the view), not a black canvas. Bounded so a stalled tile server never
+      // blocks the map: past the cap it opens with an "imagery loading" note.
+      setStage('Loading imagery…')
+      const globeShown = await Promise.race([globeVisible, new Promise((r) => setTimeout(() => r(false), 10000))])
+      if (cancelled) return
+      if (!globeShown) {
+        setImageryPending(true)
+        globeVisible.then(() => { if (!cancelled) setImageryPending(false) })
+      }
       setReady(true)
-      window.__map = { ready: true }
+      // window.__map.ready keeps its meaning for tests/automation: EVERY layer
+      // has finished (or failed). usable marks the earlier interactive point.
+      window.__map = { ready: false, usable: true }
+      await allLayers.catch(() => {})
+      if (cancelled) return
+      window.__map = { ready: true, usable: true }
       applySelection() // reflect any preset selection
     }
 
@@ -419,17 +474,12 @@ export function Cesium3DMap() {
   // Cesium map stays a clean geographic marker/selection point. The ACTUAL
   // ODM reconstruction (OBJ + MTL + 21 textures) is shown exclusively in the
   // detailed Three.js explorer (/coimbatore-explorer, Exterior mode).
-  async function buildCoimbatoreDemoProperty(viewer) {
+  function buildCoimbatoreDemoProperty(viewer) {
     const p = COIMBATORE_DEMO_PROPERTY
     // Coimbatore is well inland (~400-450m above the ellipsoid), unlike
-    // coastal Chennai — sample the actual World Terrain height here so the
-    // marker sits ON the ground instead of buried inside it.
-    try {
-      const [sampled] = await Cesium.sampleTerrainMostDetailed(viewer.terrainProvider, [
-        Cesium.Cartographic.fromDegrees(p.lon, p.lat),
-      ])
-      if (finite(sampled?.height)) coimbatoreGroundHeightRef.current = sampled.height
-    } catch { /* keep the documented fallback */ }
+    // coastal Chennai. The marker is placed at the documented fallback height
+    // at once, and moved onto the actual World Terrain height (same lon/lat)
+    // when the sample arrives — the lookup never delays the map's startup.
     if (!liveViewer()) return
     const ent = viewer.entities.add({
       show: true,
@@ -457,6 +507,16 @@ export function Cesium3DMap() {
     })
     coimbatoreEntityRef.current = ent
     viewer.scene.requestRender()
+
+    Cesium.sampleTerrainMostDetailed(viewer.terrainProvider, [Cesium.Cartographic.fromDegrees(p.lon, p.lat)])
+      .then(([sampled]) => {
+        const v = liveViewer()
+        if (!v || !finite(sampled?.height) || coimbatoreEntityRef.current !== ent) return
+        coimbatoreGroundHeightRef.current = sampled.height
+        ent.position = Cesium.Cartesian3.fromDegrees(p.lon, p.lat, sampled.height + 2)
+        v.scene.requestRender()
+      })
+      .catch(() => { /* keep the documented fallback */ })
   }
 
   /* ---------------------------------------------------- 3D building massing */
@@ -529,11 +589,98 @@ export function Cesium3DMap() {
   // City-wide: make EVERY available building in EVERY locality a 3D structure in
   // the one viewer. Lightweight massing only (no Three.js, no interior). Cheap +
   // idempotent; the existing per-area + LOD machinery governs what is drawn.
-  async function ensureAllBuildings() {
+  // Localities whose buildings are already loaded are skipped and concurrent
+  // calls share one run, so startup never re-downloads the same layer;
+  // { force: true } (mapApi.refreshBuildings) re-fetches every locality.
+  // Resolves true once the globe is actually on screen for the current view
+  // (or all its tiles are loaded), false if capMs passes first. Cesium has no
+  // public "first imagery drawn" event, so after each rendered frame a small
+  // grid of pixels in the lower (ground) part of the canvas is sampled: most
+  // must show ground, not the black sky/space behind an undrawn globe.
+  // While waiting — and afterwards until every view tile has loaded — frames
+  // keep being requested, since requestRenderMode would otherwise leave the
+  // last pre-imagery frame on screen.
+  function waitForGlobeVisible(viewer, capMs) {
+    return new Promise((resolve) => {
+      let settled = false
+      let poll = null
+      let timer = null
+      let removePostRender = null
+      const stop = () => {
+        clearInterval(poll)
+        clearTimeout(timer)
+        removePostRender?.()
+        removePostRender = null
+      }
+      const finish = (ok) => {
+        if (!settled) {
+          settled = true
+          resolve(ok)
+        }
+        if (!ok || !viewer || viewer.isDestroyed() || viewer.scene.globe.tilesLoaded) stop()
+      }
+      const px = new Uint8Array(4)
+      let lastSample = 0
+      const groundVisible = () => {
+        const canvas = viewer.canvas
+        const gl = canvas.getContext('webgl2') || canvas.getContext('webgl')
+        if (!gl) return true
+        const w = gl.drawingBufferWidth
+        const h = gl.drawingBufferHeight
+        let lit = 0
+        let total = 0
+        for (let i = 1; i <= 5; i += 1) {
+          for (let j = 1; j <= 4; j += 1) {
+            // GL origin is bottom-left: rows 5%..40% up from the bottom edge
+            gl.readPixels(Math.floor((w * i) / 6), Math.floor(h * 0.05 + (h * 0.35 * j) / 4), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px)
+            total += 1
+            if (px[0] + px[1] + px[2] > 60) lit += 1
+          }
+        }
+        return lit >= total * 0.7
+      }
+      const onFrame = () => {
+        if (settled) {
+          if (viewer.scene.globe.tilesLoaded) stop()
+          return
+        }
+        // readPixels stalls the GPU pipeline, so sample at most every 250 ms
+        const now = performance.now()
+        if (!viewer.scene.globe.tilesLoaded && now - lastSample < 250) return
+        lastSample = now
+        try {
+          if (viewer.scene.globe.tilesLoaded || groundVisible()) finish(true)
+        } catch {
+          finish(true) // never block the map on a diagnostics failure
+          stop()
+        }
+      }
+      if (!viewer || viewer.isDestroyed()) return resolve(false)
+      removePostRender = viewer.scene.postRender.addEventListener(onFrame)
+      poll = setInterval(() => {
+        if (viewer.isDestroyed()) return stop()
+        viewer.scene.requestRender()
+      }, 100)
+      timer = setTimeout(() => finish(false), capMs)
+      viewer.scene.requestRender()
+    })
+  }
+
+  function ensureAllBuildings({ force = false } = {}) {
+    if (!force && allBuildingsInFlightRef.current) return allBuildingsInFlightRef.current
+    const run = loadAllBuildings(force).finally(() => {
+      if (allBuildingsInFlightRef.current === run) allBuildingsInFlightRef.current = null
+    })
+    allBuildingsInFlightRef.current = run
+    return run
+  }
+
+  async function loadAllBuildings(force) {
     if (!liveViewer()) return 0
     const locs = selRef.current.localities || []
     let added = 0
     for (const l of locs) {
+      if (!force && loadedBuildingAreasRef.current.has(l.id)) continue
       try {
         const fc = await api.gisBuildings({ locality: l.id })
         for (const f of fc.features || []) if (addBuildingEntity(f, l.id)) added += 1
@@ -549,11 +696,12 @@ export function Cesium3DMap() {
   }
 
   /* ------------------------------------------------------------ area data */
-  async function ensureAreaLayers(areaId) {
+  async function ensureAreaLayers(areaId, { onEssential } = {}) {
     const viewer = viewerRef.current
     if (!viewer || viewer.isDestroyed()) return
     if (loadedAreasRef.current.has(areaId)) return
     loadedAreasRef.current.add(areaId)
+    justLoadedAreasRef.current.add(areaId)
 
     const groups = groupsRef.current
     const tag = (ent) => {
@@ -599,8 +747,47 @@ export function Cesium3DMap() {
 
     const P = { locality: areaId }
 
+    // All 13 datasets are independent: request them together instead of one
+    // after another (13 serial round trips made the map wait ~17 s on a slow
+    // network). Results are still applied below in the original order, so
+    // draw order, picking and layer grouping are unchanged. Each request
+    // fails on its own, exactly as before.
+    const pre = {
+      parcels: api.gisParcels(P),
+      buildings: api.gisBuildings(P),
+      roads: api.gisLayer('roads', P),
+      utilities: api.gisLayer('utilities', P),
+      environment: api.gisLayer('environment', P),
+      boundaries: api.gisLayer('boundaries', P),
+      masterPlan: api.gisLayer('master-plan', P),
+      disputes: api.gisLayer('disputes', P),
+      aiBuildings: api.gisAiBuildings(P),
+      aiFloorUnits: api.gisAiFloorUnits(P),
+      gnss: api.gisGnssControlPoints(P),
+      underground: api.gisUndergroundInfrastructure(P),
+      tngis: api.gisTngisParcels({ excludeViewport: 1 }),
+    }
+    for (const p of Object.values(pre)) p.catch(() => {}) // handled where awaited
+
+    // Progress for the "Loading layers (n/13)" indicator: counts each dataset
+    // as it arrives or fails; complete is only set once all are applied below.
+    const LAYER_LABELS = {
+      parcels: 'Parcels', buildings: 'Buildings', roads: 'Roads', utilities: 'Utilities',
+      environment: 'Environment', boundaries: 'Boundaries', masterPlan: 'Master plan',
+      disputes: 'Disputes', aiBuildings: 'AI buildings', aiFloorUnits: 'AI floor units',
+      gnss: 'GNSS control points', underground: 'Underground infrastructure', tngis: 'TNGIS parcels',
+    }
+    const progress = { area: areaId, done: 0, total: Object.keys(pre).length, failed: [], complete: false }
+    setLayerProgress({ ...progress })
+    for (const [key, p] of Object.entries(pre)) {
+      p.then(
+        () => { progress.done += 1 },
+        () => { progress.done += 1; progress.failed.push(LAYER_LABELS[key]) },
+      ).finally(() => { if (liveViewer()) setLayerProgress({ ...progress, failed: [...progress.failed] }) })
+    }
+
     try {
-      const parcels = await api.gisParcels(P)
+      const parcels = await pre.parcels
       for (const f of parcels.features || []) {
         const c = LAND_USE_COLORS[f.properties.landUse] || '#3f7fd6'
         const ent = addPolygon('parcels', f.geometry, {
@@ -615,20 +802,27 @@ export function Cesium3DMap() {
     }
 
     try {
-      const buildings = await api.gisBuildings(P)
+      const buildings = await pre.buildings
       for (const f of buildings.features || []) addBuildingEntity(f, areaId)
       loadedBuildingAreasRef.current.add(areaId)
     } catch (e) {
       console.warn('buildings load failed', e)
     }
 
+    // Essentials are drawn: show them now and let the caller unblock the map.
+    if (liveViewer()) {
+      applyLayerVisibility()
+      liveViewer().scene.requestRender()
+    }
+    onEssential?.()
+
     // overlays (per-area)
     try {
-      const roads = await api.gisLayer('roads', P)
+      const roads = await pre.roads
       for (const f of roads.features || []) addLine('roads', f.geometry, Cesium.Color.fromCssColorString('#c9d2e3').withAlpha(0.75), 3)
     } catch { /* ignore */ }
     try {
-      const utils = await api.gisLayer('utilities', P)
+      const utils = await pre.utilities
       const uColor = { 'Water Supply': '#4fa9ff', 'Sewer Line': '#9b7b4f', Electricity: '#f2b807', Drainage: '#4fbf9f', 'Gas Pipeline': '#e4566e', 'Fiber Network': '#a86fd1' }
       for (const f of utils.features || []) {
         const key = { 'Water Supply': 'waterSupply', 'Sewer Line': 'sewerLines', Electricity: 'electricity', Drainage: 'drainage', 'Gas Pipeline': 'gasPipeline', 'Fiber Network': 'fiberNetwork' }[f.properties.type]
@@ -636,7 +830,7 @@ export function Cesium3DMap() {
       }
     } catch { /* ignore */ }
     try {
-      const env = await api.gisLayer('environment', P)
+      const env = await pre.environment
       const map = { 'Water Body': 'waterBodies', 'Eco Sensitive Zone': 'ecoZones', 'Heritage Zone': 'heritageZones', 'Coastal Regulation Zone': 'coastalZone' }
       for (const f of env.features || []) {
         const key = map[f.properties.kind] || 'waterBodies'
@@ -648,7 +842,7 @@ export function Cesium3DMap() {
       }
     } catch { /* ignore */ }
     try {
-      const bounds = await api.gisLayer('boundaries', P)
+      const bounds = await pre.boundaries
       const map = { 'Corporation Boundary': 'corporationBoundary', 'Zone Boundary': 'zoneBoundary', 'Ward Boundary': 'wardBoundary' }
       for (const f of bounds.features || []) {
         const key = map[f.properties.level] || 'zoneBoundary'
@@ -657,11 +851,11 @@ export function Cesium3DMap() {
       }
     } catch { /* ignore */ }
     try {
-      const mp = await api.gisLayer('master-plan', P)
+      const mp = await pre.masterPlan
       for (const f of mp.features || []) addPolygon('masterPlan', f.geometry, { material: Cesium.Color.fromCssColorString('#a86fd1').withAlpha(0.08), clamp: true, properties: { kind: 'masterplan', ...f.properties } })
     } catch { /* ignore */ }
     try {
-      const dsp = await api.gisLayer('disputes', P)
+      const dsp = await pre.disputes
       for (const f of dsp.features || []) {
         if (f.geometry?.type !== 'Point') continue
         const [lon, lat] = f.geometry.coordinates
@@ -675,12 +869,14 @@ export function Cesium3DMap() {
       }
     } catch { /* ignore */ }
 
-    await ensureAiBuildings(areaId)
-    await ensureAiFloorUnits(areaId)
-    await ensureGnssControlPoints(areaId)
-    await ensureUndergroundInfrastructure(areaId)
-    await ensureTngisParcels(areaId)
+    await ensureAiBuildings(areaId, pre.aiBuildings)
+    await ensureAiFloorUnits(areaId, pre.aiFloorUnits)
+    await ensureGnssControlPoints(areaId, pre.gnss)
+    await ensureUndergroundInfrastructure(areaId, pre.underground)
+    await ensureTngisParcels(areaId, pre.tngis)
+    await Promise.allSettled(Object.values(pre))
     if (!liveViewer()) return
+    setLayerProgress({ ...progress, failed: [...progress.failed], complete: true })
     applyLayerVisibility()
     liveViewer().scene.requestRender()
   }
@@ -688,11 +884,11 @@ export function Cesium3DMap() {
   // Phase 3 — AI-derived candidate buildings (AI_DEMO). Their own layer,
   // separate from the demo `buildings`. Idempotent (guarded per aiBuildingId),
   // so it can be re-run after a new extraction without duplicating entities.
-  async function ensureAiBuildings(areaId) {
+  async function ensureAiBuildings(areaId, prefetched) {
     if (!liveViewer()) return
     let added = 0
     try {
-      const ai = await api.gisAiBuildings({ locality: areaId })
+      const ai = await (prefetched || api.gisAiBuildings({ locality: areaId }))
       const viewer = liveViewer()
       if (!viewer) return 0
       for (const f of ai.features || []) {
@@ -730,11 +926,11 @@ export function Cesium3DMap() {
   // (associated to an existing building/floor) are placed on the map; local-only
   // floor plans stay on the AI Floor Plan page. Idempotent (guarded per
   // aiFloorUnitId) so it can be re-run after a new inference without dupes.
-  async function ensureAiFloorUnits(areaId) {
+  async function ensureAiFloorUnits(areaId, prefetched) {
     if (!liveViewer()) return 0
     let added = 0
     try {
-      const fc = await api.gisAiFloorUnits({ locality: areaId })
+      const fc = await (prefetched || api.gisAiFloorUnits({ locality: areaId }))
       const viewer = liveViewer()
       if (!viewer) return 0
       for (const f of fc.features || []) {
@@ -778,11 +974,11 @@ export function Cesium3DMap() {
   // per validated control point that resolved to a usable WGS84 coordinate.
   // Idempotent (guarded per controlPointId), so re-running an import updates
   // the layer without duplicating entities.
-  async function ensureGnssControlPoints(areaId) {
+  async function ensureGnssControlPoints(areaId, prefetched) {
     if (!liveViewer()) return 0
     let added = 0
     try {
-      const fc = await api.gisGnssControlPoints({ locality: areaId })
+      const fc = await (prefetched || api.gisGnssControlPoints({ locality: areaId }))
       const viewer = liveViewer()
       if (!viewer) return 0
       for (const f of fc.features || []) {
@@ -823,11 +1019,11 @@ export function Cesium3DMap() {
   // bounded 3D volumes. Records with no supplied depth are drawn just below the
   // surface, faded + dashed, so unknown depth never looks like a surveyed one.
   // Idempotent (guarded per infrastructureId).
-  async function ensureUndergroundInfrastructure(areaId) {
+  async function ensureUndergroundInfrastructure(areaId, prefetched) {
     if (!liveViewer()) return 0
     let added = 0
     try {
-      const fc = await api.gisUndergroundInfrastructure({ locality: areaId })
+      const fc = await (prefetched || api.gisUndergroundInfrastructure({ locality: areaId }))
       const viewer = liveViewer()
       if (!viewer) return 0
       for (const f of fc.features || []) {
@@ -1026,10 +1222,10 @@ export function Cesium3DMap() {
   // TNGIS / Tamil Nilam — PUBLIC-source parcels a user EXPLICITLY fetched
   // (District → Taluk → Village → Survey). Own layer, OFF by default. Viewport-
   // discovered parcels are excluded here — the BBOX loader below owns those.
-  async function ensureTngisParcels() {
+  async function ensureTngisParcels(_areaId, prefetched) {
     if (!liveViewer()) return 0
     try {
-      const fc = await api.gisTngisParcels({ excludeViewport: 1 })
+      const fc = await (prefetched || api.gisTngisParcels({ excludeViewport: 1 }))
       return addTngisFeatures(fc.features)
     } catch { /* TNGIS layer is optional — never block the map */ }
     return 0
@@ -1447,7 +1643,7 @@ export function Cesium3DMap() {
       // the AI Building Extraction page after an inference completes).
       refreshAiBuildings: (areaId) => ensureAiBuildings(areaId || activeAreaRef.current),
       // Re-scan every locality for 3D building coverage (idempotent).
-      refreshBuildings: () => ensureAllBuildings(),
+      refreshBuildings: () => ensureAllBuildings({ force: true }),
       buildingStats: () => {
         let visible = 0
         for (const e of buildingShellRef.current.values()) if (e.show) visible += 1
@@ -1476,6 +1672,16 @@ export function Cesium3DMap() {
     activeAreaRef.current = areaId
     cityViewRef.current = false
     await ensureAreaLayers(areaId)
+    // ensureAreaLayers() already ran the five loaders below if it has only just
+    // loaded this area (first visit, or init's start area): re-running them
+    // right away would re-download identical data. On every later visit they
+    // refresh as before, picking up newly extracted / imported records.
+    if (justLoadedAreasRef.current.delete(areaId)) {
+      if (!liveViewer()) return
+      lodRef.current = 'area'
+      applyLayerVisibility()
+      return
+    }
     await ensureAiBuildings(areaId) // idempotent — picks up any newly-extracted AI buildings
     await ensureAiFloorUnits(areaId) // idempotent — picks up any newly-segmented AI floor-plan units
     await ensureGnssControlPoints(areaId) // idempotent — picks up any newly-imported GNSS/CORS control points
@@ -1924,17 +2130,49 @@ export function Cesium3DMap() {
   }
 
   /* --------------------------------------------------------------- render */
-  return (
-    <div className="relative h-full w-full" data-testid="cesium-map">
-      <div ref={hostRef} className="h-full w-full" />
-
+  const coverage = (
+    <>
+      {ready && imageryPending && (
+        <div
+          role="status"
+          className="pointer-events-none rounded-lg border border-slate-200 bg-surface/95 px-3 py-1.5 text-[11px] font-semibold text-slate-700 shadow-sm"
+          data-testid="map-imagery-pending"
+        >
+          Imagery still loading…
+        </div>
+      )}
+      {ready && layerProgress && !layerProgress.complete && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none flex items-center gap-2 rounded-lg border border-slate-200 bg-surface/95 px-3 py-1.5 text-[11px] font-semibold text-slate-700 shadow-sm"
+          data-testid="map-layer-progress"
+        >
+          <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" aria-hidden="true" />
+          {layerProgress.done < layerProgress.total
+            ? `Loading layers (${layerProgress.done}/${layerProgress.total})`
+            : 'Finishing layers…'}
+        </div>
+      )}
+      {layerProgress?.complete && layerProgress.failed.length > 0 && (
+        <div
+          role="alert"
+          className="pointer-events-auto max-w-full rounded-lg border border-danger/30 bg-surface/95 px-3 py-1.5 text-[11px] text-danger shadow-sm"
+          data-testid="map-layer-errors"
+        >
+          <span className="font-semibold">
+            {layerProgress.failed.length} of {layerProgress.total} layers failed to load:
+          </span>{' '}
+          {layerProgress.failed.join(', ')}. The rest of the map is available.
+        </div>
+      )}
       {ready && buildingStats.loaded > 0 && (
         <div
-          className="pointer-events-none absolute bottom-3 left-3 z-10 rounded-lg border border-slate-200 bg-surface/95 px-3 py-2 text-[11px] shadow-sm"
+          className="pointer-events-none max-w-full rounded-lg border border-slate-200 bg-surface/95 px-3 py-2 text-[11px] shadow-sm"
           data-testid="building-coverage"
         >
           <p className="font-bold uppercase tracking-wider text-slate-500">Chennai 3D Buildings</p>
-          <div className="data-mono mt-1 flex gap-3 text-slate-700">
+          <div className="data-mono mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-slate-700">
             <span data-testid="buildings-available">Available: {buildingStats.available.toLocaleString('en-IN')}</span>
             <span data-testid="buildings-loaded">Loaded: {buildingStats.loaded.toLocaleString('en-IN')}</span>
             <span data-testid="buildings-visible">Visible: {buildingStats.visible.toLocaleString('en-IN')}</span>
@@ -1944,7 +2182,7 @@ export function Cesium3DMap() {
 
       {ready && sel.layers?.tngisParcels && (
         <div
-          className="pointer-events-none absolute bottom-20 left-3 z-10 rounded-lg border border-brass/30 bg-surface/95 px-3 py-2 text-[11px] shadow-sm"
+          className="pointer-events-none max-w-full rounded-lg border border-brass/30 bg-surface/95 px-3 py-2 text-[11px] shadow-sm"
           data-testid="tngis-coverage"
         >
           <p className="font-bold uppercase tracking-wider text-brass">TNGIS Parcels · Official Source</p>
@@ -1956,14 +2194,26 @@ export function Cesium3DMap() {
             )}
           </div>
           {tngisStats.loaded === 0 && (
-            <p className="mt-0.5 text-[10px] text-slate-500">Zoom in over Chennai to stream official parcels for the view.</p>
+            <p className="mt-0.5 text-[11px] text-slate-500">Zoom in over Chennai to stream official parcels for the view.</p>
           )}
         </div>
+      )}
+    </>
+  )
+
+  return (
+    <div className="relative h-full w-full" data-testid="cesium-map">
+      <div ref={hostRef} className="h-full w-full" />
+
+      {statusSlot ? (
+        createPortal(coverage, statusSlot)
+      ) : (
+        <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-col-reverse gap-2">{coverage}</div>
       )}
 
       {!ready && !error && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center bg-paper/85 text-sm text-slate-600">
-          Loading Chennai 3D scene…
+          <span role="status" aria-live="polite">Loading Chennai 3D scene — {stage}</span>
         </div>
       )}
       {error && (

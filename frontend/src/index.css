@@ -27,10 +27,10 @@
   /* Brand */
   --color-primary: 20 67 130; /* deep indigo-navy */
   --color-primary-hover: 16 56 110;
-  --color-brass: 150 106 27; /* muted brass — official / seal marks */
+  --color-brass: 128 90 20; /* muted brass — official / seal marks (AA on its tint) */
   --color-teal: 15 118 110; /* verified accent */
-  --color-ok: 21 128 61;
-  --color-warn: 180 83 9;
+  --color-ok: 22 115 52; /* AA on its own /15 badge tint */
+  --color-warn: 161 72 8; /* AA on its own /15 badge tint */
   --color-danger: 185 28 28;
 
   /* Neutral scale (drives every slate-* utility class in the app) */
@@ -39,7 +39,7 @@
   --slate-200: 226 232 240;
   --slate-300: 203 213 225;
   --slate-400: 148 163 184;
-  --slate-500: 100 116 139;
+  --slate-500: 94 108 130; /* muted text: AA on paper + surface */
   --slate-600: 71 85 105;
   --slate-700: 51 65 85;
   --slate-800: 30 41 59;
@@ -98,22 +98,54 @@
   --color-ink-muted: 71 85 105;
   --color-primary: 20 67 130;
   --color-primary-hover: 16 56 110;
-  --color-brass: 150 106 27;
+  --color-brass: 128 90 20;
   --color-teal: 15 118 110;
-  --color-ok: 21 128 61;
-  --color-warn: 180 83 9;
+  --color-ok: 22 115 52; /* AA on its own /15 badge tint */
+  --color-warn: 161 72 8; /* AA on its own /15 badge tint */
   --color-danger: 185 28 28;
   --slate-50: 248 250 252;
   --slate-100: 241 245 249;
   --slate-200: 226 232 240;
   --slate-300: 203 213 225;
   --slate-400: 148 163 184;
-  --slate-500: 100 116 139;
+  --slate-500: 94 108 130; /* muted text: AA on paper + surface */
   --slate-600: 71 85 105;
   --slate-700: 51 65 85;
   --slate-800: 30 41 59;
   --slate-900: 15 23 42;
   --slate-950: 8 12 22;
+}
+
+/* The inverse of .doc-light: forces the dark-theme token values for surfaces
+   that are always dark whatever the app theme (e.g. a 3D canvas with overlay
+   controls), so text-slate-*, text-primary, etc. stay readable on them. */
+.on-dark {
+  color-scheme: dark;
+  --color-paper: 10 18 31;
+  --color-surface: 16 27 44;
+  --color-surface-2: 22 36 58;
+  --color-border: 37 52 73;
+  --color-border-strong: 58 78 105;
+  --color-ink: 232 236 242;
+  --color-ink-muted: 147 161 181;
+  --color-primary: 106 156 224;
+  --color-primary-hover: 134 176 232;
+  --color-brass: 199 154 74;
+  --color-teal: 62 190 172;
+  --color-ok: 74 190 122;
+  --color-warn: 217 145 66;
+  --color-danger: 224 100 100;
+  --slate-50: 22 36 58;
+  --slate-100: 30 46 71;
+  --slate-200: 37 52 73;
+  --slate-300: 196 206 219; /* light text on the dark canvas */
+  --slate-400: 147 161 181;
+  --slate-500: 147 161 181;
+  --slate-600: 170 182 199;
+  --slate-700: 196 206 219;
+  --slate-800: 219 227 236;
+  --slate-900: 232 236 242;
+  --slate-950: 245 247 250;
 }
 
 html,
@@ -234,6 +266,53 @@ body {
   .data-mono {
     @apply font-mono tabular-nums;
   }
+}
+
+/* 3D map overlay layout. Each floating panel owns a grid area, so panels
+   shrink and scroll internally instead of overlapping, at any viewport size.
+     narrow (<768px): toolbar row on top; layers (icon) | details column;
+                      coverage status; dock along the bottom.
+     md+:             layers | toolbar + status | details column; dock below. */
+.map-overlay-grid {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    'tool tool'
+    'left right'
+    'status status'
+    'dock dock';
+}
+@media (min-width: 768px) {
+  .map-overlay-grid {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'left tool right'
+      'left status right'
+      'dock dock dock';
+  }
+}
+
+/* Visible keyboard focus for every interactive element that doesn't draw its
+   own ring (.btn / .input already do). Mouse clicks don't trigger it. */
+a:focus-visible,
+button:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+[role='button']:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid rgb(var(--color-primary));
+  outline-offset: 2px;
+}
+
+/* In dark mode (and on always-dark surfaces) the primary fill is a light
+   blue, so its label must be dark ink: white on it is only 2.8:1. */
+.dark .btn-primary,
+.on-dark .btn-primary {
+  color: rgb(var(--color-paper));
 }
 
 /* Cesium widget fills its host; hide the ion credit bar */
